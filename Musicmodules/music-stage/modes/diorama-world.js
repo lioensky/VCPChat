@@ -42,6 +42,25 @@
     // Landmarks on the far shore, as bearings round the sky. The line runs towards -z.
     const ISLE = Object.freeze({ bearing: -1.3, reach: 0.2, radius: 520, crest: 34, height: 27, tower: 0.16 });
     const PEAK = Object.freeze({ bearing: -1.08, reach: 0.21, radius: 646, height: 62 });
+    /*
+     * The train's body and its saloon are fixed shapes that take most of the
+     * time it takes to build the world (about three quarters, half a second
+     * on a laptop). They are built once per window and lent to each world
+     * after that, so entering the stage again, switching back to it or
+     * recovering a lost context does not build them again. A world disposing
+     * them only frees their GPU buffers; the next renderer uploads them anew.
+     */
+    const SHARED_SHAPES = new Map();
+    const sharedShape = (T, name, build) => {
+        const hit = SHARED_SHAPES.get(name);
+        if (hit && hit.T === T) return hit.shape;
+        const shape = build();
+        SHARED_SHAPES.set(name, { T, shape });
+        return shape;
+    };
+    let sheetPixelCache = null;
+    let sheetRegionCache = null;
+    let detailPixelCache = null;
     const create = (T, scene) => {
         const root = new T.Group();
         scene.add(root);
@@ -166,12 +185,18 @@
         };
         const wood = grained(false), permanentWay = grained(true);
         // Shore rocks: a scanned pile, lit as stone in the palette's colour.
+        // It starts with a plain white texel in both slots, so the warm-up
+        // compiles the shader it will finally draw with: the scan arriving only
+        // swaps the picture, instead of linking a new program mid-song.
         const rockMaterial = material(new T.MeshStandardMaterial({ color: '#444852', roughness: 0.92 }));
+        const blankRock = new T.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+        blankRock.needsUpdate = true;
+        scans.push(blankRock);
+        rockMaterial.map = rockMaterial.bumpMap = blankRock;
+        rockMaterial.bumpScale = 0.4;
         scan('coast-rock.webp', texture => {
             texture.flipY = false;
             rockMaterial.map = rockMaterial.bumpMap = texture;
-            rockMaterial.bumpScale = 0.4;
-            rockMaterial.needsUpdate = true;
         });
         // Several boxes fused into one shape, so a profile still costs one instance.
         const fused = parts => {
@@ -207,8 +232,9 @@
          * from the palette, never from the sheet.
          */
         const SHEET = 1024;
-        const sheetRegions = {};
+        const sheetRegions = sheetRegionCache || {};
         const paintSheet = () => {
+            if (sheetPixelCache) return sheetPixelCache;
             const doc = global.document;
             const canvas = doc?.createElement?.('canvas');
             const layers = canvas && ['albedo', 'relief', 'glow'].map(() => {
@@ -465,6 +491,8 @@
                 const from = (y * SHEET + x) * 4, to = ((SHEET - 1 - y) * SHEET + x) * 4;
                 data[to] = a[from]; data[to + 1] = hh[from]; data[to + 2] = e[from]; data[to + 3] = 255;
             }
+            sheetPixelCache = data;
+            sheetRegionCache = sheetRegions;
             return data;
         };
         const sheetTexture = (() => {
@@ -479,6 +507,7 @@
                 texture.anisotropy = 4;
             }
             texture.needsUpdate = true;
+            scans.push(texture);
             return texture;
         })();
         const regionOf = name => sheetRegions[name] || [0, 0, 1, 1];
@@ -885,6 +914,13 @@
         sleepers.layers.set(1);
         // The rock pile is a data script of its own, fetched once the stage is up.
         let rocks = null, rocksArrived = false;
+        // Until the pile arrives an empty stand-in carries its material, so the
+        // warm-up still compiles the rocks' shader.
+        const rockShape = geometry(new T.BufferGeometry());
+        rockShape.setAttribute('position', new T.BufferAttribute(new Float32Array(0), 3));
+        rockShape.setAttribute('normal', new T.BufferAttribute(new Float32Array(0), 3));
+        rockShape.setAttribute('uv', new T.BufferAttribute(new Float32Array(0), 2));
+        let rockStandIn = instances(rockMaterial, 1, rockShape);
         // The camera's path past each address, worked out once per journey.
         let passing = new Map(), passingTrack = null;
         const raiseRocks = () => {
@@ -900,6 +936,8 @@
             shape.setAttribute('normal', new T.BufferAttribute(new Int8Array(bytes(data.normal).buffer), 3, true));
             shape.setAttribute('uv', new T.BufferAttribute(new Uint16Array(bytes(data.uv).buffer), 2, true));
             shape.setIndex(new T.BufferAttribute(new Uint16Array(bytes(data.index).buffer), 1));
+            rockStandIn?.removeFromParent();
+            rockStandIn = null;
             rocks = instances(rockMaterial, 40, shape);
             rocks.name = 'rocks';
             sceneryPools.push(rocks);
@@ -934,9 +972,9 @@
                 bx, -2, bz, bx, elevation(b), bz, ax, elevation(a), az);
         }
         /*
-         * The far shore is a long coastline. Off it lies a small island: a wooded
-         * table of land, its lighthouse tower standing on top, joined to
-         * the shore by a long bridge. Beyond and to the right, a snow-capped peak. They
+         * The far shore is a low coastline. Off it lies a small island: a wooded
+         * table of land, a lighthouse tower standing on top, joined to the
+         * shore by a long bridge. Beyond and to the right, a snow-capped peak. They
          * are part of the same silhouette as the ridge, a tone apart: the
          * island nearer and darker, the mountain hazed and capped with snow.
          */
@@ -1012,7 +1050,7 @@
         const headlight = new T.PointLight('#ffe9c4', 0, 16, 2);
         root.add(headlight);
         /*
-         * The train is drawn after a classic seaside electric railcar:
+         * The train is drawn after a small coastal tram-train:
          * short two-car articulated sets in a two-tone livery, a folded front
          * of three panes with a lamp on the roof, deep sash windows, one
          * lozenge pantograph to a set. From the cab it is all around the camera
@@ -1058,35 +1096,40 @@
          * by whatever wants surface detail (one sampler, no extra draws).
          */
         const detailAtlas = (() => {
-            const SIZE = 256, data = new Uint8Array(SIZE * SIZE * 4);
-            let seed = 0x2f6e2b1;
-            const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-            const lattice = cells => { const g = new Float32Array(cells * cells); for (let i = 0; i < g.length; i++) g[i] = random(); return g; };
-            const value = (g, cells, x, y) => {
-                const fx = x * cells, fy = y * cells, ix = Math.floor(fx), iy = Math.floor(fy);
-                const tx = fx - ix, ty = fy - iy, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
-                const at = (i, j) => g[((j % cells) + cells) % cells * cells + ((i % cells) + cells) % cells];
-                const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * sx;
-                const bottom = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * sx;
-                return top + (bottom - top) * sy;
-            };
-            const octaves = [4, 8, 16, 32].map(cells => [cells, lattice(cells)]);
-            const fine = lattice(128), pile = lattice(64), streakRows = lattice(SIZE);
-            for (let y = 0; y < SIZE; y++) {
-                for (let x = 0; x < SIZE; x++) {
-                    const u = x / SIZE, v = y / SIZE, i = (y * SIZE + x) * 4;
-                    // Pile: a basket weave every 4 texels, each tuft a little different.
-                    const weave = ((x >> 2) + (y >> 2)) % 2 ? Math.sin((x % 4 + 0.5) / 4 * Math.PI) : Math.sin((y % 4 + 0.5) / 4 * Math.PI);
-                    const tuft = value(pile, 64, u, v);
-                    data[i] = Math.round(255 * clamp(0.35 + 0.4 * weave * (0.6 + 0.4 * tuft) + 0.25 * (random() - 0.5)));
-                    // Brushing runs along u; rows differ, and drift slowly.
-                    const row = streakRows[y] * 0.6 + value(octaves[3][1], 32, u * 0.25, v) * 0.4;
-                    data[i + 1] = Math.round(255 * clamp(0.5 + (row - 0.5) * 0.9 + (random() - 0.5) * 0.12));
-                    let grime = 0, weight = 0.5;
-                    octaves.forEach(([cells, g]) => { grime += value(g, cells, u, v) * weight; weight *= 0.5; });
-                    data[i + 2] = Math.round(255 * clamp(grime / 0.9375));
-                    data[i + 3] = Math.round(255 * clamp(value(fine, 128, u, v) * 0.7 + random() * 0.3));
+            const SIZE = 256;
+            let data = detailPixelCache;
+            if (!data) {
+                data = new Uint8Array(SIZE * SIZE * 4);
+                let seed = 0x2f6e2b1;
+                const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+                const lattice = cells => { const g = new Float32Array(cells * cells); for (let i = 0; i < g.length; i++) g[i] = random(); return g; };
+                const value = (g, cells, x, y) => {
+                    const fx = x * cells, fy = y * cells, ix = Math.floor(fx), iy = Math.floor(fy);
+                    const tx = fx - ix, ty = fy - iy, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+                    const at = (i, j) => g[((j % cells) + cells) % cells * cells + ((i % cells) + cells) % cells];
+                    const top = at(ix, iy) + (at(ix + 1, iy) - at(ix, iy)) * sx;
+                    const bottom = at(ix, iy + 1) + (at(ix + 1, iy + 1) - at(ix, iy + 1)) * sx;
+                    return top + (bottom - top) * sy;
+                };
+                const octaves = [4, 8, 16, 32].map(cells => [cells, lattice(cells)]);
+                const fine = lattice(128), pile = lattice(64), streakRows = lattice(SIZE);
+                for (let y = 0; y < SIZE; y++) {
+                    for (let x = 0; x < SIZE; x++) {
+                        const u = x / SIZE, v = y / SIZE, i = (y * SIZE + x) * 4;
+                        // Pile: a basket weave every 4 texels, each tuft a little different.
+                        const weave = ((x >> 2) + (y >> 2)) % 2 ? Math.sin((x % 4 + 0.5) / 4 * Math.PI) : Math.sin((y % 4 + 0.5) / 4 * Math.PI);
+                        const tuft = value(pile, 64, u, v);
+                        data[i] = Math.round(255 * clamp(0.35 + 0.4 * weave * (0.6 + 0.4 * tuft) + 0.25 * (random() - 0.5)));
+                        // Brushing runs along u; rows differ, and drift slowly.
+                        const row = streakRows[y] * 0.6 + value(octaves[3][1], 32, u * 0.25, v) * 0.4;
+                        data[i + 1] = Math.round(255 * clamp(0.5 + (row - 0.5) * 0.9 + (random() - 0.5) * 0.12));
+                        let grime = 0, weight = 0.5;
+                        octaves.forEach(([cells, g]) => { grime += value(g, cells, u, v) * weight; weight *= 0.5; });
+                        data[i + 2] = Math.round(255 * clamp(grime / 0.9375));
+                        data[i + 3] = Math.round(255 * clamp(value(fine, 128, u, v) * 0.7 + random() * 0.3));
+                    }
                 }
+                detailPixelCache = data;
             }
             const texture = new T.DataTexture(data, SIZE, SIZE, T.RGBAFormat);
             texture.wrapS = texture.wrapT = T.RepeatWrapping;
@@ -1095,6 +1138,7 @@
             texture.generateMipmaps = true;
             texture.anisotropy = 4;
             texture.needsUpdate = true;
+            scans.push(texture);
             return texture;
         })();
         const cabinLightFunctions = `
@@ -1261,7 +1305,7 @@
             return path;
         };
         // Paint groups: 0 upper body, 1 lower body, 2 running gear, 3 roof, 4 brushed trim, 5 tread, 6 spring steel.
-        const carGeometry = (() => {
+        const carGeometry = geometry(sharedShape(T, 'car', () => {
             const { add, boxAt, beam, sheet, bogie, finish, detail } = fuser();
             const sash = (side, z, [y, width, height]) => {
                 // Three visible faces of the surround, with the back buried in the bodywork.
@@ -1723,7 +1767,7 @@
                 beam(0.42, base, centre - 0.7, 0.36, roofAt(0.36) + 0.3, -5.0 + 0.19, 0.02, 2);
             }
             return finish();
-        })();
+        }));
         carGeometry.setAttribute('finish', new T.Float32BufferAttribute(carGeometry.userData.groups, 1));
         // Which car carries an outer cab: 1 the leading car, 2 the last, as an attribute per
         // car rather than from the instance index.
@@ -2140,15 +2184,12 @@
                 // seat and the driver on it (the leading end only), the cabinet opposite,
                 // and the bulkhead whose glazed door shows the lit saloon.
                 const float FRONT=${(TIP + 0.26).toFixed(3)},CF=${CAR.floor.toFixed(3)},BACK=${(TIP + 1.35).toFixed(3)};
-                float hitBox(vec3 o,vec3 d,vec3 lo,vec3 hi,inout float best,inout vec3 n){
-                    vec3 inv=1.0/d,t0=(lo-o)*inv,t1=(hi-o)*inv,tn=min(t0,t1),tf=max(t0,t1);
+                void hitBox(vec3 o,vec3 inv,vec3 sgn,vec3 lo,vec3 hi,float id,inout float best,inout vec3 n,inout float what){
+                    vec3 t0=(lo-o)*inv,t1=(hi-o)*inv,tn=min(t0,t1),tf=max(t0,t1);
                     float near=max(max(tn.x,tn.y),tn.z),far=min(min(tf.x,tf.y),tf.z);
-                    if(near<far&&near>0.0&&near<best){
-                        best=near;
-                        n=near==tn.x?vec3(-sign(d.x),0,0):near==tn.y?vec3(0,-sign(d.y),0):vec3(0,0,-sign(d.z));
-                        return 1.0;
-                    }
-                    return 0.0;
+                    float h=(near<far&&near>0.0&&near<best)?1.0:0.0;
+                    vec3 bn=near==tn.x?vec3(-sgn.x,0.0,0.0):near==tn.y?vec3(0.0,-sgn.y,0.0):vec3(0.0,0.0,-sgn.z);
+                    best=mix(best,near,h);n=mix(n,bn,h);what=mix(what,id,h);
                 }
                 float hitBall(vec3 o,vec3 d,vec3 c,float r,inout float best,inout vec3 n){
                     vec3 oc=o-c;float b=dot(oc,d),q=dot(oc,oc)-r*r,h=b*b-q;
@@ -2159,38 +2200,39 @@
                 }
                 vec3 cab(vec3 cabin,vec3 ray,float tail){
                     vec3 o=vPos,d=ray;
-                    d.x=abs(d.x)<0.0001?0.0001:d.x;d.y=abs(d.y)<0.0001?0.0001:d.y;
+                    d.x=abs(d.x)<0.0001?0.0001:d.x;d.y=abs(d.y)<0.0001?0.0001:d.y;d.z=abs(d.z)<0.0001?0.0001:d.z;
                     // The room: walls, floor, ceiling and the bulkhead.
                     float dz=max(d.z,0.045);
                     float back=(BACK-o.z)/dz,wall=(1.23-o.x*sign(d.x))/abs(d.x);
                     float ceiling=d.y>0.0?(3.317-o.y)/d.y:100.0,floorHit=d.y<0.0?(o.y-CF)/(-d.y):100.0;
                     float best=min(min(back,wall),min(ceiling,floorHit));
-                    vec3 n=best==back?vec3(0,0,-1):best==wall?vec3(-sign(d.x),0,0):best==ceiling?vec3(0,-1,0):vec3(0,1,0);
+                    vec3 invD=1.0/d,sgnD=sign(d);
+                    vec3 n=best==back?vec3(0.0,0.0,-1.0):best==wall?vec3(-sgnD.x,0.0,0.0):best==ceiling?vec3(0.0,-1.0,0.0):vec3(0.0,1.0,0.0);
                     float what=0.0;
                     // 1 desk, 2 cowl, 3 handles, 4 seat, 5 driver, 6 cabinet.
-                    if(hitBox(o,d,vec3(-1.22,CF,FRONT-0.05),vec3(-0.36,2.02,FRONT+0.44),best,n)>0.0)what=1.0;
-                    if(hitBox(o,d,vec3(-1.12,2.02,FRONT-0.05),vec3(-0.5,2.2,FRONT+0.16),best,n)>0.0)what=2.0;
-                    if(hitBox(o,d,vec3(-1.12,2.02,FRONT+0.26),vec3(-1.04,2.2,FRONT+0.34),best,n)>0.0)what=3.0;
-                    if(hitBox(o,d,vec3(-0.56,2.02,FRONT+0.26),vec3(-0.48,2.14,FRONT+0.34),best,n)>0.0)what=3.0;
-                    if(hitBox(o,d,vec3(-1.0,CF+0.36,FRONT+0.62),vec3(-0.6,CF+0.5,FRONT+1.02),best,n)>0.0)what=4.0;
-                    if(hitBox(o,d,vec3(-1.0,CF+0.5,FRONT+0.98),vec3(-0.6,CF+1.12,FRONT+1.08),best,n)>0.0)what=4.0;
+                    hitBox(o,invD,sgnD,vec3(-1.22,CF,FRONT-0.05),vec3(-0.36,2.02,FRONT+0.44),1.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.12,2.02,FRONT-0.05),vec3(-0.5,2.2,FRONT+0.16),2.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.12,2.02,FRONT+0.26),vec3(-1.04,2.2,FRONT+0.34),3.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-0.56,2.02,FRONT+0.26),vec3(-0.48,2.14,FRONT+0.34),3.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.0,CF+0.36,FRONT+0.62),vec3(-0.6,CF+0.5,FRONT+1.02),4.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.0,CF+0.5,FRONT+0.98),vec3(-0.6,CF+1.12,FRONT+1.08),4.0,best,n,what);
                     if(tail<0.5){
-                        if(hitBox(o,d,vec3(-0.98,CF+0.5,FRONT+0.7),vec3(-0.62,CF+1.16,FRONT+0.97),best,n)>0.0)what=5.0;
+                        hitBox(o,invD,sgnD,vec3(-0.98,CF+0.5,FRONT+0.7),vec3(-0.62,CF+1.16,FRONT+0.97),5.0,best,n,what);
                         if(hitBall(o,d,vec3(-0.8,CF+1.31,FRONT+0.84),0.115,best,n)>0.0)what=5.0;
-                        if(hitBox(o,d,vec3(-0.94,CF+1.38,FRONT+0.68),vec3(-0.66,CF+1.43,FRONT+0.98),best,n)>0.0)what=5.0;
-                        if(hitBox(o,d,vec3(-0.98,CF+0.9,FRONT+0.4),vec3(-0.9,CF+1.02,FRONT+0.78),best,n)>0.0)what=5.0;
+                        hitBox(o,invD,sgnD,vec3(-0.94,CF+1.38,FRONT+0.68),vec3(-0.66,CF+1.43,FRONT+0.98),5.0,best,n,what);
+                        hitBox(o,invD,sgnD,vec3(-0.98,CF+0.9,FRONT+0.4),vec3(-0.9,CF+1.02,FRONT+0.78),5.0,best,n,what);
                     }
-                    if(hitBox(o,d,vec3(0.42,CF,FRONT-0.05),vec3(1.22,CF+0.78,FRONT+0.5),best,n)>0.0)what=6.0;
+                    hitBox(o,invD,sgnD,vec3(0.42,CF,FRONT-0.05),vec3(1.22,CF+0.78,FRONT+0.5),6.0,best,n,what);
                     // 7 chrome knobs on the handles, 8 the roller blind, 9 the radio set on the cabinet,
                     // 10 the extinguisher by the bulkhead, 11 a grab pole, 12 the ceiling fan.
                     if(hitBall(o,d,vec3(-1.08,2.23,FRONT+0.3),0.035,best,n)>0.0)what=7.0;
                     if(hitBall(o,d,vec3(-0.52,2.16,FRONT+0.3),0.03,best,n)>0.0)what=7.0;
-                    if(hitBox(o,d,vec3(-1.22,3.12,FRONT-0.02),vec3(1.22,3.28,FRONT+0.07),best,n)>0.0)what=8.0;
-                    if(hitBox(o,d,vec3(-1.18,2.88,FRONT-0.01),vec3(-0.42,3.12,FRONT+0.01),best,n)>0.0)what=8.0;
-                    if(hitBox(o,d,vec3(0.55,CF+0.78,FRONT+0.05),vec3(0.98,CF+0.98,FRONT+0.34),best,n)>0.0)what=9.0;
-                    if(hitBox(o,d,vec3(0.86,CF,BACK-0.2),vec3(1.0,CF+0.5,BACK-0.06),best,n)>0.0)what=10.0;
-                    if(hitBox(o,d,vec3(0.36,CF,FRONT+0.6),vec3(0.4,3.317,FRONT+0.64),best,n)>0.0)what=11.0;
-                    if(hitBox(o,d,vec3(0.12,3.25,FRONT+0.5),vec3(0.48,3.317,FRONT+0.86),best,n)>0.0)what=12.0;
+                    hitBox(o,invD,sgnD,vec3(-1.22,3.12,FRONT-0.02),vec3(1.22,3.28,FRONT+0.07),8.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.18,2.88,FRONT-0.01),vec3(-0.42,3.12,FRONT+0.01),8.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.55,CF+0.78,FRONT+0.05),vec3(0.98,CF+0.98,FRONT+0.34),9.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.86,CF,BACK-0.2),vec3(1.0,CF+0.5,BACK-0.06),10.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.36,CF,FRONT+0.6),vec3(0.4,3.317,FRONT+0.64),11.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.12,3.25,FRONT+0.5),vec3(0.48,3.317,FRONT+0.86),12.0,best,n,what);
                     vec3 hit=o+d*best;
                     // Painted grey-green fittings, a darker floor, a pale ceiling.
                     vec3 paint=mix(vec3(0.165,0.2,0.18),vec3(0.86,0.83,0.74),day*0.8);
@@ -2381,7 +2423,7 @@
         const trainParts = [cars, glass, kits, trainEnds];
         /*
          * The saloon of the leading car, for the breaks in the song when the
-         * camera rides inside. It is laid out as the 300 series is: long benches
+         * camera rides inside. It is laid out as such cars are: long benches
          * under the windows, a rack and a row of hand straps over each, twin
          * rows of ceiling lights, and a glazed bulkhead through which
          * the cab, the driver and the line ahead can be seen. The windows are
@@ -2392,11 +2434,13 @@
          * printed card (9), luggage (10/11), dials (12/13), route diagram (14),
          * silhouette (15), heater (16), vent (17), trim (18), piping (19), stainless (20), cab paint (21).
          */
+        // The last value is when each gets off as the car empties (0 to 1): the
+        // two far down the car, one each side, stay longest.
         const SITTERS = [
-            [-1, -2.9, 'doze', 1.05], [-1, -0.7, 'bag', 0.94], [1, -1.9, 'read', 1.0],
-            [1, 0.9, 'bag', 0.92], [-1, 2.3, 'rest', 1.08], [1, 4.9, 'doze', 0.96]
+            [-1, -2.9, 'doze', 1.05, 0.875], [-1, -0.7, 'bag', 0.94, 0.21], [1, -1.9, 'read', 1.0, 0.71],
+            [1, 0.9, 'bag', 0.92, 0.375], [-1, 2.3, 'rest', 1.08, 0.04], [1, 4.9, 'doze', 0.96, 0.54]
         ];
-        const saloonGeometry = (() => {
+        const saloonGeometry = geometry(sharedShape(T, 'saloon', () => {
             // Two lists: the shell and the cab, drawn at any distance through the
             // windscreen, then the fittings, drawn only when the camera is close.
             const lists = { coarse: [[], [], []], fine: [[], [], []] };
@@ -2411,20 +2455,16 @@
                 shape.dispose();
             };
             const boxAt = (sx, sy, sz, x, y, z, paint) => add(new T.BoxGeometry(sx, sy, sz).translate(x, y, z), paint);
-            // Fewer steps round the edges where they would not show: four for the
-            // cab's fittings, a plain box where the radius is a few millimetres.
-            let edgeSteps = 6;
-            const roundedPanel = (width, height, length, radius, steps = edgeSteps) => {
-                if (steps < 4 || radius < 0.014 && steps < 6) return new T.BoxGeometry(width, height, length);
-                const panel = new T.BoxGeometry(width, height, length, steps, steps, steps);
+            const roundedPanel = (width, height, length, radius) => {
+                const panel = new T.BoxGeometry(width, height, length, 6, 6, 6);
                 const points = panel.attributes.position, surface = panel.attributes.normal;
                 const half = [width / 2, height / 2, length / 2];
-                const offsets = steps === 6 ? [0, 0.38, 1, 0, 1, 0.38, 0] : [0, 1, 0, 1, 0];
+                const offsets = [0, 0.38, 1, 0, 1, 0.38, 0];
                 const normal = new T.Vector3();
                 for (let i = 0; i < points.count; i++) {
                     const mapAxis = (value, limit) => {
-                        const middle = steps / 2, step = Math.round((value / limit + 1) * middle);
-                        return step === middle ? 0 : Math.sign(step - middle) * (limit - radius * offsets[step]);
+                        const step = Math.round((value / limit + 1) * 3);
+                        return step === 3 ? 0 : Math.sign(step - 3) * (limit - radius * offsets[step]);
                     };
                     const x = mapAxis(points.getX(i), half[0]), y = mapAxis(points.getY(i), half[1]);
                     const z = mapAxis(points.getZ(i), half[2]);
@@ -2439,14 +2479,14 @@
             };
             const moulded = (sx, sy, sz, radius, x, y, z, paint) =>
                 add(roundedPanel(sx, sy, sz, radius).translate(x, y, z), paint);
-            const sashRim = (width, height, rail, r, depth, curve = 4) => {
+            const sashRim = (width, height, rail, r, depth) => {
                 const outline = new T.Shape(), opening = new T.Path();
                 roundedOutline(outline, width, height, r);
                 roundedOutline(opening, width - 2 * rail, height - 2 * rail, r - rail * 0.7);
                 outline.holes.push(opening);
                 return new T.ExtrudeGeometry(outline, {
                     depth, bevelEnabled: true, bevelThickness: 0.003,
-                    bevelSize: 0.003, bevelSegments: 1, curveSegments: curve
+                    bevelSize: 0.003, bevelSegments: 1, curveSegments: 4
                 }).translate(0, 0, -depth / 2);
             };
             const F = CAR.floor, WALL = CAR.half - 0.04, END = CAR.length / 2, TOP = CABIN.ceiling, SILL = 2.2, HEAD = 3.06;
@@ -2671,7 +2711,6 @@
             boxAt(0.22, 0.17, 0.32, -(WALL - 0.17), 3.2, 0.4, 11);
             boxAt(0.22, 0.14, 0.3, WALL - 0.17, 3.18, -2.6, 10);
             coarse = true;
-            edgeSteps = 4;
             // Cab bulkhead and the front of the cab: a glazed door or pane in the middle, one either side.
             for (const [z, post, paint] of [[BULKHEAD, 0.12, 0], [FRONT, 0.09, 21]]) {
                 boxAt(2.6, SILL - F, 0.06, 0, (SILL + F) / 2, z, 1);
@@ -2685,8 +2724,8 @@
             moulded(0.033, 0.153, 0.032, 0.014, 0.36, F + 0.72, BULKHEAD + 0.065, 4);
             for (const x of [-0.81, 0, 0.81]) {
                 const span = x === 0 ? 0.828 : 0.594;
-                add(sashRim(span, 0.819, 0.026, 0.091, 0.024, 2).translate(x, 2.628, BULKHEAD + 0.048), 13);
-                add(sashRim(span - 0.02, 0.798, 0.014, 0.081, 0.012, 2).translate(x, 2.628, BULKHEAD + 0.064), 4);
+                add(sashRim(span, 0.819, 0.026, 0.091, 0.024).translate(x, 2.628, BULKHEAD + 0.048), 13);
+                add(sashRim(span - 0.02, 0.798, 0.014, 0.081, 0.012).translate(x, 2.628, BULKHEAD + 0.064), 4);
             }
             // The driver's desk on the left: a console under the windscreen, an
             // instrument hood leaning back towards the glass with two gauges and a
@@ -2767,11 +2806,11 @@
             shape.setAttribute('normal', new T.Float32BufferAttribute(normals, 3));
             shape.setAttribute('paint', new T.Float32BufferAttribute(paints, 1));
             shape.userData.coarse = lists.coarse[2].length;
-            return geometry(shape);
-        })();
+            return shape;
+        }));
         const saloonMaterial = material(new T.ShaderMaterial({
             uniforms: { warm: glassMaterial.uniforms.warm, seat: glassMaterial.uniforms.seat,
-                sunset: cabinMood.sunset, empty: cabinMood.empty, clock: cabinMood.clock, sway: cabinMood.sway,
+                sunset: cabinMood.sunset, empty: cabinMood.empty, clock: cabinMood.clock, sway: cabinMood.sway, rain: cabinMood.rain,
                 detail: { value: detailAtlas },
                 sky: carHorizon, shadowInk: glassMaterial.uniforms.shadowInk, day: cabinDaylight, power: glassMaterial.uniforms.power,
                 boards: planks.map, boardsReady: planks.ready, cabReal, tailCab: { value: 0 } },
@@ -2793,13 +2832,27 @@
                     vNormal=nn;vPos=p;
                     vView=(inverse(modelMatrix)*vec4(cameraPosition,1.0)).xyz-p;
                     gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}`,
-            fragmentShader: `uniform vec3 warm,seat,sky,shadowInk;uniform float power,day,boardsReady,sunset,empty,cabReal,tailCab;
+            fragmentShader: `uniform vec3 warm,seat,sky,shadowInk;uniform float power,day,boardsReady,sunset,empty,cabReal,tailCab,rain;
                 uniform sampler2D boards,detail;
                 varying float vPaint;varying vec3 vNormal,vPos,vView;
                 ${cabinLightFunctions}
                 const float FLOOR=${CAR.floor.toFixed(2)},PITCH=${WINDOW_PITCH.toFixed(2)};
                 const vec2 SAT[${SITTERS.length}]=vec2[](${SITTERS.map(([side, z]) => `vec2(${side.toFixed(1)},${z.toFixed(2)})`).join(',')});
                 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+                // As the car empties the passengers get off one by one, each in its
+                // turn: a passenger is there or gone, never a ghost half-way.
+                const float LEAVE[${SITTERS.length}]=float[](${SITTERS.map(sitter => sitter[4].toFixed(3)).join(',')});
+                float seated(int i){return 1.0-clamp((empty-LEAVE[i])/0.08+0.5,0.0,1.0);}
+                // The passenger a point belongs to: the nearest seat on its side.
+                int sitterAt(vec3 p){
+                    int best=0;float near=1e4;
+                    for(int i=0;i<${SITTERS.length};i++){
+                        if(SAT[i].x*p.x<0.0)continue;
+                        float d=abs(p.z-SAT[i].y);
+                        if(d<near){near=d;best=i;}
+                    }
+                    return best;
+                }
                 float tubeLux(vec3 p,vec3 n,float side){
                     float z=tubeCentre(p.z), toward=clamp(p.z,z-TUBE_HALF,z+TUBE_HALF);
                     vec3 ray=vec3(side*RAIL,TUBE_Y,toward)-p;
@@ -3105,8 +3158,8 @@
                             vec2 who=SAT[i];
                             float along=vPos.z-who.y,across=abs(vPos.x)-${(CAR.half - 0.04 - 0.36).toFixed(3)};
                             if(who.x*vPos.x<0.0)continue;
-                            sat=max(sat,exp(-along*along/0.05-across*across/0.08));
-                            stood=max(stood,exp(-along*along/0.05-(across+0.46)*(across+0.46)/0.03));
+                            sat=max(sat,exp(-along*along/0.05-across*across/0.08)*seated(i));
+                            stood=max(stood,exp(-along*along/0.05-(across+0.46)*(across+0.46)/0.03)*seated(i));
                         }
                     }
                     if(cushion){
@@ -3125,17 +3178,19 @@
                     vec3 lamp=light*(0.15*(1.0-0.6*sunset)+direct);
                     vec3 colour=c*lit*(fill+lamp)+shine*mix(light,vec3(0.66,0.79,0.84),metal?0.42:0.12)*(1.0-0.5*sunset);
                     colour=mix(colour,env+shine*light*0.5,chrome);
-                    float sun=sunPatch(vPos,n)*sunset;
+                    // Under rain cloud the low sun only just gets through.
+                    float sun=sunPatch(vPos,n)*sunset*(1.0-0.8*rain);
                     vec3 sunlight=mix(vec3(2.6,1.25,0.48),vec3(1.25,1.12,0.9),day);
                     colour+=c*sun*sunlight*(1.0-0.5*float(metal))+sun*sunlight*shine*0.6;
                     if(vPaint>4.5&&vPaint<6.5)colour=c*(1.0-0.6*sunset);
                     // At night the cab sits a shade darker than the saloon behind it.
                     if(vPos.z<${(TIP + 1.38).toFixed(2)}&&!(vPaint>4.5&&vPaint<5.5))colour*=mix(0.8,1.0,day);
                     if(figure){
-                        // People thin out as the car empties (the driver stays): a dither, so it stays one opaque pass.
+                        // People get off as the car empties (the driver stays). Only while one
+                        // is getting off is the figure dithered, so it stays one opaque pass.
                         const float B[16]=float[](0.,8.,2.,10.,12.,4.,14.,6.,3.,11.,1.,9.,15.,7.,13.,5.);
                         ivec2 cell=ivec2(mod(gl_FragCoord.xy,4.0));
-                        if((B[cell.x+cell.y*4]+0.5)/16.0<empty&&vPos.z>${(TIP + 1.35).toFixed(2)})discard;
+                        if((B[cell.x+cell.y*4]+0.5)/16.0>seated(sitterAt(vPos))&&vPos.z>${(TIP + 1.35).toFixed(2)})discard;
                         colour=mix(c*0.83,cream*light*0.1*(0.6+0.4*smoothstep(-0.3,0.8,n.y)),0.4*(1.0-day))+sunlight*0.03*sunset;
                     }
                     // On the light page the car keeps to quiet paper tones.
@@ -3302,7 +3357,7 @@
                 moonGlow: { value: 1 },
                 // The ride starts at dusk, the last of the sun going down behind
                 // the far peak, and drifts into a dream later on.
-                dusk: { value: 0 }, dream: { value: 0 },
+                dusk: { value: 0 }, dream: { value: 0 }, overcast: { value: 0 },
                 duskHigh: { value: new T.Color('#4a5878') }, sunset: { value: new T.Color('#c97a52') },
                 dreamTint: { value: new T.Color('#2a2350') },
                 sunDir: { value: new T.Vector3(Math.cos(PEAK.bearing + 0.03), 0, Math.sin(PEAK.bearing + 0.03)) },
@@ -3318,7 +3373,7 @@
             vertexShader: `varying vec3 ray;
                 void main(){ray=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
             fragmentShader: `varying vec3 ray;uniform vec3 night,horizon,cold,duskHigh,sunset,dreamTint,sunDir;
-                uniform float open,dusk,dream;
+                uniform float open,dusk,dream,overcast;
                 uniform vec3 moonDir,moonTint,glowTint;uniform float moonGlow,horizonGlow,accent;
                 uniform float auroraActive, auroraTime, auroraRhythm, auroraHeading;
                 uniform vec3 auroraGreen, auroraViolet;
@@ -3340,54 +3395,67 @@
                         // Clamped: a GPU's pow() of a hair below zero is NaN, and one NaN in
                         // the sky spreads through the environment map onto everything lit.
                         float toward=clamp(0.5+0.5*dot(normalize(vec3(d.x,0.0,d.z)+vec3(0.0001)),sunDir),0.0,1.0);
-                        float low=exp(-max(d.y,0.0)*6.0);
+                        // As it fades the glow sinks into a thin band on the horizon.
+                        float low=exp(-max(d.y,0.0)*(6.0+12.0*(1.0-dusk)));
                         c=mix(c,duskHigh,dusk*0.55*(1.0-low));
+                        // Halfway down, the blue hour: the sky overhead a deep, clear
+                        // blue before it goes to night.
+                        c=mix(c,duskHigh*vec3(0.5,0.66,1.15),sin(3.14159*dusk)*0.45*(1.0-low));
                         c=mix(c,sunset,low*(0.2+0.8*pow(toward,3.0))*dusk*0.85);
                         float rose=(d.y-0.13)*8.0;
                         c=mix(c,sunset*vec3(1.0,0.8,0.9),exp(-rose*rose)*pow(toward,1.5)*dusk*0.3);
                     }
-                    float across=dot(d,normalize(vec3(0.35,0.8,0.48)))-0.18;
+                    // Rain cloud: the colour drains out of the sky and it closes in, darker overhead.
+                    c=mix(c,vec3(dot(c,vec3(0.3,0.55,0.15)))*mix(1.0,0.72,clamp(h*1.4,0.0,1.0)),overcast*0.7);
+                    float across=dot(d,vec3(0.351249,0.802855,0.481713))-0.18;
                     float band=exp(-across*across*90.0);
-                    float cloud=noise(d*12.0)*0.6+noise(d*33.0)*0.3+noise(d*91.0)*0.1;
-                    c+=cold*band*pow(cloud,3.0)*(0.12+open*0.22);
                     // Moonlight scattering: a tight corona plus a wide, faint veil.
                     float md=max(dot(d,moonDir),0.0);
                     float corona=pow(md,220.0)*0.55+pow(md,48.0)*0.16+pow(md,7.0)*0.05;
+                    float cloud=0.0;
+                    if(band>0.001||corona*moonGlow>0.001){
+                        cloud=noise(d*12.0)*0.6+noise(d*33.0)*0.3+noise(d*91.0)*0.1;
+                    }
+                    if(band>0.001)c+=cold*band*pow(cloud,3.0)*(0.12+open*0.22);
                     c+=moonTint*corona*moonGlow*(0.85+cloud*0.3)*(1.0+accent*0.4);
                     // Residual light pooled at the horizon (distant towns, last dusk).
-                    float rim=exp(-abs(d.y)*16.0)*(0.6+0.4*noise(vec3(d.xz*4.0,1.0)));
-                    c+=glowTint*rim*horizonGlow*(0.1+open*0.08);
+                    if(horizonGlow>0.001&&abs(d.y)<0.5){
+                        float rim=exp(-abs(d.y)*16.0)*(0.6+0.4*noise(vec3(d.xz*4.0,1.0)));
+                        c+=glowTint*rim*horizonGlow*(0.1+open*0.08);
+                    }
                     // Angular curtains share the same coordinates as their visibility mask.
                     // Fixed celestial heading, calibrated once to the opening shot, not a HUD.
                     if (auroraActive > 0.001 && d.y > 0.02) {
                         float angle = atan(d.x, -d.z) - auroraHeading;
                         float u = atan(sin(angle), cos(angle));
-                        float elevation = asin(clamp(d.y, -1.0, 1.0));
                         float sector = smoothstep(-0.85, -0.48, u)
                                      * (1.0 - smoothstep(0.16, 0.48, u));
-                        float drift = auroraTime * 0.065;
-                        vec3 emission = vec3(0.0);
-                        for (int layer = 0; layer < 3; layer++) {
-                            float k = float(layer);
-                            float fold = sin(u * 8.0 + drift + k * 1.7)
-                                       + 0.35 * sin(u * 19.0 - drift * 0.7 + k);
-                            float base = 0.13 + k * 0.045 + fold * 0.025;
-                            float altitude = elevation - base;
-                            float height = 0.17 + 0.045 * sin(u * 6.0 + k + drift * 0.4);
-                            float v = max(0.0, altitude) / height;
-                            float filament = noise(vec3(u * 95.0 + fold * 1.4,
-                                drift * 0.4 + k * 5.0, v * 0.18));
-                            float fine = pow(0.5 + 0.5 * sin(u * 310.0 + fold * 6.0
-                                + drift * 1.2 + v * 0.7), 6.0);
-                            float veil = smoothstep(-0.012, 0.015, altitude)
-                                * exp(-v * 2.7) * (0.22 + filament * 0.65 + fine * 0.28);
-                            float hem = exp(-pow(altitude / 0.012, 2.0)) * 0.22;
-                            vec3 spectral = mix(auroraGreen, auroraViolet,
-                                smoothstep(0.25, 1.1, v));
-                            emission += spectral * (veil + hem) / (1.0 + k * 0.65);
+                        if (sector > 0.001) {
+                            float elevation = asin(clamp(d.y, -1.0, 1.0));
+                            float drift = auroraTime * 0.065;
+                            vec3 emission = vec3(0.0);
+                            for (int layer = 0; layer < 3; layer++) {
+                                float k = float(layer);
+                                float fold = sin(u * 8.0 + drift + k * 1.7)
+                                           + 0.35 * sin(u * 19.0 - drift * 0.7 + k);
+                                float base = 0.13 + k * 0.045 + fold * 0.025;
+                                float altitude = elevation - base;
+                                float height = 0.17 + 0.045 * sin(u * 6.0 + k + drift * 0.4);
+                                float v = max(0.0, altitude) / height;
+                                float filament = noise(vec3(u * 95.0 + fold * 1.4,
+                                    drift * 0.4 + k * 5.0, v * 0.18));
+                                float fine = pow(0.5 + 0.5 * sin(u * 310.0 + fold * 6.0
+                                    + drift * 1.2 + v * 0.7), 6.0);
+                                float veil = smoothstep(-0.012, 0.015, altitude)
+                                    * exp(-v * 2.7) * (0.22 + filament * 0.65 + fine * 0.28);
+                                float hem = exp(-pow(altitude / 0.012, 2.0)) * 0.22;
+                                vec3 spectral = mix(auroraGreen, auroraViolet,
+                                    smoothstep(0.25, 1.1, v));
+                                emission += spectral * (veil + hem) / (1.0 + k * 0.65);
+                            }
+                            c += emission * sector * auroraActive
+                                * (0.75 + auroraRhythm * 0.2 + accent * 0.55);
                         }
-                        c += emission * sector * auroraActive
-                            * (0.75 + auroraRhythm * 0.2 + accent * 0.55);
                     }
                     // Nothing that is not a number may leave the sky: through the lens and
                     // the environment map it would black out or flare everything near it.
@@ -3424,6 +3492,24 @@
             envDirty = false;
             envCamera.update(renderer, envScene);
             envTarget.texture.needsPMREMUpdate = true;
+        };
+        const prepareEnvironmentAsync = async (renderer, alive = () => true) => {
+            if (dead || !envDirty || !renderer) return;
+            const U = global.MusicStageModeUtils;
+            const faceCam = envCamera.children?.[0] || new T.PerspectiveCamera(90, 1, 1, 2000);
+            if (typeof U?.compilePasses === 'function') {
+                await U.compilePasses(renderer, [{ target: envTarget, scene: envScene, camera: faceCam }], () => !dead && alive());
+            } else if (typeof U?.compileReady === 'function') {
+                const prev = renderer.getRenderTarget();
+                try {
+                    renderer.setRenderTarget(envTarget);
+                    await U.compileReady(renderer, envScene, faceCam);
+                } finally {
+                    try { renderer.setRenderTarget(prev); } catch (_) {}
+                }
+            }
+            if (dead || !alive() || renderer.getContext?.()?.isContextLost?.()) return;
+            prepareEnvironment(renderer);
         };
         const random = seededRandom('last-train-fixed-sky');
         const positions = [], colors = [], sizes = [], phases = [];
@@ -3571,14 +3657,19 @@
                 lampTint: { value: new T.Color('#ffd28c') },
                 lampPos: { value: Array.from({ length: 4 }, () => new T.Vector3()) },
                 lampPower: { value: new Float32Array(4) }, rain: rainAmount, calm: { value: 0 },
+                // One texel of the mirror image, and whether to smooth its edges
+                // (when the mirror is drawn without multisampling).
+                mirrorTexel: { value: new T.Vector2(1 / 512, 1 / 320) }, mirrorSoft: { value: 1 },
                 // Where the train wades: its nose, three points down its length and its tail.
-                wake: { value: 0 }, wakePath: { value: Array.from({ length: 5 }, () => new T.Vector2()) } },
+                wake: { value: 0 }, wakePath: { value: Array.from({ length: 5 }, () => new T.Vector2()) },
+                // Rings a hit in the music drops on the water: x, z, song time, strength.
+                pulses: { value: Array.from({ length: 4 }, () => new T.Vector4(0, 0, -1, 0)) } },
             vertexShader: `uniform mat4 textureMatrix;varying vec4 reflected;varying vec3 world;
                 void main(){vec4 p=modelMatrix*vec4(position,1.0);world=p.xyz;reflected=textureMatrix*p;
                     gl_Position=projectionMatrix*viewMatrix*p;}`,
-            fragmentShader: `uniform sampler2D reflection;uniform float time,strength,energy,glitter,fogDensity,rain,calm,wake;
+            fragmentShader: `uniform sampler2D reflection;uniform float time,strength,energy,glitter,fogDensity,rain,calm,wake,mirrorSoft;uniform vec2 mirrorTexel;
                 uniform vec3 tint,moonDir,moonTint,fogTint,lampTint;uniform vec2 wakePath[5];
-                uniform vec3 lampPos[4];uniform float lampPower[4];
+                uniform vec3 lampPos[4];uniform float lampPower[4];uniform vec4 pulses[4];
                 varying vec4 reflected;varying vec3 world;
                 float h21(vec2 p){return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5453);}
                 float n21(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
@@ -3650,9 +3741,19 @@
                     // Rain breaks the mirror up: rings near by, a fine roughness further off.
                     if(rain>0.0){
                         float nearRings=1.0-smoothstep(10.0,34.0,dist);
-                        vec2 r=rings(world.xz*1.6,time,0.0)+rings(world.xz*2.3+17.0,time*1.13,5.0)*0.7;
-                        g+=r*0.09*rain*nearRings;
+                        if(nearRings>0.001){
+                            vec2 r=rings(world.xz*1.6,time,0.0)+rings(world.xz*2.3+17.0,time*1.13,5.0)*0.7;
+                            g+=r*0.09*rain*nearRings;
+                        }
                         g+=(vec2(n21(world.xz*7.0+time*3.0),n21(world.zx*6.0-time*2.7))-0.5)*0.05*rain*(1.0-nearRings*0.5);
+                    }
+                    // A hit in the music drops a ring on the water that spreads and dies away.
+                    for(int i=0;i<4;i++){
+                        vec4 q=pulses[i];float age=time-q.z;
+                        if(q.w<=0.0||age<0.0||age>4.0)continue;
+                        vec2 d=world.xz-q.xy;float r=length(d)+0.001;
+                        float x=r-(0.6+age*3.4);
+                        g+=d/r*cos(x*6.0)*exp(-x*x*1.6)*exp(-age*0.85)*q.w*0.16*(1.0-calm*0.5);
                     }
                     // Where the train wades it stirs the mirror up, still or not.
                     float churn=0.0;vec2 stir=vec2(0.0);
@@ -3662,6 +3763,30 @@
                     vec2 uv=reflected.xy/max(reflected.w,0.001)+n.xz*(0.018+energy*0.008+rain*0.03)+stir*0.07*damp;
                     float valid=step(0.0,uv.x)*step(uv.x,1.0)*step(0.0,uv.y)*step(uv.y,1.0)*step(0.0,reflected.w);
                     vec3 r=texture2D(reflection,clamp(uv,0.001,0.999)).rgb;
+                    // The mirror is drawn at a fraction of the picture's size; without
+                    // multisampling its edges would come back as a magnified staircase.
+                    // Four taps on a rotated grid round each edge off.
+                    if(mirrorSoft>0.0){
+                        vec2 a=mirrorTexel*vec2(0.62,0.24),b=mirrorTexel*vec2(-0.24,0.62);
+                        vec3 soft=texture2D(reflection,clamp(uv+a,0.001,0.999)).rgb+texture2D(reflection,clamp(uv-a,0.001,0.999)).rgb
+                            +texture2D(reflection,clamp(uv+b,0.001,0.999)).rgb+texture2D(reflection,clamp(uv-b,0.001,0.999)).rgb;
+                        r=mix(r,soft*0.25,mirrorSoft);
+                    }
+                    // Out where the rings are too small to see, rain-pocked water
+                    // smears what it mirrors into soft vertical streaks.
+                    if(rain>0.0){
+                        float farRain=smoothstep(10.0,40.0,dist);
+                        if(farRain>0.001){
+                            float smear=0.006*rain*farRain;
+                            float broken=0.6+0.8*n21(vec2(world.x*1.3,time*4.0));
+                            vec2 step=vec2(0.0,smear*broken);
+                            vec3 s=texture2D(reflection,clamp(uv-step*1.5,0.001,0.999)).rgb
+                                +texture2D(reflection,clamp(uv-step*0.5,0.001,0.999)).rgb
+                                +texture2D(reflection,clamp(uv+step*0.5,0.001,0.999)).rgb
+                                +texture2D(reflection,clamp(uv+step*1.5,0.001,0.999)).rgb;
+                            r=mix(r,s*0.25,farRain);
+                        }
+                    }
                     // Schlick Fresnel for water (F0 ~ 0.02), lifted so the mirror reads at night.
                     float cosT=clamp(dot(n,v),0.0,1.0);
                     float f=0.1+0.9*(0.02+0.98*pow(1.0-cosT,5.0));
@@ -3669,12 +3794,16 @@
                     vec3 c=mix(tint,r,clamp(f*strength*valid,0.0,0.94));
                     // Broken moon path: tight specular lobe sparked by a flickering facet grid.
                     vec3 refl=reflect(-v,n);
-                    float lobe=pow(max(dot(refl,moonDir),0.0),260.0);
-                    float wide=pow(max(dot(refl,moonDir),0.0),28.0)*0.08;
+                    float md=max(dot(refl,moonDir),0.0);
+                    float lobe=md>0.9?pow(md,260.0):0.0;
+                    float wide=pow(md,28.0)*0.08;
                     // Glints come and go as smooth patches, never as squares, and
                     // thin out right under the camera where each would fill the view.
-                    float spark=smoothstep(0.55,0.9,n21(world.xz*vec2(9.0,4.6)+vec2(time*0.8,-time*0.5))
-                        *n21(world.xz*vec2(2.1,1.1)-vec2(time*0.22))*2.0);
+                    float spark=0.0;
+                    if(lobe>0.0005&&glitter*strength>0.001){
+                        spark=smoothstep(0.55,0.9,n21(world.xz*vec2(9.0,4.6)+vec2(time*0.8,-time*0.5))
+                            *n21(world.xz*vec2(2.1,1.1)-vec2(time*0.22))*2.0);
+                    }
                     c+=moonTint*(lobe*(0.14+spark*1.0)*mix(0.1,1.0,smoothstep(8.0,40.0,dist))+wide)*glitter*strength;
                     // Vertical lamp streaks along the camera-lamp bearing.
                     for(int i=0;i<4;i++){
@@ -3690,8 +3819,12 @@
                         c+=lampTint*band*shimmer*lampPower[i]*0.55*strength;
                     }
                     // Broken water along the hull catches what light there is.
-                    float lace=smoothstep(0.35,0.75,n21(world.xz*vec2(5.0,6.3)+vec2(time*1.3,-time*0.9)));
-                    c=mix(c,c*1.35+fogTint*0.12+moonTint*0.03,churn*lace*0.4*strength);
+                    if(churn>0.001){
+                        float lace=smoothstep(0.35,0.75,n21(world.xz*vec2(5.0,6.3)+vec2(time*1.3,-time*0.9)));
+                        c=mix(c,c*1.35+fogTint*0.12+moonTint*0.03,churn*lace*0.4*strength);
+                    }
+                    // Far off, countless splashes add up to a dull grey sheen over the mirror.
+                    c=mix(c,fogTint*0.85+tint*0.25,rain*0.16*smoothstep(6.0,60.0,dist));
                     // Match scene FogExp2 so the far plane melts into the horizon.
                     float fog=1.0-exp(-fogDensity*fogDensity*dist*dist);
                     c=mix(c,fogTint,clamp(fog,0.0,1.0));
@@ -4260,7 +4393,7 @@
                     waterMat.uniforms.lampPos.value[i].set(f.position.x + f.right.x * LAMP_OFFSET * anchor.side, anchor.y,
                         f.position.z + f.right.z * LAMP_OFFSET * anchor.side);
                 }
-                waterMat.uniforms.lampPower.value[i] = saving ? 0 : power;
+                waterMat.uniforms.lampPower.value[i] = power;
             }
         };
         const setPalette = (palette = {}) => {
@@ -4406,8 +4539,49 @@
                 horizon: skyMat.uniforms.horizon.value.clone(),
                 night: skyMat.uniforms.night.value.clone(),
                 hemi: hemisphere.color.clone(), hemiIntensity: hemisphere.intensity,
-                lamp: lamp.clone(), warm: lamp.clone(), cold: tertiary.clone()
+                lamp: lamp.clone(), warm: lamp.clone(), cold: tertiary.clone(),
+                auroraGreen: skyMat.uniforms.auroraGreen.value.clone(),
+                auroraViolet: skyMat.uniforms.auroraViolet.value.clone()
             };
+            applyCover();
+        };
+        // The cover's colour leans the sky's hues (see createCoverTint): how
+        // light or dark the sky is stays the theme's, and the lyrics' colours
+        // are never touched.
+        const cover = global.MusicStageModeUtils.createCoverTint(T);
+        const towardHue = cover.towardHue;
+        const setCoverColour = hex => cover.set(hex);
+        const coverSettling = () => cover.settling();
+        const settleCover = (amount, now) => { cover.settle(amount, now); applyCover(); };
+        const applyCover = () => {
+            if (!palBase) return;
+            const w = cover.weight * (palBase.light ? 0.5 : 1);
+            skyMat.uniforms.auroraGreen.value.copy(palBase.auroraGreen);
+            skyMat.uniforms.auroraViolet.value.copy(palBase.auroraViolet);
+            // The main aurora band wears the cover's hue outright from the
+            // default amount up; the second band only leans to it.
+            towardHue(skyMat.uniforms.auroraGreen.value, w * 2, 0.8);
+            towardHue(skyMat.uniforms.auroraViolet.value, w * 0.5, 0.6);
+        };
+        // Beat rings on the water: a strong enough hit drops one a little way
+        // up the line, off to one side, where the camera sees it and its
+        // mirror image break up. Four at a time, oldest replaced first.
+        let pulseOnsets = 0, pulseSlot = 0;
+        const dropPulse = (track, pose, time, audio, motion) => {
+            const pulses = waterMat.uniforms.pulses.value;
+            // A seek back leaves rings dropped "in the future": clear them.
+            pulses.forEach(q => { if (q.z > time + 0.05) q.set(0, 0, -1, 0); });
+            const onsets = audio.onsets || 0;
+            if (onsets === pulseOnsets) return;
+            const fresh = onsets > pulseOnsets;
+            pulseOnsets = onsets;
+            if (!fresh || !motion || !water.visible || clamp(audio.impact) < 0.35 || !track?.at) return;
+            const pick = (k) => { const v = Math.sin(onsets * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); };
+            const at = track.at(pose.distance + 14 + pick(1) * 22);
+            const side = (pick(2) < 0.5 ? -1 : 1) * (4 + pick(3) * 9);
+            pulses[pulseSlot].set(at.position.x + at.right.x * side, at.position.z + at.right.z * side, time,
+                clamp(audio.impact) * Math.min(1.5, motion));
+            pulseSlot = (pulseSlot + 1) % pulses.length;
         };
         // Warmth 0..1 → bias -1 (cold, open chorus) .. +1 (warm, tightening pre-chorus).
         // Everything is re-derived from the palette baseline, so no state accumulates.
@@ -4420,6 +4594,7 @@
             const k = palBase.light ? 0.5 : 1;
             scratch.copy(palBase.horizon).lerp(toward, amount * 0.12 * k).lerp(palBase.overcast, rainLevel * 0.5)
                 .lerp(skyMat.uniforms.sunset.value, liveDusk * 0.3);
+            towardHue(scratch, cover.weight * (palBase.light ? 0.15 : 0.4), 0.35);
             skyMat.uniforms.horizon.value.copy(scratch);
             waterMat.uniforms.fogTint.value.copy(scratch);
             if (scene.fog) {
@@ -4432,6 +4607,7 @@
             }
             skyMat.uniforms.night.value.copy(palBase.night).lerp(palBase.cold, Math.max(0, -bias) * 0.05 * k)
                 .lerp(palBase.overcast, rainLevel * 0.3);
+            towardHue(skyMat.uniforms.night.value, cover.weight * (palBase.light ? 0.1 : 0.45), 0.3);
             hemisphere.color.copy(palBase.hemi).lerp(toward, amount * 0.16 * k);
             hemisphere.intensity = palBase.hemiIntensity * (1 + Math.max(0, -bias) * 0.12) * (1 - rainLevel * 0.2);
             // The moon goes behind the rain clouds, and its path on the water with it.
@@ -4502,7 +4678,9 @@
             starGeo.setDrawRange(0, townLights + (saving ? 1500 : quality === 'ultimate' ? 8000 : 4000));
             skyMat.uniforms.open.value = pose.state.openness;
             const auroraEnabled = tuning.aurora !== false;
-            skyMat.uniforms.auroraActive.value = auroraEnabled ? (1.0 - rainLevel * 0.95) * (1 - liveDusk) * (1 + liveDream * 0.4) : 0.0;
+            skyMat.uniforms.overcast.value = rainLevel;
+            // The aurora only shows once the afterglow has nearly gone.
+            skyMat.uniforms.auroraActive.value = auroraEnabled ? (1.0 - rainLevel * 0.95) * (1 - liveDusk) ** 3 * (1 + liveDream * 0.4) : 0.0;
             if (auroraTrack !== track) {
                 const opening = global.MusicStageDioramaCamera.pose(timeline, track, 0, tuning);
                 skyMat.uniforms.auroraHeading.value = opening.yaw - 0.34;
@@ -4522,15 +4700,21 @@
                 : (0.5 - 0.5 * Math.cos(phase * Math.PI / 8)) * gain;
             waterMat.uniforms.time.value = time;
             waterMat.uniforms.energy.value = clamp(audio.energy);
+            dropPulse(track, pose, time, audio, tuning.reducedMotion || config.reducedMotion ? 0 : motion);
             updateRain(track, pose, time, tuning, quality);
             // Analytic chapter swell (seek-exact) plus frozen-on-pause audio response.
             const accent = motion ? (timeline.accentAt?.(time) ?? 0) : 0;
             liveAccent = accent;
             skyMat.uniforms.accent.value = accent;
             starMat.uniforms.accent.value = accent;
+            settleCover(tuning.coverTint ?? 0.5, performance.now());
             applyWarmth(pose.state.warmth ?? 0.5, pose.state.openness, audio.energy);
             // Lamps spread wider in the wet air.
-            haloMat.uniforms.intensity.value = haloBase * (1 + clamp(audio.impact) * 0.35 + accent * 0.25) * (1 + rainLevel * 0.3);
+            haloMat.uniforms.intensity.value = haloBase * (1 + clamp(audio.impact) * 0.35 + accent * 0.25) * (1 + rainLevel * 0.3)
+                * (saving ? 1.35 : 1);
+            // The saving tier has no lens bloom to spread the lamps' light;
+            // a wider halo stands in for it.
+            haloMat.uniforms.size.value = saving ? 2.8 : 1.6;
             reflectionEnabled = tuning.waterReflection !== false && (tuning.waterStrength ?? 1) > 0;
             waterMat.uniforms.strength.value = reflectionEnabled ? clamp(tuning.waterStrength ?? 1, 0, 2) : 0;
             const spacing = 16 / clamp(tuning.stationIntensity ?? 1, 0.5, 2);
@@ -5392,7 +5576,10 @@
                 rawPart(glowParts, address + 1.9, L(-1.8), 2.75, 0.14, 0.18, 0.14);
                 if (haloCount < haloPositions.length / 3) {
                     const f = track.at(address + 1.9);
-                    haloPositions.set([f.position.x + f.right.x * L(-1.8), 2.75, f.position.z + f.right.z * L(-1.8)], haloCount * 3);
+                    const ho = haloCount * 3;
+                    haloPositions[ho] = f.position.x + f.right.x * L(-1.8);
+                    haloPositions[ho + 1] = 2.75;
+                    haloPositions[ho + 2] = f.position.z + f.right.z * L(-1.8);
                     haloCount++;
                 }
             };
@@ -5417,7 +5604,10 @@
                         rawPart(LOOK.lantern, at, out, waterLevel + 0.22, 0.28, 0.32, 0.28);
                         if (haloCount < haloPositions.length / 3) {
                             const f = track.at(at);
-                            haloPositions.set([f.position.x + f.right.x * out, waterLevel + 0.24, f.position.z + f.right.z * out], haloCount * 3);
+                            const ho = haloCount * 3;
+                            haloPositions[ho] = f.position.x + f.right.x * out;
+                            haloPositions[ho + 1] = waterLevel + 0.24;
+                            haloPositions[ho + 2] = f.position.z + f.right.z * out;
                             haloCount++;
                         }
                     }
@@ -5441,7 +5631,10 @@
                     // Every other bulb throws a halo, so the row reads from far off.
                     if (i % 2 === 0 && haloCount < haloPositions.length / 3) {
                         const f = track.at(along);
-                        haloPositions.set([f.position.x + f.right.x * lateral, 3.2, f.position.z + f.right.z * lateral], haloCount * 3);
+                        const ho = haloCount * 3;
+                        haloPositions[ho] = f.position.x + f.right.x * lateral;
+                        haloPositions[ho + 1] = 3.2;
+                        haloPositions[ho + 2] = f.position.z + f.right.z * lateral;
                         haloCount++;
                     }
                 }
@@ -5466,7 +5659,8 @@
             haloGeometry.setDrawRange(0, haloCount);
             {
                 const eyeX = pose.position.x, eyeZ = pose.position.z;
-                spillList.sort((a, b) => Math.hypot(a[0] - eyeX, a[2] - eyeZ) - Math.hypot(b[0] - eyeX, b[2] - eyeZ));
+                spillList.sort((a, b) => ((a[0] - eyeX) * (a[0] - eyeX) + (a[2] - eyeZ) * (a[2] - eyeZ))
+                    - ((b[0] - eyeX) * (b[0] - eyeX) + (b[2] - eyeZ) * (b[2] - eyeZ)));
                 spills.value.forEach((slot, i) => {
                     const lamp = spillList[i];
                     if (lamp && !saving) slot.set(lamp[0], lamp[1], lamp[2], lamp[3]); else slot.set(0, -100, 0, 0);
@@ -5478,13 +5672,19 @@
             sceneryPools.forEach(mesh => { mesh.instanceMatrix.needsUpdate = true; });
             dressRect.needsUpdate = dressLook.needsUpdate = dressCut.needsUpdate = true;
         };
+        const reflDir = new T.Vector3();
+        const reflUp = new T.Vector3(0, 1, 0);
+        const reflPlane = new T.Plane();
+        const reflClip = new T.Vector4();
+        const reflQ = new T.Vector4();
+        const reflSize = new T.Vector2();
         const renderReflection = (renderer, camera) => {
             prepareEnvironment(renderer);
             if (dead || !reflectionEnabled) return;
             camera.updateMatrixWorld();
             mirror.position.copy(camera.position);
             mirror.position.y = 2 * waterLevel - mirror.position.y;
-            const direction = camera.getWorldDirection(new T.Vector3());
+            const direction = camera.getWorldDirection(reflDir);
             direction.y *= -1;
             mirror.up.set(0, 1, 0).transformDirection(camera.matrixWorld);
             mirror.up.y *= -1;
@@ -5495,18 +5695,18 @@
             mirror.updateMatrixWorld();
             textureMatrix.set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
                 .multiply(mirror.projectionMatrix).multiply(mirror.matrixWorldInverse);
-            const plane = new T.Plane(new T.Vector3(0, 1, 0), -waterLevel).applyMatrix4(mirror.matrixWorldInverse);
-            const clip = new T.Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
+            reflPlane.set(reflUp, -waterLevel).applyMatrix4(mirror.matrixWorldInverse);
+            reflClip.set(reflPlane.normal.x, reflPlane.normal.y, reflPlane.normal.z, reflPlane.constant);
             const e = mirror.projectionMatrix.elements;
-            const q = new T.Vector4((Math.sign(clip.x) + e[8]) / e[0],
-                (Math.sign(clip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
-            const dot = clip.dot(q);
+            reflQ.set((Math.sign(reflClip.x) + e[8]) / e[0],
+                (Math.sign(reflClip.y) + e[9]) / e[5], -1, (1 + e[10]) / e[14]);
+            const dot = reflClip.dot(reflQ);
             if (Math.abs(dot) < 0.00001) return;
-            clip.multiplyScalar(2 / dot);
-            e[2] = clip.x; e[6] = clip.y; e[10] = clip.z + 1 - 0.001; e[14] = clip.w;
+            reflClip.multiplyScalar(2 / dot);
+            e[2] = reflClip.x; e[6] = reflClip.y; e[10] = reflClip.z + 1 - 0.001; e[14] = reflClip.w;
             mirror.projectionMatrixInverse.copy(mirror.projectionMatrix).invert();
             mirror.layers.enable(2);
-            const size = renderer.getSize(new T.Vector2());
+            const size = renderer.getSize(reflSize);
             // Half the picture's own resolution, within a ceiling per tier.
             const buffer = size.x * renderer.getPixelRatio();
             // The ripples blur the mirror image anyway; below the top tier it
@@ -5515,6 +5715,13 @@
                 quality === 'ultimate' ? 1440 : quality === 'energy-saving' ? 384 : 960));
             const height = Math.max(1, Math.round(width * size.y / Math.max(1, size.x)));
             if (target.width !== width || target.height !== height) target.setSize(width, height);
+            const samples = global.MusicStageModeUtils?.tier(quality).samples ?? 0;
+            if (target.samples !== samples) {
+                target.samples = samples;
+                target.dispose();
+            }
+            waterMat.uniforms.mirrorTexel.value.set(1 / width, 1 / height);
+            waterMat.uniforms.mirrorSoft.value = samples ? 0 : 1;
             const oldTarget = renderer.getRenderTarget(), oldAutoClear = renderer.autoClear;
             const oldXr = renderer.xr.enabled;
             water.visible = false;
@@ -5533,7 +5740,8 @@
         };
         setPalette();
         return {
-            update, setPalette, renderReflection, updateCabin, prepareEnvironment,
+            update, setPalette, renderReflection, updateCabin, prepareEnvironment, prepareEnvironmentAsync,
+            setCoverColour, coverSettling,
             // How hard it is raining (0..1), for any shader that shows it.
             rain: rainAmount,
             setPixelRatio(ratio) {
@@ -5543,7 +5751,8 @@
             setWetness(amount) { wetness.value = clamp(amount ?? 0); },
             snapshot: () => ({ liveStations, stationTypes, stationPlan, drownLevel,
                 wading, splashTriangles: splash.visible ? splashGeometry.drawRange.count / 3 : 0, wetness: wetness.value, waterVisible: water.visible, reflectionEnabled,
-                warmth: liveWarmth, accent: liveAccent, fogDensity: scene.fog?.density ?? 0,
+                pulses: waterMat.uniforms.pulses.value.filter(q => q.w > 0).length,
+                warmth: liveWarmth, accent: liveAccent, coverWeight: cover.weight, coverTarget: cover.target, fogDensity: scene.fog?.density ?? 0,
                 rain: rainLevel, rainStreaks: rainDrops.visible ? rainGeometry.drawRange.count / 6 : 0, waterLevel,
                 lampHalos: halos.visible ? haloGeometry.drawRange.count : 0,
                 cabinWeight: cabin.visible ? cabinWeight : 0, saloonVisible: saloon.visible, cabReal: cabReal.value,
@@ -5602,5 +5811,14 @@
             o.z=max(o.z,bead);
             return o;
         }`;
-    global.MusicStageDioramaWorld = Object.freeze({ create, poleSide, inSight, RAIN_GLASS });
+    // Build the shared shapes ahead of the first visit (host: when the window is
+    // idle and 镜台 is the saved mode), by building a world nobody sees and
+    // throwing all of it away but those. Nothing is uploaded to a GPU.
+    const prepareShapes = (T) => {
+        if (SHARED_SHAPES.has('saloon') && SHARED_SHAPES.get('saloon').T === T) return false;
+        const scene = new T.Scene();
+        create(T, scene).destroy();
+        return true;
+    };
+    global.MusicStageDioramaWorld = Object.freeze({ create, prepareShapes, poleSide, inSight, RAIN_GLASS });
 })(window);

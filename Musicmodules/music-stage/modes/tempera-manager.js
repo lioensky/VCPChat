@@ -25,25 +25,29 @@
         stageContainer.style.overflow = 'hidden';
         mode.root.append(stageContainer);
 
-        const kicker = createElement('div', 'tempera-kicker', 'TEMPERA / PIXI MG DIRECTOR');
+        const kicker = createElement('div', 'tempera-kicker', '凝彩');
         const translation = createElement('div', 'stage-translation tempera-translation');
         mode.root.append(kicker, translation);
 
         let renderedKey = '';
         let paused = false;
+        const still = Utils.createStillGate();
 
         let latestFrame = null;
+        let lastPalRef = undefined, lastPalJson = 'null';
         const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const getTuning = () => ({
             ...mode.config.modes?.tempera,
             palette: services?.app?.stagePalette,
             animationIntensity: mode.config.animationIntensity ?? 1,
             quality: mode.config.quality,
-            reducedMotion: Boolean(reducedMotion?.matches)
+            reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
         });
 
         // 实例化 Pixi.js 凝彩高级导演
-        const director = global.TemperaPixiDirector ? new global.TemperaPixiDirector(stageContainer) : null;
+        const director = global.TemperaPixiDirector ? new global.TemperaPixiDirector(stageContainer, {
+            canvasAntialias: !global.MusicStagePixiEffects.lensOn(mode.config, 'tempera')
+        }) : null;
         if (director) {
             director.init().then(() => {
                 if (!mode.destroyed && latestFrame) mode.updateFrame(latestFrame);
@@ -76,9 +80,18 @@
             latestFrame = frame;
             resize();
             renderLine(frame);
+            const caption = `凝彩 · ${Utils.lineCounter(frame)}`;
+            if (kicker.textContent !== caption) kicker.textContent = caption;
             const tuning = getTuning();
+            // Paused and nothing changed: the canvas already shows this frame.
+            if (!frame.isPlaying) {
+                const pal = tuning.palette ?? null;
+                if (pal !== lastPalRef) { lastPalRef = pal; lastPalJson = JSON.stringify(pal); }
+                if (still.same(frame, `${Boolean(director?.initialized)}|${director?.width}x${director?.height}|${lastPalJson}|${tuning.reducedMotion}`)) return;
+            } else still.invalidate();
             director?.update(frame, tuning);
-            mode.root.style.setProperty('--stage-vocal', Number(frame.audio?.vocal || 0).toFixed(4));
+            // No --stage-vocal here: the words are drawn by Pixi, nothing under
+            // this root reads it, and setting it restyled the root every frame.
         };
 
         const updateConfig = mode.updateConfig;
@@ -88,6 +101,7 @@
             const rebuild = ['fontScale', 'shotFlow', 'colorMode', 'lyricLayout', 'phraseLength'].some(key => before[key] !== after[key]);
             updateConfig(config);
             if (rebuild) renderedKey = '';
+            still.invalidate();
             if (latestFrame) mode.updateFrame(latestFrame);
         };
         mode.getDebugSnapshot = () => director?.getDebugSnapshot() || { initialized: false };
@@ -98,12 +112,19 @@
         };
         mode.resume = () => {
             paused = false;
+            still.invalidate();
             mode.root.classList.remove('is-suspended');
         };
         mode.updateTheme = () => {
             renderedKey = '';
+            still.invalidate();
         };
+        mode.scope.listen(global, 'music-motion-change', () => {
+            still.invalidate();
+            if (latestFrame) mode.updateFrame(latestFrame);
+        });
         mode.scope.add(() => {
+            latestFrame = null;
             director?.destroy();
         });
 

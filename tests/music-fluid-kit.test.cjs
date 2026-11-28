@@ -1,0 +1,1167 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { JSDOM } = require('jsdom');
+
+const ROOT = path.join(__dirname, '..');
+
+
+// jsdom 没有 Element.animate：记下每次动画的关键帧和参数，finished 由测试手动结束
+function fakeAnimate(window) {
+    const log = [];
+    window.Element.prototype.animate = function (frames, opts) {
+        let resolve;
+        const finished = new Promise((r) => { resolve = r; });
+        const a = { el: this, frames, opts, cancelled: false, finished, finish: () => resolve(), cancel() { a.cancelled = true; resolve(); } };
+        log.push(a);
+        return a;
+    };
+    return log;
+}
+
+function setup({ reduce = false, low = false } = {}) {
+    const dom = new JSDOM(`<!doctype html><body class="${reduce ? 'music-reduce-motion' : ''}"><div id="music-dock-root" class="${low ? 'md-fl-low' : 'md-fl-on'}"></div><div class="menu" style="position:fixed"></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    let now = 0;
+    const frames = [];
+    window.performance.now = () => now;
+    window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+    window.cancelAnimationFrame = () => {};
+    const anims = fakeAnimate(window);
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    const menu = window.document.querySelector('.menu');
+    menu.getBoundingClientRect = () => ({ left: 100, top: 200, width: 220, height: 300, right: 320, bottom: 500 });
+    const run = (ms) => { now += ms; const due = frames.splice(0); due.forEach((fn) => fn()); };
+    return { window, doc: window.document, menu, run, anims };
+}
+
+test('a menu opens from the point it was opened from: scales up and fades in on itself, no extra layer', async () => {
+    const { window, doc, menu, anims } = setup();
+    assert.equal(window.MusicFluid.enabled(), true);
+    const done = window.MusicFluid.bud(menu, { x: 110, y: 205 });
+    assert.equal(doc.querySelector('svg'), null, 'no temporary liquid layer');
+    assert.equal(anims.length, 1);
+    assert.equal(anims[0].el, menu);
+    assert.equal(anims[0].frames[0].opacity, 0);
+    assert.match(anims[0].frames[0].transform, /scale\(\.96\)/);
+    assert.equal(anims[0].frames[1].transform, 'none');
+    assert.ok(anims[0].opts.duration <= 240, 'short');
+    assert.equal(menu.style.transformOrigin, '10px 5px', 'grows from where it was opened');
+    anims[0].finish();
+    await done;
+});
+
+test('opening again mid-way cancels the first animation instead of stacking', () => {
+    const { window, menu, anims } = setup();
+    window.MusicFluid.bud(menu, { x: 110, y: 205 });
+    window.MusicFluid.bud(menu, { x: 300, y: 480 });
+    assert.equal(anims.length, 2);
+    assert.equal(anims[0].cancelled, true);
+    assert.equal(menu.style.transformOrigin, '200px 280px');
+});
+
+test('reduced motion only fades, without scaling', async () => {
+    const { window, doc, menu, anims } = setup({ reduce: true });
+    assert.equal(window.MusicFluid.enabled(), false);
+    window.MusicFluid.bud(menu, { x: 110, y: 205 });
+    assert.equal(doc.querySelector('svg'), null);
+    assert.equal(anims.length, 1);
+    assert.equal(anims[0].frames[0].transform, undefined);
+});
+
+test('a selection marker flows to its new place: the leading edge arrives first, the trailing edge follows', () => {
+    const { window, doc, run } = setup();
+    const mark = doc.createElement('i');
+    doc.body.appendChild(mark);
+    window.MusicFluid.slide(mark, { left: 0, width: 40 }, { key: 'tabs' });
+    assert.equal(parseFloat(mark.style.left), 0, 'first placement is instant');
+    const fresh = doc.createElement('i'); // 那一排重画了，标记是新元素
+    doc.body.appendChild(fresh);
+    window.MusicFluid.slide(fresh, { left: 200, width: 40 }, { key: 'tabs' });
+    run(120);
+    const left = parseFloat(fresh.style.left), width = parseFloat(fresh.style.width);
+    assert.ok(left > 0 && left < 200, 'still on its way');
+    assert.ok(width > 40, `stretched while moving (${width})`);
+    run(400);
+    assert.equal(parseFloat(fresh.style.left), 200);
+    assert.equal(parseFloat(fresh.style.width), 40);
+});
+
+test('a dialog opened anywhere opens from the last press and closes back toward the button that was pressed', async () => {
+    const dom = new JSDOM(`<!doctype html><body><div class="dialog-overlay"><div class="dialog"></div></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const frames = [];
+    window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+    window.cancelAnimationFrame = () => {};
+    const anims = fakeAnimate(window);
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    const doc = window.document;
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+    const panel = doc.querySelector('.dialog');
+    panel.getBoundingClientRect = () => ({ left: 400, top: 200, width: 340, height: 180, right: 740, bottom: 380 });
+    doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 90, clientY: 600 }));
+    doc.querySelector('.dialog-overlay').classList.add('visible');
+    await new Promise((r) => setTimeout(r, 0)); // 等 MutationObserver
+    frames.splice(0).forEach((fn) => fn());
+    assert.equal(anims.length, 1, 'the panel animates');
+    assert.equal(anims[0].el, panel);
+    assert.equal(panel.style.transformOrigin, '0px 180px', 'from the corner nearest the press');
+    anims[0].finish();
+    await new Promise((r) => setTimeout(r, 0));
+    doc.querySelector('.dialog-overlay').classList.add('other');
+    await new Promise((r) => setTimeout(r, 0));
+    frames.splice(0).forEach((fn) => fn());
+    assert.equal(anims.length, 1, 'no replay while it stays open');
+    // 关掉：用打开时记下的副本朝刚按下的「取消」缩一点、淡出，结束就拿掉
+    panel.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 });
+    doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 700, clientY: 360 }));
+    doc.querySelector('.dialog-overlay').classList.remove('visible');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(anims.length, 2);
+    const ghost = anims[1].el;
+    assert.notEqual(ghost, panel);
+    assert.equal(ghost.style.width, '340px', 'the copy has the open size');
+    assert.equal(anims[1].frames[1].opacity, 0);
+    anims[1].finish();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(ghost.isConnected, false, 'copy removed afterwards');
+});
+
+test('slide also runs vertically (top/height), leading edge first, and lands exactly', () => {
+    const { window, doc, run } = setup();
+    const drop = doc.createElement('i');
+    doc.body.appendChild(drop);
+    window.MusicFluid.slide(drop, { top: 0, height: 30 }, { key: 'lyr', axis: 'y' });
+    assert.equal(parseFloat(drop.style.top), 0);
+    assert.equal(parseFloat(drop.style.height), 30);
+    assert.equal(drop.style.left, '', 'vertical slide leaves left alone');
+    window.MusicFluid.slide(drop, { top: 60, height: 30 }, { key: 'lyr', axis: 'y', lead: 200, trail: 400 });
+    run(100);
+    const top = parseFloat(drop.style.top), h = parseFloat(drop.style.height);
+    assert.ok(top + h > 60, 'the lower edge has already reached past the target top');
+    assert.ok(h > 30, 'stretched while flowing');
+    run(400);
+    assert.equal(parseFloat(drop.style.top), 60);
+    assert.equal(parseFloat(drop.style.height), 30);
+});
+
+test('a watched pop-up (sort menu) fades out toward the press after it finished opening; too-quick closes skip it', async () => {
+    const dom = new JSDOM(`<!doctype html><body><div class="sort-menu" hidden><button>A</button></div></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const timers = [];
+    window.setTimeout = (fn) => { timers.push(fn); return timers.length; };
+    window.clearTimeout = () => {};
+    const anims = fakeAnimate(window);
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    const doc = window.document;
+    const menu = doc.querySelector('.sort-menu');
+    menu.getBoundingClientRect = () => ({ left: 300, top: 120, width: 200, height: 260, right: 500, bottom: 380 });
+    window.MusicFluid.watchPop(menu);
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    menu.hidden = false; await tick();
+    menu.hidden = true; await tick();
+    assert.equal(anims.length, 0, 'closed before it finished opening: nothing drawn');
+    menu.hidden = false; await tick();
+    timers.splice(0).forEach((fn) => fn());
+    doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 360, clientY: 200 }));
+    menu.hidden = true; await tick();
+    assert.equal(anims.length, 1);
+    assert.equal(anims[0].el.style.transformOrigin, '60px 80px');
+    anims[0].finish(); await tick();
+    assert.equal(anims[0].el.isConnected, false);
+});
+
+test('MusicFluidSelect clamps tall menu height before placement, forwards label clicks, and skips disabled hover focus', async () => {
+    const dom = new JSDOM(`<!doctype html><body><label for="tall-sel">预设</label><select id="tall-sel"><option value="a">第一项</option><option value="b" disabled>不可选</option><option value="c">第三项</option></select></body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 700, configurable: true });
+    window.CSS = { escape: (s) => String(s) };
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+    const select = doc.getElementById('tall-sel');
+    window.MusicFluidSelect.dress(select);
+    const trigger = doc.querySelector('.mfs-trigger');
+    assert.ok(trigger, 'custom trigger created');
+    trigger.getBoundingClientRect = () => ({ left: 100, top: 200, right: 260, bottom: 232, width: 160, height: 32 });
+    // 模拟高菜单在 maxHeight 之前撑到 540px，但下方空间有 458px（足够放下 360px 限高后的菜单）
+    const origOffsetH = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', {
+        configurable: true,
+        get() { return this.classList?.contains('mfs-menu') ? (parseInt(this.style.maxHeight, 10) || 540) : 0; }
+    });
+    try {
+        doc.querySelector('label[for="tall-sel"]').click();
+        const menu = doc.querySelector('.mfs-menu');
+        assert.ok(menu, 'clicking associated <label for> opens the fluid select menu');
+        assert.equal(menu.style.maxHeight, '360px');
+        assert.equal(menu.style.top, '238px', 'tall menu opens below trigger once clamped by maxHeight');
+        const disabledItem = menu.querySelector('[aria-disabled="true"]');
+        const firstItem = menu.querySelector('.mfs-item');
+        assert.equal(doc.activeElement, firstItem);
+        disabledItem.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
+        assert.equal(doc.activeElement, firstItem, 'hovering a disabled option does not steal focus');
+        doc.querySelector('label[for="tall-sel"]').click();
+        assert.equal(doc.querySelector('.mfs-menu'), null, 'clicking associated label again closes open menu');
+
+        // Hidden / empty optgroup headers are omitted; beforeunload closes open menu and cleans up listeners
+        const grpSel = doc.createElement('select');
+        grpSel.innerHTML = '<optgroup label="隐藏组" hidden><option value="h">H</option></optgroup><optgroup label="仅占位"><option value="c" hidden disabled>自定义</option></optgroup><optgroup label="可用组"><option value="x" selected>可用</option></optgroup>';
+        doc.body.appendChild(grpSel);
+        window.MusicFluidSelect.dress(grpSel);
+        const grpTrigger = grpSel.nextElementSibling;
+        grpTrigger.getBoundingClientRect = () => ({ left: 100, top: 200, right: 260, bottom: 232, width: 160, height: 32 });
+        grpTrigger.click();
+        const grpMenu = doc.querySelector('.mfs-menu');
+        assert.ok(grpMenu, 'grouped fluid select opens');
+        const headers = [...grpMenu.querySelectorAll('.mfs-group')].map((el) => el.textContent);
+        assert.deepEqual(headers, ['可用组'], 'hidden or placeholder-only optgroups do not render orphan group headers');
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(doc.querySelector('.mfs-menu'), null, 'beforeunload closes open fluid-select menu');
+    } finally {
+        if (origOffsetH) Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', origOffsetH);
+        dom.window.close();
+    }
+});
+
+test('watchHud keydown skips HUD measurement when archive is hidden, stage is active, or typing in an input', async () => {
+    const dom = new JSDOM('<!doctype html><body><div id="music-archive-view"><div class="archive-hud"><div class="archive-nav"></div></div></div><input id="q" /></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = (fn) => 1;
+    window.cancelAnimationFrame = () => {};
+    let reads = 0;
+    const nav = doc.querySelector('.archive-nav');
+    nav.getBoundingClientRect = () => { reads++; return { left: 10, top: 10, width: 100, height: 30, right: 110, bottom: 40 }; };
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    const keyOn = (el, key) => el.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
+    // 档案页未打开时不测量
+    keyOn(doc.body, '/');
+    keyOn(doc.body, 'a');
+    assert.equal(reads, 0);
+
+    // 档案页打开但在输入框内打字时不测量（Escape 除外）
+    doc.body.classList.add('music-archive-on');
+    const input = doc.getElementById('q');
+    keyOn(input, '/');
+    keyOn(input, 'a');
+    assert.equal(reads, 0);
+    keyOn(input, 'Escape');
+    assert.equal(reads, 1);
+
+    // 档案页非输入焦点按 '/' 时触发测量
+    keyOn(doc.body, '/');
+    assert.equal(reads, 2);
+
+    // 切进舞台后不测量
+    doc.body.classList.add('music-stage-active');
+    keyOn(doc.body, '/');
+    keyOn(doc.body, 'Escape');
+    assert.equal(reads, 2);
+    dom.window.close();
+});
+
+test('watchTrails skips DOM queries on pointerdown when no menu trail is active, and slide stops when detached', async () => {
+    const dom = new JSDOM('<!doctype html><body><div class="context-menu"><div class="context-menu-item">项</div></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    let now = 0;
+    const frames = [];
+    window.performance.now = () => now;
+    window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    let qsaCount = 0;
+    const origQsa = doc.querySelectorAll.bind(doc);
+    doc.querySelectorAll = (...args) => { qsaCount += 1; return origQsa(...args); };
+
+    // 无菜单 trail 激活时点击页面，不应触发全 DOM querySelectorAll
+    doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(qsaCount, 0, 'pointerdown with no active menu trails does zero DOM querySelectorAll');
+
+    // 无关子节点挂载到 body 不应触发 body > .mtst-layer 全量扫描
+    const dummy = doc.createElement('div');
+    doc.body.appendChild(dummy);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(qsaCount, 0, 'watchToasts inspects addedNodes without rescanning document.body');
+
+    // slide 在元素脱离 DOM 后立即停止后续 rAF
+    const marker = doc.createElement('i');
+    doc.body.appendChild(marker);
+    window.MusicFluid.slide(marker, { left: 0, width: 30 });
+    window.MusicFluid.slide(marker, { left: 100, width: 30 });
+    assert.equal(frames.length, 1);
+    marker.remove();
+    now += 50;
+    frames.splice(0).forEach((fn) => fn());
+    assert.equal(frames.length, 0, 'detached slide target stops requesting frames');
+    dom.window.close();
+});
+
+test('createMusicFluidMarker skips redundant measureContainer on repeated moveTo and settles immediately when document is hidden', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="box"><span id="a">A</span><span id="b">B</span></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    let rafCalls = 0;
+    window.requestAnimationFrame = () => ++rafCalls;
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-marker.js'), 'utf8'));
+
+    const box = doc.getElementById('box');
+    const spanA = doc.getElementById('a');
+    const spanB = doc.getElementById('b');
+    let measureReads = 0;
+    Object.defineProperty(box, 'clientHeight', { configurable: true, get() { measureReads += 1; return 40; } });
+    Object.defineProperty(box, 'scrollWidth', { configurable: true, get() { return 200; } });
+    box.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 });
+    spanA.getBoundingClientRect = () => ({ left: 10, top: 4, width: 80, height: 24, right: 90, bottom: 28 });
+    spanB.getBoundingClientRect = () => ({ left: 110, top: 4, width: 80, height: 24, right: 190, bottom: 28 });
+
+    const marker = window.createMusicFluidMarker(box);
+    marker.moveTo(spanA);
+    assert.equal(measureReads, 1);
+    assert.equal(rafCalls, 0, 'initial placement is instant');
+
+    // Repeated moveTo on the same settled target skips measureContainer and rAF
+    marker.moveTo(spanA);
+    marker.moveTo(spanA);
+    assert.equal(measureReads, 1, 'identical settled target does not re-measure container');
+    assert.equal(rafCalls, 0);
+
+    // When document is hidden, moving to a new target settles immediately without rAF
+    Object.defineProperty(doc, 'hidden', { configurable: true, value: true });
+    marker.moveTo(spanB);
+    assert.equal(rafCalls, 0, 'hidden document settles marker immediately with 0 rAF');
+    marker.destroy();
+    dom.window.close();
+});
+
+test('createMusicFluidMarker respects MusicMotion.reduced override over matchMedia and ignores calls after destroy', () => {
+    const dom = new JSDOM('<!doctype html><body><div id="box"><span id="a">A</span><span id="b">B</span></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    let rafCalls = 0;
+    window.requestAnimationFrame = () => ++rafCalls;
+    window.cancelAnimationFrame = () => {};
+    window.matchMedia = () => ({ matches: true });
+    window.MusicMotion = { reduced: () => false };
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-marker.js'), 'utf8'));
+
+    const box = doc.getElementById('box');
+    const spanA = doc.getElementById('a');
+    const spanB = doc.getElementById('b');
+    Object.defineProperty(box, 'clientHeight', { configurable: true, get: () => 40 });
+    Object.defineProperty(box, 'scrollWidth', { configurable: true, get: () => 200 });
+    box.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 });
+    spanA.getBoundingClientRect = () => ({ left: 10, top: 4, width: 80, height: 24, right: 90, bottom: 28 });
+    spanB.getBoundingClientRect = () => ({ left: 110, top: 4, width: 80, height: 24, right: 190, bottom: 28 });
+
+    const marker = window.createMusicFluidMarker(box);
+    marker.moveTo(spanA);
+    assert.equal(rafCalls, 0, 'initial placement is instant');
+    marker.moveTo(spanB);
+    assert.equal(rafCalls, 1, 'explicit MusicMotion.reduced()=false animates even when OS matchMedia matches');
+
+    marker.destroy();
+    marker.moveTo(spanA);
+    marker.relayout();
+    assert.equal(rafCalls, 1, 'destroyed marker ignores subsequent moveTo/relayout');
+    dom.window.close();
+});
+
+test('Batch 57: music-fluid-select skips high-churn list subtrees in bodyObs and deduplicates trigger updates', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="archive-list-spacer"></div>
+        <ul id="playlist"></ul>
+        <div id="controls">
+            <select id="s-init" aria-label="排序"><option value="a">默认</option><option value="b">歌手</option></select>
+        </div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+
+    const spacer = doc.querySelector('.archive-list-spacer');
+    const row = doc.createElement('div');
+    row.className = 'archive-row';
+    row.innerHTML = '<span>Track 1</span><span>Artist 1</span>';
+    let rowTagLookups = 0;
+    const origGetByTag = row.getElementsByTagName.bind(row);
+    row.getElementsByTagName = (...args) => { rowTagLookups += 1; return origGetByTag(...args); };
+    spacer.appendChild(row);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(rowTagLookups, 0, 'rows appended inside .archive-list-spacer bypass getElementsByTagName("select")');
+
+    // Dynamic select outside skipped containers is still dressed automatically
+    const wrap = doc.createElement('div');
+    const dynSel = doc.createElement('select');
+    dynSel.innerHTML = '<option value="1">一</option><option value="2">二</option>';
+    wrap.appendChild(dynSel);
+    doc.getElementById('controls').appendChild(wrap);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.ok(dynSel.classList.contains('mfs-native'), 'dynamic select outside list subtrees is still dressed');
+
+    // Unchanged mirror/sync skips redundant aria-label writes
+    const initSel = doc.getElementById('s-init');
+    const trigger = initSel.nextElementSibling;
+    assert.ok(trigger && trigger.classList.contains('mfs-trigger'));
+    let ariaWrites = 0;
+    const origSetAttr = trigger.setAttribute.bind(trigger);
+    trigger.setAttribute = (name, val) => { if (name === 'aria-label') ariaWrites += 1; return origSetAttr(name, val); };
+    initSel.value = 'a';
+    assert.equal(ariaWrites, 0, 'assigning identical select value skips redundant aria-label write');
+    initSel.value = 'b';
+    assert.equal(ariaWrites, 1, 'changing select value updates aria-label once');
+    dom.window.close();
+});
+
+test('Batch 61: watchTrails skips duplicate layout reads on child hover within same button and disposes listeners/observers on beforeunload', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="archive-nav">
+            <button id="b1" type="button"><span id="s1">按钮一</span></button>
+            <button id="b2" type="button"><span id="s2">按钮二</span></button>
+        </div>
+        <div class="dialog-overlay"><div class="dialog"></div></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    const row = doc.querySelector('.archive-nav');
+    const b1 = doc.getElementById('b1');
+    const s1 = doc.getElementById('s1');
+    const b2 = doc.getElementById('b2');
+    let rectReads = 0;
+    row.getBoundingClientRect = () => { rectReads += 1; return { left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 }; };
+    b1.getBoundingClientRect = () => ({ left: 0, top: 0, width: 90, height: 40, right: 90, bottom: 40 });
+    b2.getBoundingClientRect = () => ({ left: 100, top: 0, width: 90, height: 40, right: 190, bottom: 40 });
+
+    b1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 1, 'initial button hover measures row');
+    s1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 1, 'hovering inner child of same active button skips redundant measurement');
+    b2.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 2, 'moving to sibling button measures row once');
+
+    // beforeunload detaches pointerover & dialog observers
+    window.dispatchEvent(new window.Event('beforeunload'));
+    b1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.equal(rectReads, 2, 'beforeunload detaches watchTrails pointerover listener');
+    doc.querySelector('.dialog-overlay').classList.add('visible');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(doc.querySelector('svg.mf-goo'), null, 'beforeunload disconnects dialog MutationObserver');
+    dom.window.close();
+});
+
+test('Batch 67: watchTrails measures before DOM append, watchHud skips drawer-internal/hidden-archive clicks & cleans up on beforeunload, and fluid-select memoizes skipped targets', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="archive-nav"><button id="b1" type="button">一</button></div>
+        <div id="music-archive-view"><div class="archive-hud"><div class="archive-nav"></div></div></div>
+        <div class="md-pnl"><div class="md-sld"></div><button data-md="close" type="button">关闭</button></div>
+        <div class="context-menu"></div>
+        <div class="mtst-layer"></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+    window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+    if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+    // 1. watchTrails: placeIn reads geometry BEFORE .mf-trail is appended on first hover
+    const navRow = doc.querySelector('body > .archive-nav');
+    const b1 = doc.getElementById('b1');
+    const order = [];
+    const origAppend = navRow.append.bind(navRow);
+    navRow.append = (...args) => { order.push('append'); return origAppend(...args); };
+    navRow.getBoundingClientRect = () => { order.push('rect'); return { left: 0, top: 0, width: 200, height: 40, right: 200, bottom: 40 }; };
+    b1.getBoundingClientRect = () => ({ left: 0, top: 0, width: 80, height: 40, right: 80, bottom: 40 });
+    b1.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+    assert.deepEqual(order, ['rect', 'append'], 'watchTrails measures geometry before inserting .mf-trail');
+
+    // 2. watchHud: skips measure when archive is hidden or clicking non-trigger inside open .md-pnl; cleans up on beforeunload
+    let hudReads = 0;
+    const hudNav = doc.querySelector('#music-archive-view .archive-nav');
+    hudNav.getBoundingClientRect = () => { hudReads += 1; return { left: 0, top: 0, width: 100, height: 30, right: 100, bottom: 30 }; };
+    const sld = doc.querySelector('.md-sld');
+    const closeBtn = doc.querySelector('[data-md="close"]');
+
+    doc.body.classList.add('music-drawer-open');
+    // Archive hidden (classic view): 0 reads even on closeBtn
+    closeBtn.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 0, 'watchHud skips pointerdown measurement when archive is hidden');
+
+    // Archive active + drawer open: clicking slider inside .md-pnl skips measure, closeBtn & outside click measure
+    doc.body.classList.add('music-archive-on');
+    sld.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 0, 'clicking non-trigger slider inside open .md-pnl skips HUD measure');
+    closeBtn.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 1, 'clicking [data-md="close"] inside .md-pnl still captures HUD geometry');
+    doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 2, 'clicking outside .md-pnl while drawer is open captures HUD geometry');
+
+    // 3. music-fluid-select: memoizes tgt.closest across multiple addedNodes in one .mtst-layer mutation batch
+    const toastLayer = doc.querySelector('.mtst-layer');
+    let closestCalls = 0;
+    const origClosest = toastLayer.closest.bind(toastLayer);
+    toastLayer.closest = (...args) => { closestCalls += 1; return origClosest(...args); };
+    for (let i = 0; i < 6; i += 1) {
+        const d = doc.createElement('div');
+        d.innerHTML = '<span>msg</span>';
+        toastLayer.appendChild(d);
+    }
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(closestCalls, 1, 'fluid-select memoizes skipped container target across batched records');
+
+    // 4. beforeunload detaches watchHud listeners
+    window.dispatchEvent(new window.Event('beforeunload'));
+    closeBtn.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    assert.equal(hudReads, 2, 'beforeunload detaches watchHud pointerdown listener');
+    dom.window.close();
+});
+
+test('Batch 72: music-fluid-select delegates option clicks, blocks ArrowLeft/ArrowRight leak while open, and skips hidden-disabled selected focus', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <select id="eq-sel" aria-label="预设">
+            <option value="custom" disabled hidden>自定义</option>
+            <option value="pop">流行</option>
+            <option value="rock">摇滚</option>
+        </select>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.CSS = { escape: (s) => String(s) };
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+        const sel = doc.getElementById('eq-sel');
+        const trigger = sel.nextElementSibling;
+        assert.ok(trigger && trigger.classList.contains('mfs-trigger'));
+
+        // Hidden-disabled option selected -> opening focuses the first connected enabled option ('流行')
+        sel.selectedIndex = 0;
+        const leaked = [];
+        doc.addEventListener('keydown', (e) => leaked.push(e.key));
+        trigger.click();
+        const menu = doc.querySelector('.mfs-menu');
+        assert.ok(menu);
+        assert.ok(doc.activeElement && doc.activeElement.classList.contains('mfs-item') && doc.activeElement.isConnected);
+        assert.equal(doc.activeElement.querySelector('svg.mfs-check') !== null, true, 'cloned check SVG mounted');
+
+        // ArrowLeft and ArrowRight must be consumed while menu is open instead of leaking to page shortcuts
+        for (const k of ['ArrowLeft', 'ArrowRight']) {
+            const ev = new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+            doc.activeElement.dispatchEvent(ev);
+            assert.equal(ev.defaultPrevented, true, `${k} prevented while fluid-select menu is open`);
+        }
+        assert.deepEqual(leaked, [], 'ArrowLeft/ArrowRight do not leak to document bubble listeners');
+
+        // Delegated click on rock option updates select and closes menu
+        let changed = 0;
+        sel.addEventListener('change', () => { changed += 1; });
+        const rockItem = [...menu.querySelectorAll('.mfs-item')].find((i) => i.textContent.includes('摇滚'));
+        assert.ok(rockItem);
+        rockItem.querySelector('span').click();
+        assert.equal(sel.value, 'rock', 'delegated click on child span selects option');
+        assert.equal(changed, 1);
+        assert.equal(doc.querySelector('.mfs-menu'), null, 'selecting option closes menu');
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 76: music-fluid-select prunes detached select observers and registers passive capture scroll listener', async () => {
+    const dom = new JSDOM('<!doctype html><body><div id="host"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.CSS = { escape: (s) => String(s) };
+    try {
+        const scrollOpts = [];
+        const origAdd = doc.addEventListener.bind(doc);
+        doc.addEventListener = (type, fn, opts) => {
+            if (type === 'scroll') scrollOpts.push(opts);
+            return origAdd(type, fn, opts);
+        };
+        const OrigMO = window.MutationObserver;
+        const observedTargets = new Map();
+        let selectDisconnects = 0;
+        window.MutationObserver = class TrackingMO extends OrigMO {
+            observe(target, opts) {
+                observedTargets.set(this, target);
+                return super.observe(target, opts);
+            }
+            disconnect() {
+                if (observedTargets.get(this)?.tagName === 'SELECT') selectDisconnects += 1;
+                return super.disconnect();
+            }
+        };
+
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        assert.ok(
+            scrollOpts.some((o) => o && o.capture === true && o.passive === true),
+            'music-fluid-select binds document scroll listener with { capture: true, passive: true }'
+        );
+
+        const host = doc.getElementById('host');
+        const created = [];
+        for (let i = 0; i < 16; i += 1) {
+            const s = doc.createElement('select');
+            s.innerHTML = `<option value="a">A${i}</option><option value="b">B${i}</option>`;
+            host.appendChild(s);
+            created.push(s);
+        }
+        for (const s of created) window.MusicFluidSelect.dress(s);
+        // Detach all 16 dressed selects
+        for (const s of created) {
+            s.nextElementSibling?.remove();
+            s.remove();
+        }
+        // Dressing one fresh select triggers pruning of all 16 detached observers
+        const fresh = doc.createElement('select');
+        fresh.innerHTML = '<option value="x">X</option>';
+        host.appendChild(fresh);
+        window.MusicFluidSelect.dress(fresh);
+        assert.equal(selectDisconnects, 16, 'prunes and disconnects all 16 detached select observers');
+
+        // beforeunload disconnects the remaining active observer
+        window.dispatchEvent(new window.Event('beforeunload'));
+        assert.equal(selectDisconnects, 17, 'beforeunload disconnects remaining active select observer');
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 77: watchToasts batches all getBoundingClientRect reads before calling animate', async () => {
+    const dom = new JSDOM('<!doctype html><body><div class="mtst-layer"><div id="t1">A</div><div id="t2">B</div></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        const layer = doc.querySelector('.mtst-layer');
+        const t1 = doc.getElementById('t1');
+        const t2 = doc.getElementById('t2');
+        const events = [];
+        let shift = 0;
+        const bindToast = (el, baseTop, tag) => {
+            el.getBoundingClientRect = () => { events.push(`read:${tag}`); return { top: baseTop + shift, left: 0, width: 200, height: 40 }; };
+            el.animate = () => { events.push(`anim:${tag}`); return { cancel() {} }; };
+        };
+        bindToast(t1, 100, 't1');
+        bindToast(t2, 150, 't2');
+        window.Element.prototype.animate = () => ({ cancel() {} });
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        events.length = 0;
+        shift = -48;
+        const t3 = doc.createElement('div');
+        bindToast(t3, 200, 't3');
+        layer.appendChild(t3);
+        await new Promise((r) => setTimeout(r, 0));
+        const lastRead = Math.max(events.lastIndexOf('read:t1'), events.lastIndexOf('read:t2'), events.lastIndexOf('read:t3'));
+        const firstAnim = Math.min(events.indexOf('anim:t1'), events.indexOf('anim:t2'));
+        assert.ok(lastRead >= 0 && firstAnim > lastRead, `all rect reads precede WAAPI animate writes (${JSON.stringify(events)})`);
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 80: music-fluid-select skips .aw-world/.ag-content/#modal-song-list scans, music-dock-stage-settings caches introBtn, and panel CSS disables low-power palette blur', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="aw-world"></div>
+        <div class="ag-content"></div>
+        <div id="modal-song-list"></div>
+        <div class="webdav-file-list"></div>
+        <select id="s-open"><option value="a">A</option><option value="b">B</option></select>
+        <div id="music-stage"></div>
+        <div id="ext"><div id="body2"></div><div class="md-adv"><button id="adv-t" type="button"></button><div id="adv-b"><div id="adv-acts"></div></div></div></div>
+        <div id="tune-sec"><span id="tune-t"></span><span id="tune-h"></span><div id="tune-slot"></div><button id="tune-more" type="button"></button></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.CSS = { escape: (s) => String(s) };
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        for (const sel of ['.aw-world', '.ag-content', '#modal-song-list', '.webdav-file-list']) {
+            const box = doc.querySelector(sel);
+            const item = doc.createElement('div');
+            item.innerHTML = '<span>Item</span><span>Sub</span>';
+            let tagScans = 0;
+            const origTag = item.getElementsByTagName.bind(item);
+            item.getElementsByTagName = (...args) => { tagScans += 1; return origTag(...args); };
+            box.appendChild(item);
+            await new Promise((r) => setTimeout(r, 0));
+            assert.equal(tagScans, 0, `nodes appended to ${sel} bypass select subtree scan`);
+        }
+
+        // Open select menu and verify unchanged sync skips redundant aria-selected writes
+        const sOpen = doc.getElementById('s-open');
+        const trigger = sOpen.nextElementSibling;
+        trigger.click();
+        const menuItems = [...doc.querySelectorAll('.mfs-menu .mfs-item')];
+        assert.equal(menuItems.length, 2);
+        let ariaSelWrites = 0;
+        for (const item of menuItems) {
+            const origSet = item.setAttribute.bind(item);
+            item.setAttribute = (k, v) => { if (k === 'aria-selected') ariaSelWrites += 1; return origSet(k, v); };
+        }
+        sOpen.value = 'a';
+        assert.equal(ariaSelWrites, 0, 'unchanged selectedIndex skips redundant aria-selected writes in open menu');
+        sOpen.value = 'b';
+        assert.equal(ariaSelWrites, 2, 'changing selectedIndex updates only the old and new option');
+
+        // music-dock-stage-settings caches introBtn across repeated renderExt(true) calls
+        window.MusicIntro = { replay() {} };
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-stage-settings.js'), 'utf8'));
+        const advActs = doc.getElementById('adv-acts');
+        const cleanups = [];
+        const stageSettings = window.MusicDockStageSettings.create({
+            state: { tuneAll: false },
+            el: {
+                ext: doc.getElementById('ext'),
+                body: doc.getElementById('ext'),
+                body2: doc.getElementById('body2'),
+                advToggle: doc.getElementById('adv-t'),
+                advBody: doc.getElementById('adv-b'),
+                advActs,
+                tuneSec: doc.getElementById('tune-sec'),
+                tuneTitle: doc.getElementById('tune-t'),
+                tuneHint: doc.getElementById('tune-h'),
+                tuneSlot: doc.getElementById('tune-slot'),
+                tuneMore: doc.getElementById('tune-more')
+            },
+            cleanups,
+            listen() {},
+            openPanel() {},
+            stageActive: () => false,
+            currentStageMode: () => null,
+            segment: () => '<div></div>',
+            escapeHtml: (s) => String(s),
+            icon: () => '<svg></svg>'
+        });
+        stageSettings.renderExt(true);
+        let introQueries = 0;
+        const origQs = advActs.querySelector.bind(advActs);
+        advActs.querySelector = (s) => { if (s.includes('intro')) introQueries += 1; return origQs(s); };
+        stageSettings.renderExt(true);
+        stageSettings.renderExt(true);
+        assert.equal(introQueries, 0, 'repeated renderExt(true) reuses cached introBtn without querySelector');
+
+        // music-dock-panel.css disables backdrop-filter on command palette & keys scrim in low-power mode
+        const panelCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-panel.css'), 'utf8');
+        assert.match(panelCss, /body\.music-fl-low \.md-cmd-box[\s\S]*?backdrop-filter:\s*none/);
+        assert.match(panelCss, /body\.music-fl-low \.md-cmd-box[\s\S]*?background:\s*var\(--md-menu\)/);
+        cleanups.forEach((fn) => fn());
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 81: MusicFluid.slide skips redundant style writes when already settled at the same goal on the same element', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        doc.body.classList.add('music-reduce-motion');
+        const makeMark = () => {
+            const writes = { left: 0, width: 0 };
+            const backing = { left: '', width: '', transition: '' };
+            return {
+                writes,
+                el: {
+                    isConnected: true,
+                    style: new Proxy(backing, {
+                        set(target, prop, value) {
+                            if (prop === 'left' || prop === 'width') writes[prop] += 1;
+                            target[prop] = value;
+                            return true;
+                        }
+                    })
+                }
+            };
+        };
+        const m1 = makeMark();
+        window.MusicFluid.slide(m1.el, { left: 24, width: 80 }, { key: 'tab-mark' });
+        assert.deepEqual(m1.writes, { left: 1, width: 1 }, 'first placement writes left and width once');
+
+        // Repeated calls with identical settled goal skip style writes completely
+        window.MusicFluid.slide(m1.el, { left: 24, width: 80 }, { key: 'tab-mark' });
+        window.MusicFluid.slide(m1.el, { left: 24.02, width: 80.01 }, { key: 'tab-mark' });
+        assert.deepEqual(m1.writes, { left: 1, width: 1 }, 'unchanged formatted goal skips redundant style writes');
+
+        // Replacing the element under the same key must still write even when coordinates match
+        const m2 = makeMark();
+        window.MusicFluid.slide(m2.el, { left: 24, width: 80 }, { key: 'tab-mark' });
+        assert.deepEqual(m2.writes, { left: 1, width: 1 }, 'new element under same key still receives initial placement');
+
+        // Sub-pixel change that formats differently still writes
+        window.MusicFluid.slide(m2.el, { left: 24.3, width: 80 }, { key: 'tab-mark' });
+        assert.deepEqual(m2.writes, { left: 2, width: 2 }, 'different formatted coordinate updates style');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 85: music-fluid-select bodyObs prefilters leaf-node mutations before calling tgt.closest()', async () => {
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"><li id="row0"></li><li id="row1"></li></ul><div id="host"></div></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        const row0 = doc.getElementById('row0');
+        const row1 = doc.getElementById('row1');
+        let closestCalls = 0;
+        for (const li of [row0, row1]) {
+            const origClosest = li.closest.bind(li);
+            li.closest = (...args) => { closestCalls += 1; return origClosest(...args); };
+        }
+        // Simulates classic-list decorateRow replacing <li> children with flat leaf spans/buttons
+        const frag0 = doc.createDocumentFragment();
+        for (const cls of ['cl-title', 'cl-artist', 'cl-duration']) {
+            const sp = doc.createElement('span');
+            sp.className = cls;
+            sp.textContent = 'x';
+            frag0.appendChild(sp);
+        }
+        const btn = doc.createElement('button');
+        btn.className = 'cl-like';
+        frag0.appendChild(btn);
+        row0.replaceChildren(frag0);
+        row1.appendChild(doc.createElement('span'));
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(closestCalls, 0, 'leaf-only row mutations bypass tgt.closest() completely');
+
+        // Dynamic select inside a nested wrapper still gets dressed
+        const box = doc.createElement('div');
+        const sel = doc.createElement('select');
+        sel.innerHTML = '<option value="1">A</option><option value="2">B</option>';
+        box.appendChild(sel);
+        doc.getElementById('host').appendChild(box);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(sel.classList.contains('mfs-native'), true, 'dynamic select still dressed after leaf prefilter');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 93: fluid-select clones chevron + batches open layout, and watchTrails tracks dropByRow including nested context-submenu', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <select id="b93-sel"><option value="a">第一</option><option value="b" selected>第二</option></select>
+        <div class="context-menu">
+            <div class="context-menu-item" id="cm-outer">外层</div>
+            <div class="context-menu-item" id="cm-outer2">外层2</div>
+            <div class="context-submenu">
+                <div class="submenu-item" id="cm-inner">子项</div>
+                <div class="submenu-item" id="cm-inner2">子项2</div>
+            </div>
+        </div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.CSS = { escape: (s) => String(s) };
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        const sel = doc.getElementById('b93-sel');
+        const trigger = sel.nextElementSibling;
+        assert.ok(trigger.querySelector('svg.mfs-chev'), 'dressed trigger mounts cloned chevron SVG');
+
+        const events = [];
+        trigger.getBoundingClientRect = () => {
+            events.push('read:trigger');
+            return { left: 80, top: 120, right: 240, bottom: 152, width: 160, height: 32 };
+        };
+        const origAppend = doc.body.append.bind(doc.body);
+        doc.body.append = (...args) => {
+            if (args[0]?.classList?.contains('mfs-menu')) events.push('append:menu');
+            return origAppend(...args);
+        };
+        trigger.click();
+        assert.ok(events.indexOf('read:trigger') >= 0 && events.indexOf('read:trigger') < events.indexOf('append:menu'),
+            'open() measures trigger before appending menu to document.body');
+
+        // watchTrails: dropByRow avoids :scope > .mf-trail querySelector after first mount and supports nested .context-submenu
+        const outerMenu = doc.querySelector('.context-menu');
+        const subMenu = doc.querySelector('.context-submenu');
+        const cmOuter = doc.getElementById('cm-outer');
+        const cmOuter2 = doc.getElementById('cm-outer2');
+        const cmInner = doc.getElementById('cm-inner');
+        const cmInner2 = doc.getElementById('cm-inner2');
+        outerMenu.getBoundingClientRect = () => ({ left: 0, top: 0, width: 180, height: 120, right: 180, bottom: 120 });
+        subMenu.getBoundingClientRect = () => ({ left: 180, top: 0, width: 160, height: 80, right: 340, bottom: 80 });
+        cmOuter.getBoundingClientRect = () => ({ left: 4, top: 4, width: 172, height: 32, right: 176, bottom: 36 });
+        cmOuter2.getBoundingClientRect = () => ({ left: 4, top: 40, width: 172, height: 32, right: 176, bottom: 72 });
+        cmInner.getBoundingClientRect = () => ({ left: 184, top: 4, width: 152, height: 32, right: 336, bottom: 36 });
+        cmInner2.getBoundingClientRect = () => ({ left: 184, top: 40, width: 152, height: 32, right: 336, bottom: 72 });
+
+        cmOuter.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        cmInner.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        assert.ok(outerMenu.querySelector(':scope > .mf-trail'), 'outer context-menu received its trail');
+        assert.ok(subMenu.querySelector(':scope > .mf-trail'), 'nested context-submenu received its own trail');
+
+        let scopeTrailQueries = 0;
+        for (const el of [outerMenu, subMenu]) {
+            const origQs = el.querySelector.bind(el);
+            el.querySelector = (s) => { if (s.includes('mf-trail')) scopeTrailQueries += 1; return origQs(s); };
+        }
+        cmOuter2.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        cmInner2.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        cmOuter2.dispatchEvent(new window.MouseEvent('pointerout', { bubbles: true }));
+        cmInner2.dispatchEvent(new window.MouseEvent('pointerout', { bubbles: true }));
+        assert.equal(scopeTrailQueries, 0, 'subsequent hover/pointerout resolves drop via WeakMap with 0 :scope > .mf-trail queries');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 98: dock fluid and fluid marker quantize numeric SVG attrs to skip sub-precision setAttribute writes', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="host"><div class="md-dock"><div id="bar"><button data-md="play"></button></div></div><button data-md="vol"></button><div id="ring"></div></div>
+        <div id="mbox"></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    try {
+        // 1. music-dock-fluid: quantized setAttr skips sub-0.01 numeric deltas
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-fluid.js'), 'utf8'));
+        const host = doc.getElementById('host');
+        const bar = doc.getElementById('bar');
+        const ring = doc.getElementById('ring');
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+        bar.getBoundingClientRect = () => ({ left: 200, top: 720, width: 600, height: 56, right: 800, bottom: 776 });
+        const fluid = window.createMusicDockFluid({ host, bar, ring, reduced: () => true });
+        assert.ok(fluid && fluid.layout());
+        const ringSolid = host.querySelector('mask circle');
+        assert.ok(ringSolid);
+        let cxWrites = 0;
+        const origFluidSet = ringSolid.setAttribute.bind(ringSolid);
+        ringSolid.setAttribute = (k, v) => { if (k === 'cx') cxWrites += 1; return origFluidSet(k, v); };
+        fluid.setRingMode('playhead');
+        fluid.setProgress(0.25);
+        const afterInit = cxWrites;
+        // Identical redraw via setSolid(true) when already solid=1 writes 0 cx updates
+        fluid.setSolid(true);
+        assert.equal(cxWrites, afterInit, 'unchanged quantized ring cx skips setAttribute');
+        fluid.destroy();
+
+        // 2. music-fluid-marker: quantized setRectNum skips sub-0.05 numeric deltas and updates across 0.1 threshold
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-marker.js'), 'utf8'));
+        const mbox = doc.getElementById('mbox');
+        Object.defineProperty(mbox, 'clientHeight', { configurable: true, value: 40 });
+        Object.defineProperty(mbox, 'scrollWidth', { configurable: true, value: 400 });
+        const marker = window.createMusicFluidMarker(mbox, { axis: 'x', thickness: 4 });
+        marker.moveTo({ start: 10.0, end: 50.0 }, { instant: true });
+        const headRect = mbox.querySelector('svg rect');
+        let xWrites = 0;
+        const origMarkerSet = headRect.setAttribute.bind(headRect);
+        headRect.setAttribute = (k, v) => { if (k === 'x') xWrites += 1; return origMarkerSet(k, v); };
+        marker.moveTo({ start: 10.04, end: 50.04 }, { instant: true });
+        assert.equal(xWrites, 0, 'sub-0.05 delta rounding to same tenth skips setAttribute("x")');
+        marker.moveTo({ start: 10.2, end: 50.2 }, { instant: true });
+        assert.equal(xWrites, 1, 'delta crossing 0.1 threshold writes setAttribute("x") once');
+        assert.equal(headRect.getAttribute('x'), '10.2');
+        marker.destroy();
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 100: watchToasts defers solo toast measurement to rAF to avoid synchronous reflow, then animates stacked shift', async () => {
+    const dom = new JSDOM('<!doctype html><body><div class="mtst-layer"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    const rafs = [];
+    window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+    window.cancelAnimationFrame = () => {};
+    window.Element.prototype.animate = () => ({ cancel() {} });
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+        const layer = doc.querySelector('.mtst-layer');
+
+        let t1Reads = 0;
+        let t1Anims = 0;
+        let t1Top = 200;
+        const t1 = doc.createElement('div');
+        t1.getBoundingClientRect = () => { t1Reads += 1; return { top: t1Top, left: 0, width: 200, height: 40 }; };
+        t1.animate = () => { t1Anims += 1; return { cancel() {} }; };
+
+        // Appending a solo toast into an empty layer must NOT synchronously read getBoundingClientRect in MutationObserver
+        layer.appendChild(t1);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Reads, 0, 'solo toast mount avoids synchronous getBoundingClientRect reflow');
+        assert.equal(t1Anims, 0);
+        assert.equal(rafs.length, 1, 'solo toast schedules one rAF to record initial position');
+
+        // After rAF records t1 position, adding t2 shifts t1 and triggers FLIP animation
+        rafs.splice(0).forEach((fn) => fn(16));
+        assert.equal(t1Reads, 1, 'rAF records solo toast baseline top');
+
+        t1Top = 152;
+        const t2 = doc.createElement('div');
+        t2.getBoundingClientRect = () => ({ top: 200, left: 0, width: 200, height: 40 });
+        t2.animate = () => ({ cancel() {} });
+        layer.appendChild(t2);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Anims, 1, 'adding second toast still animates shifted existing toast');
+
+        // Reduced motion performs 0 getBoundingClientRect reads on mutations
+        doc.body.classList.add('music-reduce-motion');
+        const readsBefore = t1Reads;
+        const t3 = doc.createElement('div');
+        t3.getBoundingClientRect = () => { t1Reads += 1; return { top: 250, left: 0, width: 200, height: 40 }; };
+        layer.appendChild(t3);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Reads, readsBefore, 'reduced motion skips watchToasts layout reads');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 102: watchTrails mirrors .mf-trail-on on host row, CSS eliminates hot :has() rules & contains .md-pnl, and M3U single-pass helpers work', async () => {
+    const kitCss = ['music-fluid-kit.css', 'music-fluid-surfaces.css'].map((f) => fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock', f), 'utf8')).join('\n');
+    const drawerCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-drawer.css'), 'utf8');
+    assert.doesNotMatch(kitCss, /:has\(>\s*\.mf-trail\.mf-on\)/, 'hot :has(> .mf-trail.mf-on) selectors replaced with .mf-trail-on');
+    assert.doesNotMatch(kitCss, /\.md-ql:has\(\.md-qdrag\)/, ':has(.md-qdrag) replaced with .md-qdragging');
+    assert.doesNotMatch(kitCss, /\.md-cmd-list:has\(>\s*\.md-cmd-drop\)/, ':has(> .md-cmd-drop) replaced with .md-has-drop');
+    assert.doesNotMatch(drawerCss, /\.setting-item:has\(\.slider-with-value\)/, ':has(.slider-with-value) removed');
+    assert.match(drawerCss, /\.md-pnl\s*\{[^}]*contain:\s*layout style;/, '.md-pnl applies contain: layout style');
+
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="context-menu"><div class="context-menu-item" id="mi">项</div></div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.requestAnimationFrame = () => 1;
+        window.cancelAnimationFrame = () => {};
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        const menu = doc.querySelector('.context-menu');
+        const item = doc.getElementById('mi');
+        menu.getBoundingClientRect = () => ({ left: 0, top: 0, width: 160, height: 40, right: 160, bottom: 40 });
+        item.getBoundingClientRect = () => ({ left: 0, top: 0, width: 160, height: 32, right: 160, bottom: 32 });
+
+        item.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        assert.equal(menu.classList.contains('mf-trail-on'), true, 'hovering menu item adds .mf-trail-on to host row');
+        doc.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+        assert.equal(menu.classList.contains('mf-trail-on'), false, 'clearing menu trail removes .mf-trail-on from host row');
+
+        // music-m3u: uniqueName, commands, exportPlaylist (skipping http/webdav), and noteUnsupported
+        const toasts = [];
+        window.MusicToast = { show: (o) => toasts.push(o) };
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-m3u.js'), 'utf8'));
+        assert.equal(window.MusicM3u.uniqueName('夜航', [{ name: '夜航' }, { name: '夜航 (2)' }]), '夜航 (3)');
+        let exportedPayload = null;
+        const m3uApp = {
+            playlist: [{ path: 'C:\\Music\\a.flac', title: 'A', artist: 'X', duration: 180 }],
+            customPlaylists: [{ id: '1', name: '合集', tracks: ['c:/music/a.flac', 'https://dav.example/b.mp3'] }, { id: '2', name: '空', tracks: [] }],
+            api: {
+                importMusicM3u: async () => ({ ok: false, canceled: true }),
+                exportMusicM3u: async (payload) => { exportedPayload = payload; return { ok: true, file: 'C:\\out.m3u8' }; },
+                getPathForFile: () => ''
+            }
+        };
+        window.MusicM3u.setupMusicM3u(m3uApp);
+        const cmds = m3uApp.m3u.commands();
+        assert.equal(cmds.length, 2, 'commands includes import + 1 non-empty playlist export');
+        await m3uApp.m3u.exportPlaylist(m3uApp.customPlaylists[0]);
+        assert.equal(exportedPayload.tracks.length, 1, 'exportPlaylist filters out remote URLs and resolves local track metadata');
+        assert.equal(exportedPayload.tracks[0].title, 'A');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 106 / 127: dynamic .mtst-layer mount defers record() to rAF, fluid-select skips added .md-ql, and panel CSS applies height-auto-safe containment on .md-cmd-list', async () => {
+    const panelCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-panel.css'), 'utf8');
+    assert.match(panelCss, /\.md-cmd-list\s*\{[^}]*width:\s*100%;[^}]*contain:\s*layout paint style;/, '.md-cmd-list uses width: 100% + contain: layout paint style (no size containment under height: auto)');
+
+    const dom = new JSDOM('<!doctype html><body><div class="md-body"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    const rafs = [];
+    window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+    window.cancelAnimationFrame = () => {};
+    window.Element.prototype.animate = () => ({ cancel() {} });
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        // 1. Dynamically mounted .mtst-layer with first toast already inside does 0 sync getBoundingClientRect
+        let t1Reads = 0;
+        let t1Anims = 0;
+        let t1Top = 220;
+        const layer = doc.createElement('div');
+        layer.className = 'mtst-layer';
+        const t1 = doc.createElement('div');
+        t1.getBoundingClientRect = () => { t1Reads += 1; return { top: t1Top, left: 0, width: 200, height: 40 }; };
+        t1.animate = () => { t1Anims += 1; return { cancel() {} }; };
+        layer.appendChild(t1);
+        doc.body.appendChild(layer);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Reads, 0, 'dynamic .mtst-layer mount skips synchronous getBoundingClientRect inside bodyObs');
+        assert.equal(rafs.length, 1, 'dynamic .mtst-layer schedules one rAF baseline record');
+
+        rafs.splice(0).forEach((fn) => fn(16));
+        assert.equal(t1Reads, 1, 'rAF records initial toast top');
+        t1Top = 172;
+        const t2 = doc.createElement('div');
+        t2.getBoundingClientRect = () => ({ top: 220, left: 0, width: 200, height: 40 });
+        t2.animate = () => ({ cancel() {} });
+        layer.appendChild(t2);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Anims, 1, 'subsequent stacked toast still triggers FLIP shift animation');
+
+        // 2. Appending .md-ql inside .md-body does not trigger getElementsByTagName("select") scan
+        const bodyHost = doc.querySelector('.md-body');
+        const ql = doc.createElement('div');
+        ql.className = 'md-ql';
+        const child = doc.createElement('div');
+        child.textContent = 'row';
+        ql.appendChild(child);
+        let selectScans = 0;
+        const origGetTag = ql.getElementsByTagName.bind(ql);
+        ql.getElementsByTagName = (tag) => {
+            if (String(tag).toLowerCase() === 'select') selectScans += 1;
+            return origGetTag(tag);
+        };
+        bodyHost.appendChild(ql);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(selectScans, 0, 'music-fluid-select skips scanning added .md-ql container');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

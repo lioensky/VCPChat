@@ -7,6 +7,7 @@
         return Number.isFinite(number) ? number : fallback;
     };
     const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, finiteNumber(value, min)));
+    const clamp01Num = (value) => (value > 0 && value < Infinity ? (value < 1 ? value : 1) : 0);
 
     const hashString = (input) => {
         let hash = 2166136261;
@@ -33,6 +34,18 @@
         ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
     const splitGraphemes = (text) => {
         const value = String(text ?? '');
+        const len = value.length;
+        if (!len) return [];
+        let allAsciiPrintable = true;
+        for (let i = 0; i < len; i += 1) {
+            const c = value.charCodeAt(i);
+            if (c < 0x20 || c > 0x7e) { allAsciiPrintable = false; break; }
+        }
+        if (allAsciiPrintable) {
+            const out = new Array(len);
+            for (let i = 0; i < len; i += 1) out[i] = value[i];
+            return out;
+        }
         return graphemeSegmenter
             ? Array.from(graphemeSegmenter.segment(value), (entry) => entry.segment)
             : Array.from(value);
@@ -45,23 +58,30 @@
     const buildFallbackWords = (line) => {
         if (!line?.fullText) return EMPTY_WORDS;
         const graphemes = splitGraphemes(line.fullText);
-        const visibleCount = Math.max(1, graphemes.filter((char) => char.trim()).length);
+        const len = graphemes.length;
+        let visibleTotal = 0;
+        for (let i = 0; i < len; i += 1) {
+            if (graphemes[i].trim()) visibleTotal += 1;
+        }
+        const visibleCount = visibleTotal > 0 ? visibleTotal : 1;
         const duration = Math.max(0.4, line.endTime - line.startTime);
         let visibleIndex = 0;
-
-        return graphemes.map((char, index) => {
+        const out = new Array(len);
+        for (let index = 0; index < len; index += 1) {
+            const char = graphemes[index];
             const isSpace = !char.trim();
             const ordinal = visibleIndex;
             if (!isSpace) visibleIndex += 1;
             const startRatio = ordinal / visibleCount;
             const endRatio = isSpace ? startRatio : visibleIndex / visibleCount;
-            return {
+            out[index] = {
                 text: char,
                 startTime: line.startTime + duration * startRatio,
                 endTime: line.startTime + duration * Math.max(endRatio, startRatio + 0.01),
                 index
             };
-        });
+        }
+        return out;
     };
 
     const normalizeLine = (line, index, lines) => {
@@ -80,23 +100,33 @@
             if (gap > 5 && gap > reading) inferredEnd = startTime + reading;
         }
         const endTime = Math.max(startTime + 0.08, declaredEnd || inferredEnd);
-        const words = Array.isArray(line?.words) && line.words.length
-            ? line.words.map((word, wordIndex) => {
+        let words = EMPTY_WORDS;
+        if (Array.isArray(line?.words) && line.words.length) {
+            const rawWords = line.words;
+            words = rawWords.slice(0, 0);
+            words.length = rawWords.length;
+            for (let wordIndex = 0; wordIndex < rawWords.length; wordIndex += 1) {
+                const word = rawWords[wordIndex];
                 const wordStart = finiteNumber(word?.startTime, startTime);
                 const wordEnd = Math.max(wordStart, finiteNumber(word?.endTime, endTime));
-                const syllables = Array.isArray(word?.syllables)
-                    ? word.syllables.map((syllable, syllableIndex) => {
+                let syllables = EMPTY_WORDS;
+                if (Array.isArray(word?.syllables)) {
+                    const rawSyls = word.syllables;
+                    syllables = rawSyls.slice(0, 0);
+                    syllables.length = rawSyls.length;
+                    for (let syllableIndex = 0; syllableIndex < rawSyls.length; syllableIndex += 1) {
+                        const syllable = rawSyls[syllableIndex];
                         const syllableStart = finiteNumber(syllable?.startTime, wordStart);
-                        return {
+                        syllables[syllableIndex] = {
                             ...syllable,
                             text: String(syllable?.text ?? ''),
                             startTime: syllableStart,
                             endTime: Math.max(syllableStart, finiteNumber(syllable?.endTime, wordEnd)),
                             index: syllableIndex
                         };
-                    })
-                    : EMPTY_WORDS;
-                return {
+                    }
+                }
+                words[wordIndex] = {
                     ...word,
                     text: String(word?.text ?? ''),
                     startTime: wordStart,
@@ -104,8 +134,8 @@
                     syllables,
                     index: wordIndex
                 };
-            })
-            : EMPTY_WORDS;
+            }
+        }
         const normalized = {
             ...line,
             index,
@@ -121,13 +151,21 @@
             words
         };
         normalized.resolvedWords = words.length ? words : buildFallbackWords(normalized);
-        normalized.vocalEndTime = normalized.resolvedWords.reduce((latest, word) => {
-            const syllableEnd = (word.syllables || []).reduce(
-                (end, syllable) => Math.max(end, finiteNumber(syllable.endTime, end)),
-                finiteNumber(word.endTime, latest)
-            );
-            return Math.max(latest, finiteNumber(word.endTime, latest), syllableEnd);
-        }, startTime);
+        let latestVocal = startTime;
+        const rWords = normalized.resolvedWords;
+        for (let wi = 0; wi < rWords.length; wi += 1) {
+            const word = rWords[wi];
+            const wEnd = finiteNumber(word.endTime, latestVocal);
+            if (wEnd > latestVocal) latestVocal = wEnd;
+            const syls = word.syllables;
+            if (syls && syls.length) {
+                for (let si = 0; si < syls.length; si += 1) {
+                    const sEnd = finiteNumber(syls[si].endTime, latestVocal);
+                    if (sEnd > latestVocal) latestVocal = sEnd;
+                }
+            }
+        }
+        normalized.vocalEndTime = latestVocal;
         return normalized;
     };
 
@@ -135,14 +173,24 @@
         if (!Array.isArray(lines) || !lines.length) return EMPTY_LINES;
         const cached = normalizedLinesCache.get(lines);
         if (cached) return cached;
-        const normalized = lines.map((line, index) => normalizeLine(line, index, lines));
+        const len = lines.length;
+        const normalized = lines.slice(0, 0);
+        normalized.length = len;
+        for (let index = 0; index < len; index += 1) normalized[index] = normalizeLine(lines[index], index, lines);
         normalizedLinesCache.set(lines, normalized);
         return normalized;
     };
 
+    // Lyric files carry marker lines and placeholder translations ("//",
+    // "●●●", dashes) that time a break but are not text. A string counts as
+    // text only if it holds a letter or a digit, in any script.
+    const READABLE_TEXT_RE = /[\p{L}\p{N}]/u;
+    const readableText = (text) => READABLE_TEXT_RE.test(String(text ?? ''));
+
     const resolveSupplementalText = (line) => {
-        const translation = String(line?.translation ?? '').trim();
-        const romanization = String(line?.romanization ?? '').trim();
+        const keep = text => { const value = String(text ?? '').trim(); return readableText(value) ? value : ''; };
+        const translation = keep(line?.translation);
+        const romanization = keep(line?.romanization);
         if (translation && romanization && translation !== romanization) {
             return `${romanization}\n${translation}`;
         }
@@ -152,58 +200,83 @@
     const buildGlyphTimeline = (line) => {
         if (!line) return EMPTY_WORDS;
         const words = line.resolvedWords || line.words || EMPTY_WORDS;
-        const source = words.flatMap((word, wordIndex) => {
-            const validSyllables = Array.isArray(word.syllables) && word.syllables.length
-                && word.syllables.map(part => part.text).join('') === word.text;
-            const parts = validSyllables ? word.syllables : [word];
-            return parts.flatMap((part, partIndex) => {
+        const source = [];
+        let joinedSource = '';
+        for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+            const word = words[wordIndex];
+            const syls = word.syllables;
+            let validSyllables = false;
+            if (Array.isArray(syls) && syls.length) {
+                let sylText = '';
+                for (let si = 0; si < syls.length; si += 1) sylText += syls[si].text;
+                validSyllables = sylText === word.text;
+            }
+            const partCount = validSyllables ? syls.length : 1;
+            const fallbackStart = finiteNumber(word.startTime, line.startTime);
+            const fallbackEnd = finiteNumber(word.endTime, line.endTime);
+            for (let partIndex = 0; partIndex < partCount; partIndex += 1) {
+                const part = validSyllables ? syls[partIndex] : word;
                 const graphemes = splitGraphemes(part.text);
-                const startTime = finiteNumber(part.startTime, finiteNumber(word.startTime, line.startTime));
-                const endTime = Math.max(startTime, finiteNumber(part.endTime, finiteNumber(word.endTime, line.endTime)));
-                return graphemes.map((text, glyphIndex) => ({
-                    text,
-                    char: text,
-                    startTime: startTime + (endTime - startTime) * glyphIndex / Math.max(1, graphemes.length),
-                    endTime: startTime + (endTime - startTime) * (glyphIndex + 1) / Math.max(1, graphemes.length),
-                    wordIndex,
-                    syllableIndex: validSyllables ? partIndex : -1
-                }));
-            });
-        });
+                const gLen = graphemes.length;
+                const invLen = gLen > 0 ? 1 / gLen : 1;
+                const startTime = finiteNumber(part.startTime, fallbackStart);
+                const endTime = Math.max(startTime, finiteNumber(part.endTime, fallbackEnd));
+                const span = endTime - startTime;
+                const sIdx = validSyllables ? partIndex : -1;
+                for (let glyphIndex = 0; glyphIndex < gLen; glyphIndex += 1) {
+                    const text = graphemes[glyphIndex];
+                    joinedSource += text;
+                    source.push({
+                        text,
+                        char: text,
+                        startTime: startTime + span * glyphIndex * invLen,
+                        endTime: startTime + span * (glyphIndex + 1) * invLen,
+                        wordIndex,
+                        syllableIndex: sIdx
+                    });
+                }
+            }
+        }
         const fullText = splitGraphemes(line.fullText);
-        if (!fullText.length || source.map(glyph => glyph.text).join('') === line.fullText) return source;
+        if (!fullText.length || joinedSource === line.fullText) return source;
 
         // Reconcile tokenized words with the untouched display string. This keeps
         // spaces omitted by legacy LRC tokenization and punctuation not carrying a
         // timing tag, while every timed source glyph preserves its original clock.
-        const aligned = fullText.map(text => ({
-            text,
-            char: text,
-            startTime: line.startTime,
-            endTime: line.startTime,
-            wordIndex: -1,
-            syllableIndex: -1
-        }));
+        const fullLen = fullText.length;
+        const aligned = new Array(fullLen);
+        for (let i = 0; i < fullLen; i += 1) {
+            const text = fullText[i];
+            aligned[i] = {
+                text,
+                char: text,
+                startTime: line.startTime,
+                endTime: line.startTime,
+                wordIndex: -1,
+                syllableIndex: -1
+            };
+        }
         let cursor = 0;
         let lastTime = line.startTime;
-        source.forEach(glyph => {
+        for (let si = 0; si < source.length; si += 1) {
+            const glyph = source[si];
             let target = -1;
-            for (let index = cursor; index < fullText.length; index += 1) {
+            for (let index = cursor; index < fullLen; index += 1) {
                 if (fullText[index] === glyph.text) {
                     target = index;
                     break;
                 }
             }
-            if (target < 0) return;
+            if (target < 0) continue;
             for (let index = cursor; index < target; index += 1) {
                 aligned[index].startTime = glyph.startTime;
                 aligned[index].endTime = glyph.startTime;
             }
             aligned[target] = glyph;
             cursor = target + 1;
-            lastTime = Math.max(lastTime, glyph.endTime);
-        });
-        for (let index = cursor; index < aligned.length; index += 1) {
+            if (glyph.endTime > lastTime) lastTime = glyph.endTime;
+        }
+        for (let index = cursor; index < fullLen; index += 1) {
             aligned[index].startTime = lastTime;
             aligned[index].endTime = lastTime;
         }
@@ -244,9 +317,17 @@
     };
 
     const findActiveLineIndex = (lines, playbackTime, previousIndex = -1) => {
-        if (!lines.length) return -1;
+        const len = lines.length;
+        if (!len) return -1;
+        // Fast path for monotonic playback: stay on previousIndex or step to previousIndex + 1 in O(1).
+        if (previousIndex >= 0 && previousIndex < len && playbackTime >= lines[previousIndex].startTime) {
+            const next = previousIndex + 1;
+            if (next >= len || playbackTime < lines[next].startTime) return previousIndex;
+            const afterNext = next + 1;
+            if (afterNext >= len || playbackTime < lines[afterNext].startTime) return next;
+        }
         let low = 0;
-        let high = lines.length - 1;
+        let high = len - 1;
         let result = -1;
 
         while (low <= high) {
@@ -263,38 +344,140 @@
         return result;
     };
 
+    const EMPTY_WORD_STATE = Object.freeze({
+        words: EMPTY_WORDS,
+        activeWordIndex: -1,
+        wordProgress: 0,
+        wordStates: EMPTY_WORDS
+    });
+    const wordTemplatesCache = new WeakMap();
+    const EMPTY_AUDIO_BANDS = Object.freeze({
+        power: 0,
+        bass: 0,
+        lowMid: 0,
+        mid: 0,
+        vocal: 0,
+        treble: 0,
+        spectrum: EMPTY_WORDS
+    });
+    let lastWordLine = null;
+    let lastWordTime = NaN;
+    let lastWordResult = EMPTY_WORD_STATE;
     const resolveWordState = (line, playbackTime) => {
-        if (!line) return {
-            words: [],
-            activeWordIndex: -1,
-            wordProgress: 0,
-            wordStates: []
-        };
+        if (!line) return EMPTY_WORD_STATE;
+        if (line === lastWordLine && playbackTime === lastWordTime) return lastWordResult;
 
         const words = line.resolvedWords || (line.words.length ? line.words : buildFallbackWords(line));
+        const len = words.length;
+        if (!len) {
+            lastWordLine = line;
+            lastWordTime = playbackTime;
+            lastWordResult = EMPTY_WORD_STATE;
+            return EMPTY_WORD_STATE;
+        }
+        let tpl = wordTemplatesCache.get(words);
+        if (!tpl || tpl.waiting.length !== len) {
+            let minStart = Infinity;
+            let maxEnd = -Infinity;
+            for (let i = 0; i < len; i += 1) {
+                const w = words[i];
+                if (w.startTime < minStart) minStart = w.startTime;
+                if (w.endTime > maxEnd) maxEnd = w.endTime;
+            }
+            tpl = {
+                waiting: new Array(len),
+                passed: new Array(len),
+                minStart,
+                maxEnd,
+                allWaitingResult: null,
+                allPassedResult: null
+            };
+            wordTemplatesCache.set(words, tpl);
+        }
+        // Fast paths when playback is strictly before all words or past all words: zero per-frame allocations.
+        if (playbackTime < tpl.minStart) {
+            if (!tpl.allWaitingResult) {
+                const states = new Array(len);
+                for (let i = 0; i < len; i += 1) {
+                    let entry = tpl.waiting[i];
+                    if (!entry) {
+                        entry = Object.freeze({ ...words[i], progress: 0, status: 'waiting' });
+                        tpl.waiting[i] = entry;
+                    }
+                    states[i] = entry;
+                }
+                tpl.allWaitingResult = Object.freeze({
+                    words,
+                    activeWordIndex: -1,
+                    wordProgress: 0,
+                    wordStates: Object.freeze(states)
+                });
+            }
+            lastWordLine = line;
+            lastWordTime = playbackTime;
+            lastWordResult = tpl.allWaitingResult;
+            return tpl.allWaitingResult;
+        }
+        if (playbackTime >= tpl.maxEnd) {
+            if (!tpl.allPassedResult) {
+                const states = new Array(len);
+                for (let i = 0; i < len; i += 1) {
+                    let entry = tpl.passed[i];
+                    if (!entry) {
+                        entry = Object.freeze({ ...words[i], progress: 1, status: 'passed' });
+                        tpl.passed[i] = entry;
+                    }
+                    states[i] = entry;
+                }
+                tpl.allPassedResult = Object.freeze({
+                    words,
+                    activeWordIndex: -1,
+                    wordProgress: 0,
+                    wordStates: Object.freeze(states)
+                });
+            }
+            lastWordLine = line;
+            lastWordTime = playbackTime;
+            lastWordResult = tpl.allPassedResult;
+            return tpl.allPassedResult;
+        }
         let activeWordIndex = -1;
         let activeProgress = 0;
-        const wordStates = words.map((word, index) => {
-            const duration = Math.max(0.001, word.endTime - word.startTime);
-            const progress = clamp((playbackTime - word.startTime) / duration);
-            const status = playbackTime < word.startTime
-                ? 'waiting'
-                : playbackTime >= word.endTime
-                    ? 'passed'
-                    : 'active';
-            if (status === 'active') {
+        const wordStates = new Array(len);
+        for (let index = 0; index < len; index += 1) {
+            const word = words[index];
+            if (playbackTime < word.startTime) {
+                let entry = tpl.waiting[index];
+                if (!entry) {
+                    entry = Object.freeze({ ...word, progress: 0, status: 'waiting' });
+                    tpl.waiting[index] = entry;
+                }
+                wordStates[index] = entry;
+            } else if (playbackTime >= word.endTime) {
+                let entry = tpl.passed[index];
+                if (!entry) {
+                    entry = Object.freeze({ ...word, progress: 1, status: 'passed' });
+                    tpl.passed[index] = entry;
+                }
+                wordStates[index] = entry;
+            } else {
+                const duration = Math.max(0.001, word.endTime - word.startTime);
+                const progress = clamp((playbackTime - word.startTime) / duration);
                 activeWordIndex = index;
                 activeProgress = progress;
+                wordStates[index] = { ...word, progress, status: 'active' };
             }
-            return { ...word, progress, status };
-        });
+        }
 
-        return {
+        lastWordLine = line;
+        lastWordTime = playbackTime;
+        lastWordResult = {
             words,
             activeWordIndex,
             wordProgress: activeProgress,
             wordStates
         };
+        return lastWordResult;
     };
 
     // Retained as a public utility for compatibility. The per-frame multi-band
@@ -308,36 +491,55 @@
         return clamp(total / Math.max(1, end - start));
     };
 
+    let bandPlanLen = -1;
+    let bandPlan = null;
+    const getBandPlan = (length) => {
+        if (bandPlanLen === length && bandPlan) return bandPlan;
+        const r0a = Math.max(0, Math.floor(length * 0.01));
+        const r0b = Math.min(length, Math.max(1, Math.ceil(length * 0.10)));
+        const r1a = Math.max(0, Math.floor(length * 0.10));
+        const r1b = Math.min(length, Math.max(r1a + 1, Math.ceil(length * 0.24)));
+        const r2a = Math.max(0, Math.floor(length * 0.24));
+        const r2b = Math.min(length, Math.max(r2a + 1, Math.ceil(length * 0.46)));
+        const r3a = Math.max(0, Math.floor(length * 0.18));
+        const r3b = Math.min(length, Math.max(r3a + 1, Math.ceil(length * 0.58)));
+        const r4a = Math.max(0, Math.floor(length * 0.58));
+        const r4b = Math.min(length, Math.max(r4a + 1, Math.ceil(length * 0.98)));
+        bandPlanLen = length;
+        bandPlan = {
+            r0a, r0b, inv0: 1 / Math.max(1, r0b - r0a),
+            r1a, r1b, inv1: 1 / Math.max(1, r1b - r1a),
+            r2a, r2b, inv2: 1 / Math.max(1, r2b - r2a),
+            r3a, r3b, inv3: 1 / Math.max(1, r3b - r3a),
+            r4a, r4b, inv4: 1 / Math.max(1, r4b - r4a)
+        };
+        return bandPlan;
+    };
+
     const resolveAudioBands = (spectrum) => {
-        const values = spectrum || [];
-        if (!values.length) {
-            return { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
-        }
-
+        const values = spectrum || EMPTY_WORDS;
         const length = values.length;
-        const ranges = [
-            [Math.max(0, Math.floor(length * 0.01)), Math.min(length, Math.max(1, Math.ceil(length * 0.10)))],
-            [Math.max(0, Math.floor(length * 0.10)), Math.min(length, Math.max(Math.floor(length * 0.10) + 1, Math.ceil(length * 0.24)))],
-            [Math.max(0, Math.floor(length * 0.24)), Math.min(length, Math.max(Math.floor(length * 0.24) + 1, Math.ceil(length * 0.46)))],
-            [Math.max(0, Math.floor(length * 0.18)), Math.min(length, Math.max(Math.floor(length * 0.18) + 1, Math.ceil(length * 0.58)))],
-            [Math.max(0, Math.floor(length * 0.58)), Math.min(length, Math.max(Math.floor(length * 0.58) + 1, Math.ceil(length * 0.98)))]
-        ];
-        const totals = [0, 0, 0, 0, 0];
-
-        // One spectrum traversal; additions within every band retain the original
-        // ascending-index order, preserving the previous audio response values.
-        for (let index = 0; index < length; index += 1) {
-            const value = Number(values[index]) || 0;
-            for (let band = 0; band < ranges.length; band += 1) {
-                if (index >= ranges[band][0] && index < ranges[band][1]) totals[band] += value;
-            }
+        if (!length) {
+            return values === EMPTY_WORDS
+                ? EMPTY_AUDIO_BANDS
+                : { power: 0, bass: 0, lowMid: 0, mid: 0, vocal: 0, treble: 0, spectrum: values };
         }
 
-        const averages = totals.map((total, index) => clamp(
-            total / Math.max(1, ranges[index][1] - ranges[index][0])
-        ));
-        const [bass, lowMid, mid, vocal, treble] = averages;
-        const power = clamp(bass * 0.25 + lowMid * 0.2 + mid * 0.2 + vocal * 0.25 + treble * 0.1);
+        const p = getBandPlan(length);
+        let t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+        // Five tight branchless loops over cached band slices; avoids per-frame range math and range checks per bin.
+        for (let i = p.r0a; i < p.r0b; i += 1) { const v = +values[i]; if (v === v) t0 += v; }
+        for (let i = p.r1a; i < p.r1b; i += 1) { const v = +values[i]; if (v === v) t1 += v; }
+        for (let i = p.r2a; i < p.r2b; i += 1) { const v = +values[i]; if (v === v) t2 += v; }
+        for (let i = p.r3a; i < p.r3b; i += 1) { const v = +values[i]; if (v === v) t3 += v; }
+        for (let i = p.r4a; i < p.r4b; i += 1) { const v = +values[i]; if (v === v) t4 += v; }
+
+        const bass = clamp01Num(t0 * p.inv0);
+        const lowMid = clamp01Num(t1 * p.inv1);
+        const mid = clamp01Num(t2 * p.inv2);
+        const vocal = clamp01Num(t3 * p.inv3);
+        const treble = clamp01Num(t4 * p.inv4);
+        const power = clamp01Num(bass * 0.25 + lowMid * 0.2 + mid * 0.2 + vocal * 0.25 + treble * 0.1);
         return { power, bass, lowMid, mid, vocal, treble, spectrum: values };
     };
 
@@ -346,6 +548,7 @@
     // schedule cuts or change a deterministic camera pose.
     const createAudioOnset = () => {
         const bins = new Float32Array(48);
+        let binsDirty = false;
         let lastTime = null, track = null, source = null, playing = false;
         let baseline = 0.02, energy = 0, hitAt = -Infinity, hitStrength = 0, hits = 0;
         const state = { impact: 0, energy: 0, time: 0, reset: true, onsets: 0 };
@@ -362,12 +565,22 @@
                 const spectrum = frame.audio?.spectrum || EMPTY_WORDS;
                 if (reset || resumed || (frame.isPlaying && dt > 0)) {
                     let flux = 0;
-                    for (let i = 0; i < bins.length; i++) {
-                        const value = clamp(spectrum[Math.floor(i / bins.length * spectrum.length)]);
-                        flux += Math.max(0, value - bins[i]);
-                        bins[i] = value;
+                    const specLen = spectrum.length;
+                    if (specLen > 0) {
+                        binsDirty = true;
+                        const scale = specLen / bins.length;
+                        for (let i = 0; i < bins.length; i++) {
+                            const raw = +spectrum[(i * scale) | 0];
+                            const value = raw > 0 && raw < Infinity ? (raw < 1 ? raw : 1) : 0;
+                            const diff = value - bins[i];
+                            if (diff > 0) flux += diff;
+                            bins[i] = value;
+                        }
+                        flux /= bins.length;
+                    } else if (binsDirty) {
+                        bins.fill(0);
+                        binsDirty = false;
                     }
-                    flux /= bins.length;
                     if (reset || resumed) {
                         baseline = 0.02;
                         hitAt = -Infinity;
@@ -396,8 +609,51 @@
                 return state;
             },
             snapshot() { return { ...state, historyBins: bins.length }; },
-            reset() { lastTime = null; hitAt = -Infinity; bins.fill(0); }
+            reset() { lastTime = null; hitAt = -Infinity; bins.fill(0); binsDirty = false; }
         };
+    };
+
+    const plainLinesCache = new WeakMap();
+    const plainLinesOf = (source) => {
+        if (!Array.isArray(source) || !source.length) return EMPTY_LINES;
+        let cached = plainLinesCache.get(source);
+        if (!cached) {
+            const list = [];
+            for (let i = 0; i < source.length; i += 1) {
+                const text = String(source[i] ?? '').trim();
+                if (readableText(text)) list.push(text);
+            }
+            cached = Object.freeze(list);
+            plainLinesCache.set(source, cached);
+        }
+        return cached;
+    };
+
+    let lastNextLinesSrc = null;
+    let lastNextLinesIdx = -2;
+    let lastNextLinesVal = EMPTY_LINES;
+    const nextLinesOf = (lines, currentLineIndex) => {
+        if (!lines.length) return EMPTY_LINES;
+        if (lines === lastNextLinesSrc && currentLineIndex === lastNextLinesIdx) return lastNextLinesVal;
+        lastNextLinesSrc = lines;
+        lastNextLinesIdx = currentLineIndex;
+        const slice = currentLineIndex >= 0
+            ? lines.slice(currentLineIndex + 1, currentLineIndex + 4)
+            : lines.slice(0, 3);
+        lastNextLinesVal = slice.length ? Object.freeze(slice) : EMPTY_LINES;
+        return lastNextLinesVal;
+    };
+
+    let cachedViewport = null;
+    const resolveViewport = () => {
+        const width = global.innerWidth || 1;
+        const height = global.innerHeight || 1;
+        const dpr = Math.min(2, global.devicePixelRatio || 1);
+        if (cachedViewport && cachedViewport.width === width && cachedViewport.height === height && cachedViewport.dpr === dpr) {
+            return cachedViewport;
+        }
+        cachedViewport = Object.freeze({ width, height, dpr });
+        return cachedViewport;
     };
 
     const createFrame = (app, now = performance.now()) => {
@@ -409,8 +665,9 @@
         const lineDuration = activeLine ? Math.max(0.001, activeLine.endTime - activeLine.startTime) : 1;
         const lineProgress = activeLine ? clamp((playbackTime - activeLine.startTime) / lineDuration) : 0;
         const wordState = resolveWordState(activeLine, playbackTime);
-        const spectrum = Array.isArray(app?.currentVisualizerData) || ArrayBuffer.isView(app?.currentVisualizerData)
-            ? app.currentVisualizerData : [];
+        const rawSpec = app?.currentVisualizerData;
+        const spectrum = (Array.isArray(rawSpec) || ArrayBuffer.isView(rawSpec)) && rawSpec.length
+            ? rawSpec : EMPTY_WORDS;
         const track = app?.playlist?.[app?.currentTrackIndex] || null;
 
         return {
@@ -422,19 +679,27 @@
             currentLineIndex,
             activeLine,
             previousLine: currentLineIndex > 0 ? lines[currentLineIndex - 1] : null,
-            nextLines: currentLineIndex >= 0 ? lines.slice(currentLineIndex + 1, currentLineIndex + 4) : lines.slice(0, 3),
+            nextLines: nextLinesOf(lines, currentLineIndex),
             lineProgress,
-            ...wordState,
+            words: wordState.words,
+            activeWordIndex: wordState.activeWordIndex,
+            wordProgress: wordState.wordProgress,
+            wordStates: wordState.wordStates,
             lines,
+            // 只有纯文本、不带时间的歌词（app.currentLyricsPlainLines）：原样交给舞台，
+            // 要不要按时长铺开由舞台自己决定（MusicStageModeUtils.withPlainLyrics）
+            plainLines: lines.length ? EMPTY_LINES : plainLinesOf(app?.currentLyricsPlainLines),
             audio: resolveAudioBands(spectrum),
-            viewport: {
-                width: global.innerWidth || 1,
-                height: global.innerHeight || 1,
-                dpr: Math.min(2, global.devicePixelRatio || 1)
-            },
+            viewport: resolveViewport(),
             track
         };
     };
+
+    const INTERLUDE_POW_SIZE = 1024;
+    const INTERLUDE_POW_LUT = new Float32Array(INTERLUDE_POW_SIZE + 1);
+    for (let i = 0; i <= INTERLUDE_POW_SIZE; i += 1) {
+        INTERLUDE_POW_LUT[i] = Math.pow(i / INTERLUDE_POW_SIZE, 0.72);
+    }
 
     const createInterludeVisualizer = (options = {}) => {
         const barCount = Math.max(20, Math.min(64, Math.round(finiteNumber(options.barCount, 36))));
@@ -449,7 +714,11 @@
         const bars = document.createElement('span');
         bars.className = 'stage-interlude-bars';
         bars.setAttribute('aria-hidden', 'true');
+        const barSpectrumRatios = new Float32Array(barCount);
         const barsList = Array.from({ length: barCount }, (_, index) => {
+            const ratio = index / barCount;
+            const mirrored = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
+            barSpectrumRatios[index] = 0.025 + Math.pow(mirrored, 1.65) * 0.92;
             const bar = document.createElement('i');
             bar.style.setProperty('--interlude-index', String(index));
             bar.style.setProperty('--interlude-angle', `${index * 360 / barCount}deg`);
@@ -462,12 +731,42 @@
         let visible = false;
         let destroyed = false;
         let lastLabel = '';
+        let settledIdle = false;
+        let lastPlaying = null;
+        let lastPowerQ = -1;
+        let lastPhaseQ = NaN;
+        const lastBarScaleQ = new Int32Array(barCount).fill(-1);
+        const lastBarOpacityQ = new Int32Array(barCount).fill(-1);
+        let cachedSpecLen = -1;
+        let barLo = null;
+        let barHi = null;
+        let barInvSpan = null;
+        let interludePrefix = new Float64Array(0);
+        const ensureBarRanges = (specLen) => {
+            if (cachedSpecLen === specLen && barLo) return;
+            cachedSpecLen = specLen;
+            barLo = new Int32Array(barCount);
+            barHi = new Int32Array(barCount);
+            barInvSpan = new Float32Array(barCount);
+            const radius = Math.max(1, Math.floor(specLen / 128));
+            const maxIdx = specLen - 1;
+            for (let i = 0; i < barCount; i += 1) {
+                const center = Math.min(maxIdx, Math.floor(barSpectrumRatios[i] * specLen));
+                const lo = Math.max(0, center - radius);
+                const hi = Math.min(maxIdx, center + radius);
+                barLo[i] = lo;
+                barHi[i] = hi;
+                barInvSpan[i] = 1 / Math.max(1, hi - lo + 1);
+            }
+        };
+        const reducedMotionQuery = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const update = (frame, state = {}) => {
             if (destroyed) return;
             const nextVisible = state.visible !== false;
             if (nextVisible !== visible) {
                 visible = nextVisible;
                 root.hidden = !visible;
+                settledIdle = false;
             }
             const label = String(state.label || '音乐间奏');
             if (label !== lastLabel) {
@@ -478,42 +777,75 @@
 
             const spectrum = frame?.audio?.spectrum || EMPTY_WORDS;
             const hasSpectrum = spectrum.length > 0;
-            const motion = global.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+            const motion = isReducedMotion(reducedMotionQuery)
                 ? 0 : clamp(finiteNumber(state.intensity, 1), 0, 2);
             const time = finiteNumber(frame?.playbackTime, 0) * motion;
             const playing = Boolean(frame?.isPlaying);
             const power = playing ? clamp(frame?.audio?.power) * Math.min(1, motion) : 0;
-            root.classList.toggle('is-playing', playing);
-            root.style.setProperty('--interlude-power', power.toFixed(4));
+            if (playing !== lastPlaying) {
+                lastPlaying = playing;
+                root.classList.toggle('is-playing', playing);
+            }
+            const powerQ = Math.round(power * 1000);
+            if (powerQ !== lastPowerQ) {
+                lastPowerQ = powerQ;
+                root.style.setProperty('--interlude-power', (powerQ / 1000).toFixed(3));
+            }
             // Same absolute phase on pause: no change of angular speed that jumps the ring.
-            root.style.setProperty('--interlude-phase', `${(time * 3) % 360}deg`);
+            const phaseQ = Math.round(((time * 3) % 360) * 100);
+            if (phaseQ !== lastPhaseQ) {
+                lastPhaseQ = phaseQ;
+                root.style.setProperty('--interlude-phase', `${(phaseQ / 100).toFixed(2)}deg`);
+            }
+            const motionScale = Math.min(1, motion);
+            const staticFrame = !playing || motionScale <= 0;
+            if (staticFrame && settledIdle) return;
+            settledIdle = staticFrame;
 
-            barsList.forEach((bar, index) => {
-                const ratio = index / barCount;
-                let energy;
-                if (hasSpectrum) {
-                    const mirrored = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
-                    const spectrumRatio = 0.025 + Math.pow(mirrored, 1.65) * 0.92;
-                    const center = Math.min(spectrum.length - 1, Math.floor(spectrumRatio * spectrum.length));
-                    const radius = Math.max(1, Math.floor(spectrum.length / 128));
-                    let total = 0;
-                    let samples = 0;
-                    for (let sample = Math.max(0, center - radius); sample <= Math.min(spectrum.length - 1, center + radius); sample += 1) {
-                        total += clamp(spectrum[sample]);
-                        samples += 1;
-                    }
-                    energy = clamp(Math.pow(total / Math.max(1, samples), 0.72));
-                } else {
-                    const wave = Math.sin(time * 0.85 + index * 0.52) * 0.5
-                        + Math.sin(time * 0.43 - index * 0.26) * 0.28;
-                    energy = 0.16 + Math.max(0, wave) * 0.22;
+            const specLen = spectrum.length;
+            let specSum = 0;
+            if (playing && hasSpectrum && motionScale > 0) {
+                ensureBarRanges(specLen);
+                if (interludePrefix.length < specLen + 1) interludePrefix = new Float64Array(specLen + 1);
+                interludePrefix[0] = 0;
+                for (let s = 0; s < specLen; s += 1) {
+                    const v = +spectrum[s];
+                    specSum += v > 0 ? (v > 1 ? 1 : v) : 0;
+                    interludePrefix[s + 1] = specSum;
                 }
-                const settled = playing ? energy * Math.min(1, motion) : 0;
-                const length = 0.28 + settled * 0.72;
-                // Translate from the centre first; scaling only changes the stroke length.
-                bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${length.toFixed(4)})`;
-                bar.style.opacity = (0.3 + settled * 0.5).toFixed(4);
-            });
+            }
+            for (let index = 0; index < barsList.length; index += 1) {
+                const bar = barsList[index];
+                let settled = 0;
+                if (playing && motionScale > 0) {
+                    let energy;
+                    if (hasSpectrum) {
+                        if (specSum <= 0) {
+                            energy = 0;
+                        } else {
+                            const avg = (interludePrefix[barHi[index] + 1] - interludePrefix[barLo[index]]) * barInvSpan[index];
+                            const idx = avg >= 1 ? INTERLUDE_POW_SIZE : avg <= 0 ? 0 : (avg * INTERLUDE_POW_SIZE + 0.5) | 0;
+                            energy = INTERLUDE_POW_LUT[idx];
+                        }
+                    } else {
+                        const wave = Math.sin(time * 0.85 + index * 0.52) * 0.5
+                            + Math.sin(time * 0.43 - index * 0.26) * 0.28;
+                        energy = 0.16 + Math.max(0, wave) * 0.22;
+                    }
+                    settled = energy * motionScale;
+                }
+                const lengthQ = Math.round((0.28 + settled * 0.72) * 1000);
+                if (lengthQ !== lastBarScaleQ[index]) {
+                    lastBarScaleQ[index] = lengthQ;
+                    // Translate from the centre first; scaling only changes the stroke length.
+                    bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${(lengthQ / 1000).toFixed(3)})`;
+                }
+                const opQ = Math.round((0.3 + settled * 0.5) * 1000);
+                if (opQ !== lastBarOpacityQ[index]) {
+                    lastBarOpacityQ[index] = opQ;
+                    bar.style.opacity = (opQ / 1000).toFixed(3);
+                }
+            }
         };
         const destroy = () => {
             if (destroyed) return;
@@ -572,6 +904,524 @@
         }
     }
 
+    const isReducedMotion = (mediaQuery) => {
+        if (typeof global.MusicMotion?.reduced === 'function') return Boolean(global.MusicMotion.reduced());
+        return Boolean(mediaQuery?.matches);
+    };
+
+    const PIXI_SCRIPT_SRC = '../node_modules/pixi.js/dist/pixi.min.js';
+    let pixiLoadPromise = null;
+    const ensurePixi = () => {
+        if (global.PIXI) return Promise.resolve(global.PIXI);
+        if (pixiLoadPromise) return pixiLoadPromise;
+        const doc = global.document;
+        if (!doc || typeof doc.createElement !== 'function') return Promise.resolve(null);
+        pixiLoadPromise = new Promise((resolve) => {
+            const finish = () => {
+                if (global.PIXI) {
+                    resolve(global.PIXI);
+                } else {
+                    pixiLoadPromise = null;
+                    resolve(null);
+                }
+            };
+            const existing = doc.querySelector?.('script[data-vmusic-pixi]')
+                || doc.querySelector?.('script[src*="pixi.min.js"]');
+            if (existing) {
+                if (existing.dataset?.vmusicPixiLoaded === '1') { finish(); return; }
+                existing.addEventListener('load', finish, { once: true });
+                existing.addEventListener('error', () => { pixiLoadPromise = null; resolve(null); }, { once: true });
+                return;
+            }
+            const script = doc.createElement('script');
+            if (script.dataset) script.dataset.vmusicPixi = '1';
+            script.src = PIXI_SCRIPT_SRC;
+            script.async = true;
+            script.addEventListener('load', () => {
+                if (script.dataset) script.dataset.vmusicPixiLoaded = '1';
+                finish();
+            }, { once: true });
+            script.addEventListener('error', () => {
+                script.remove?.();
+                pixiLoadPromise = null;
+                resolve(null);
+            }, { once: true });
+            const parent = doc.body || doc.head || doc.documentElement;
+            if (!parent || typeof parent.appendChild !== 'function') {
+                pixiLoadPromise = null;
+                resolve(null);
+                return;
+            }
+            parent.appendChild(script);
+        });
+        return pixiLoadPromise;
+    };
+
+    const MAX_PENDING_WEBGL_RELEASES = 2;
+    const pendingWebGLReleases = new Set();
+    const abortedProgramContexts = new WeakSet();
+    let webglReleaseUnloadBound = false;
+    const flushPendingWebGLReleases = () => {
+        for (const finish of Array.from(pendingWebGLReleases)) finish();
+    };
+    const releaseWebGLContext = (target, { immediate = false } = {}) => {
+        if (!target) return false;
+        const gl = typeof target.getContext === 'function' ? target.getContext() : target;
+        if (gl && abortedProgramContexts.has(gl)) {
+            abortedProgramContexts.delete(gl);
+            immediate = true;
+        }
+        const forceSync = () => {
+            try {
+                if (typeof target.forceContextLoss === 'function') target.forceContextLoss();
+                else gl?.getExtension?.('WEBGL_lose_context')?.loseContext?.();
+            } catch (_) {}
+        };
+        if (!gl || typeof gl.getExtension !== 'function') {
+            forceSync();
+            return true;
+        }
+        try { if (gl.isContextLost?.()) return true; } catch (_) { return false; }
+        const ext = gl.getExtension('WEBGL_lose_context');
+        if (!ext || typeof ext.loseContext !== 'function') {
+            forceSync();
+            return true;
+        }
+        const doc = global.document;
+        if (immediate || doc?.hidden || typeof gl.fenceSync !== 'function' || typeof global.setTimeout !== 'function') {
+            forceSync();
+            return true;
+        }
+        while (pendingWebGLReleases.size >= MAX_PENDING_WEBGL_RELEASES) {
+            const oldest = pendingWebGLReleases.values().next().value;
+            if (!oldest) break;
+            oldest();
+        }
+        if (!webglReleaseUnloadBound && typeof global.addEventListener === 'function') {
+            webglReleaseUnloadBound = true;
+            global.addEventListener('beforeunload', flushPendingWebGLReleases, { once: true });
+        }
+        let sync = null;
+        try {
+            sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            gl.flush?.();
+        } catch (_) {
+            sync = null;
+        }
+        if (!sync) {
+            forceSync();
+            return true;
+        }
+        let timer = 0;
+        let done = false;
+        let tries = 0;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            if (timer) { global.clearTimeout(timer); timer = 0; }
+            pendingWebGLReleases.delete(finish);
+            try { if (!gl.isContextLost?.()) gl.deleteSync?.(sync); } catch (_) {}
+            try {
+                const canvas = gl.canvas;
+                if (canvas && !canvas.isConnected) { canvas.width = 1; canvas.height = 1; }
+            } catch (_) {}
+            try { if (!gl.isContextLost?.()) ext.loseContext(); } catch (_) {}
+        };
+        pendingWebGLReleases.add(finish);
+        const poll = () => {
+            timer = 0;
+            if (done) return;
+            try {
+                if (gl.isContextLost?.()) { finish(); return; }
+                if (gl.getSyncParameter(sync, gl.SYNC_STATUS) === gl.SIGNALED || ++tries >= 40) {
+                    finish();
+                    return;
+                }
+            } catch (_) {
+                finish();
+                return;
+            }
+            timer = global.setTimeout(poll, 80);
+        };
+        timer = global.setTimeout(poll, 80);
+        return true;
+    };
+
+    const programBatches = new WeakMap();
+    const cancelBatchPoll = (batch) => {
+        if (!batch || !batch.pollId) return;
+        const id = batch.pollId;
+        const kind = batch.pollKind;
+        batch.pollId = 0;
+        batch.pollKind = 0;
+        try {
+            if (kind === 1) global.cancelAnimationFrame?.(id);
+            else global.clearTimeout?.(id);
+        } catch (_) {}
+    };
+    const deletePendingShaders = (gl, batch) => {
+        if (!batch) return;
+        for (let i = 0; i < batch.pending.length; i += 1) {
+            const item = batch.pending[i];
+            try {
+                if (item.vs) { gl.deleteShader(item.vs); item.vs = null; }
+                if (item.fs) { gl.deleteShader(item.fs); item.fs = null; }
+            } catch (_) {}
+        }
+        batch.pending.length = 0;
+    };
+    const finalizeProgram = (gl, item) => {
+        const { program, vs, fs, label, entry } = item;
+        const linked = gl.getProgramParameter(program, gl.LINK_STATUS);
+        if (!linked) {
+            let msg = '';
+            if (vs && !gl.getShaderParameter(vs, gl.COMPILE_STATUS)) msg = `[${label}] shader: ${gl.getShaderInfoLog(vs)}`;
+            else if (fs && !gl.getShaderParameter(fs, gl.COMPILE_STATUS)) msg = `[${label}] shader: ${gl.getShaderInfoLog(fs)}`;
+            else msg = `[${label}] link: ${gl.getProgramInfoLog(program)}`;
+            if (vs) { gl.deleteShader(vs); item.vs = null; }
+            if (fs) { gl.deleteShader(fs); item.fs = null; }
+            gl.deleteProgram(program);
+            throw new Error(msg);
+        }
+        if (vs) { gl.deleteShader(vs); item.vs = null; }
+        if (fs) { gl.deleteShader(fs); item.fs = null; }
+        const uniforms = entry.uniforms;
+        const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < count; i += 1) {
+            const info = gl.getActiveUniform(program, i);
+            if (!info) continue;
+            uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
+        }
+    };
+    const getProgramBatch = (gl) => {
+        let batch = programBatches.get(gl);
+        if (!batch) {
+            let ext = null;
+            try { ext = gl.getExtension?.('KHR_parallel_shader_compile') || null; } catch (_) {}
+            batch = {
+                ext: ext && typeof ext.COMPLETION_STATUS_KHR === 'number' ? ext : null,
+                pending: [],
+                failed: false,
+                pollId: 0,
+                pollKind: 0,
+                onReady: null,
+                onError: null
+            };
+            programBatches.set(gl, batch);
+        }
+        return batch;
+    };
+    const compileProgram = (gl, vert, frag, label = 'stage') => {
+        const batch = getProgramBatch(gl);
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vert);
+        gl.compileShader(vs);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, frag);
+        gl.compileShader(fs);
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        const entry = { program, uniforms: {} };
+        const item = { program, vs, fs, label, entry };
+        if (batch.ext) {
+            batch.pending.push(item);
+        } else {
+            finalizeProgram(gl, item);
+        }
+        return entry;
+    };
+    const cancelPrograms = (gl) => {
+        if (!gl) return;
+        const batch = programBatches.get(gl);
+        if (!batch) return;
+        if (batch.pending.length) abortedProgramContexts.add(gl);
+        cancelBatchPoll(batch);
+        deletePendingShaders(gl, batch);
+        batch.onReady = null;
+        batch.onError = null;
+        programBatches.delete(gl);
+    };
+    const programsFailed = (gl) => Boolean(gl && programBatches.get(gl)?.failed);
+    const programsReady = (gl, onReady, onError) => {
+        if (!gl) return false;
+        const batch = programBatches.get(gl);
+        if (!batch) return true;
+        if (batch.failed) return false;
+        if (!batch.pending.length) return true;
+        try {
+            if (gl.isContextLost?.()) { cancelPrograms(gl); return false; }
+        } catch (_) {
+            cancelPrograms(gl);
+            return false;
+        }
+        if (typeof onReady === 'function') batch.onReady = onReady;
+        if (typeof onError === 'function') batch.onError = onError;
+        const statusEnum = batch.ext.COMPLETION_STATUS_KHR;
+        let write = 0;
+        for (let i = 0; i < batch.pending.length; i += 1) {
+            const item = batch.pending[i];
+            if (gl.getProgramParameter(item.program, statusEnum)) {
+                try {
+                    finalizeProgram(gl, item);
+                } catch (error) {
+                    batch.failed = true;
+                    cancelBatchPoll(batch);
+                    for (let j = i + 1; j < batch.pending.length; j += 1) {
+                        const rest = batch.pending[j];
+                        try {
+                            if (rest.vs) { gl.deleteShader(rest.vs); rest.vs = null; }
+                            if (rest.fs) { gl.deleteShader(rest.fs); rest.fs = null; }
+                        } catch (_) {}
+                    }
+                    batch.pending.length = 0;
+                    console.error(error);
+                    try { batch.onError?.(error); } catch (_) {}
+                    return false;
+                }
+            } else {
+                batch.pending[write++] = item;
+            }
+        }
+        batch.pending.length = write;
+        if (!write) {
+            cancelBatchPoll(batch);
+            return true;
+        }
+        if (!batch.pollId) {
+            const tick = () => {
+                batch.pollId = 0;
+                batch.pollKind = 0;
+                if (programBatches.get(gl) !== batch) return;
+                if (programsReady(gl)) {
+                    const cb = batch.onReady;
+                    batch.onReady = null;
+                    try { cb?.(); } catch (_) {}
+                }
+            };
+            if (!global.document?.hidden && typeof global.requestAnimationFrame === 'function') {
+                batch.pollKind = 1;
+                batch.pollId = global.requestAnimationFrame(tick);
+            } else if (typeof global.setTimeout === 'function') {
+                batch.pollKind = 2;
+                batch.pollId = global.setTimeout(tick, 16);
+            }
+        }
+        return false;
+    };
+    const warmedSpecsByGl = new WeakMap();
+    const warmPrograms = (gl, programs, isAlive = () => true) => {
+        if (!gl || !Array.isArray(programs) || !programs.length) return Promise.resolve(false);
+        try { if (gl.isContextLost?.()) return Promise.resolve(false); } catch (_) { return Promise.resolve(false); }
+        let ext = null;
+        try { ext = gl.getExtension?.('KHR_parallel_shader_compile') || null; } catch (_) {}
+        if (!ext || typeof ext.COMPLETION_STATUS_KHR !== 'number') return Promise.resolve(false);
+        let seen = warmedSpecsByGl.get(gl);
+        if (!seen) { seen = new WeakSet(); warmedSpecsByGl.set(gl, seen); }
+        const pending = [];
+        for (let i = 0; i < programs.length; i += 1) {
+            const spec = programs[i];
+            if (!spec?.vertex || !spec?.fragment || seen.has(spec)) continue;
+            try {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, spec.vertex);
+                gl.compileShader(vs);
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, spec.fragment);
+                gl.compileShader(fs);
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                pending.push({ prog, vs, fs, spec });
+            } catch (_) {}
+        }
+        if (!pending.length) return Promise.resolve(true);
+        const cleanupItem = (item, commit) => {
+            try {
+                if (commit && !gl.isContextLost?.()) {
+                    gl.getProgramParameter(item.prog, gl.LINK_STATUS);
+                    seen.add(item.spec);
+                }
+            } catch (_) {}
+            try { if (item.vs) { gl.deleteShader(item.vs); item.vs = null; } } catch (_) {}
+            try { if (item.fs) { gl.deleteShader(item.fs); item.fs = null; } } catch (_) {}
+            try { if (item.prog) { gl.deleteProgram(item.prog); item.prog = null; } } catch (_) {}
+        };
+        const cleanupAll = (commit) => {
+            for (let i = 0; i < pending.length; i += 1) cleanupItem(pending[i], commit);
+            pending.length = 0;
+        };
+        const statusEnum = ext.COMPLETION_STATUS_KHR;
+        return new Promise((resolve) => {
+            const step = () => {
+                if (!isAlive()) { cleanupAll(false); resolve(false); return; }
+                try { if (gl.isContextLost?.()) { cleanupAll(false); resolve(false); return; } } catch (_) { cleanupAll(false); resolve(false); return; }
+                let write = 0;
+                for (let i = 0; i < pending.length; i += 1) {
+                    const item = pending[i];
+                    let done = true;
+                    try { done = Boolean(gl.getProgramParameter(item.prog, statusEnum)); } catch (_) { done = true; }
+                    if (done) cleanupItem(item, true);
+                    else pending[write++] = item;
+                }
+                pending.length = write;
+                if (!write) { resolve(true); return; }
+                if (!global.document?.hidden && typeof global.requestAnimationFrame === 'function') {
+                    global.requestAnimationFrame(step);
+                } else if (typeof global.setTimeout === 'function') {
+                    global.setTimeout(step, 16);
+                } else {
+                    cleanupAll(false);
+                    resolve(false);
+                }
+            };
+            step();
+        });
+    };
+
+    // Hand the main thread back for a frame between heavy init steps so animations keep moving.
+    const breathe = () => new Promise((resolve) => {
+        let done = false;
+        const go = () => { if (!done) { done = true; resolve(); } };
+        global.requestAnimationFrame?.(() => global.setTimeout(go, 0));
+        global.setTimeout(go, 50);
+    });
+
+    const waitMaterialsReady = (renderer, waiting, alive = () => true) => new Promise((resolve) => {
+        const deadline = (global.performance?.now?.() ?? Date.now()) + 15000;
+        const check = () => {
+            try {
+                const gl = renderer.getContext?.();
+                if (!alive() || (gl && gl.isContextLost?.()) || (global.performance?.now?.() ?? Date.now()) > deadline) {
+                    waiting.clear();
+                } else {
+                    for (const material of waiting) {
+                        const program = renderer.properties.get(material)?.currentProgram;
+                        if (!program || program.isReady()) waiting.delete(material);
+                    }
+                }
+            } catch {
+                waiting.clear();
+            }
+            if (!waiting.size) resolve();
+            else global.setTimeout(check, 8);
+        };
+        check();
+    });
+
+    const compileReady = (renderer, scene, camera, alive = () => true) => {
+        if (!renderer.compileAsync || !renderer.properties) {
+            renderer.compile(scene, camera);
+            return Promise.resolve();
+        }
+        const waiting = renderer.compile(scene, camera);
+        return waitMaterialsReady(renderer, waiting, alive);
+    };
+
+    const compilePasses = async (renderer, passes, alive = () => true) => {
+        const list = Array.isArray(passes) ? passes.filter(Boolean) : [];
+        if (!list.length || !alive()) return;
+        const previous = renderer.getRenderTarget();
+        const parallel = Boolean(renderer.compileAsync && renderer.properties
+            && renderer.extensions?.has?.('KHR_parallel_shader_compile'));
+        try {
+            if (parallel) {
+                const waiting = new Set();
+                for (let i = 0; i < list.length; i += 1) {
+                    if (!alive() || renderer.getContext?.()?.isContextLost?.()) return;
+                    const pass = list[i];
+                    pass.before?.();
+                    renderer.setRenderTarget(pass.target ?? null);
+                    const mats = renderer.compile(pass.scene, pass.camera);
+                    if (mats && typeof mats[Symbol.iterator] === 'function') {
+                        for (const mat of mats) waiting.add(mat);
+                    }
+                }
+                renderer.setRenderTarget(previous);
+                if (waiting.size) await waitMaterialsReady(renderer, waiting, alive);
+            } else {
+                for (let i = 0; i < list.length; i += 1) {
+                    if (!alive() || renderer.getContext?.()?.isContextLost?.()) return;
+                    const pass = list[i];
+                    pass.before?.();
+                    renderer.setRenderTarget(pass.target ?? null);
+                    await compileReady(renderer, pass.scene, pass.camera, alive);
+                    if (!alive()) return;
+                    if (i + 1 < list.length) await breathe();
+                }
+            }
+        } finally {
+            try { renderer.setRenderTarget(previous); } catch (_) {}
+        }
+    };
+
+    const settlePrograms = async (renderer, alive = () => true, budget = 24) => {
+        let started = global.performance?.now?.() ?? Date.now();
+        const seen = new Set();
+        try {
+            const gl0 = renderer.getContext?.();
+            if (!gl0 || gl0.isContextLost()) {
+                console.warn('[MusicStage] WebGL context lost during shader warm-up');
+                return;
+            }
+            let khr = null;
+            try { khr = gl0.getExtension?.('KHR_parallel_shader_compile') || null; } catch (_) {}
+            const statusEnum = khr && typeof khr.COMPLETION_STATUS_KHR === 'number' ? khr.COMPLETION_STATUS_KHR : 0;
+            let queue = [];
+            for (const entry of [...(renderer.info?.programs || [])]) {
+                const program = entry?.program;
+                if (!program || seen.has(program)) continue;
+                seen.add(program);
+                queue.push(entry);
+            }
+            const pollDeadline = started + 12000;
+            while (queue.length) {
+                if (!alive()) return;
+                const gl = renderer.getContext?.();
+                if (!gl || gl.isContextLost()) {
+                    console.warn('[MusicStage] WebGL context lost during shader warm-up');
+                    return;
+                }
+                const allowDefer = Boolean(statusEnum && (global.performance?.now?.() ?? Date.now()) < pollDeadline);
+                const deferred = [];
+                for (let i = 0; i < queue.length; i += 1) {
+                    if (!alive()) return;
+                    const entry = queue[i];
+                    const program = entry.program;
+                    if (allowDefer && !gl.getProgramParameter(program, statusEnum)) {
+                        deferred.push(entry);
+                        continue;
+                    }
+                    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                        const shaderLog = (shader) => (shader && gl.getShaderInfoLog(shader)) || '';
+                        console.error('[MusicStage] shader program failed:', entry.name || entry.type || '',
+                            '\nprogram:', gl.getProgramInfoLog(program) || '',
+                            '\nvertex:', shaderLog(entry.vertexShader),
+                            '\nfragment:', shaderLog(entry.fragmentShader));
+                        continue;
+                    }
+                    entry.getUniforms?.();
+                    entry.getAttributes?.();
+                    const now = global.performance?.now?.() ?? Date.now();
+                    if (now - started > budget) {
+                        await breathe();
+                        if (!alive()) return;
+                        started = global.performance?.now?.() ?? Date.now();
+                    }
+                }
+                queue = deferred;
+                if (queue.length) {
+                    await breathe();
+                    started = global.performance?.now?.() ?? Date.now();
+                }
+            }
+        } catch (error) {
+            console.warn('[MusicStage] shader check skipped:', error);
+        }
+    };
+
     // Call after intentional in-place lyric edits; normal source replacement is
     // already tracked by array identity without hashing the whole song per frame.
     const invalidateLines = (lines) => {
@@ -579,13 +1429,26 @@
     };
 
     global.MusicStageRuntime = Object.freeze({
+        ensurePixi,
+        releaseWebGLContext,
+        compileProgram,
+        programsReady,
+        programsFailed,
+        cancelPrograms,
+        warmPrograms,
+        breathe,
+        compileReady,
+        compilePasses,
+        settlePrograms,
         invalidateLines,
+        isReducedMotion,
         finiteNumber,
         clamp,
         hashString,
         seededRandom,
         splitGraphemes,
         normalizeLines,
+        readableText,
         buildFallbackWords,
         buildGlyphTimeline,
         resolveSupplementalText,

@@ -85,14 +85,22 @@
         }
         // On the way up to the roof and down again the camera passes the train
         // on the side of the screen being read then: the pantograph is then off
-        // to the other side of the picture and never comes between them.
-        const screenSide = t => {
-            const reading = plan.encounters.filter(item => item.start - 5 <= t && item.end + 2 >= t);
-            const nearest = reading.sort((a, b) => Math.abs(a.start - t) - Math.abs(b.start - t))[0];
-            return nearest ? nearest.side : 1;
+        // to the other side of the picture and never comes between them. The
+        // pantograph only stands in the way over the second half of the climb,
+        // when the camera is near roof height, so the screen read over that
+        // stretch decides; one read just before it, on the other side, has
+        // already been passed by then.
+        const screenSide = (from, to) => {
+            let best = null, most = 0;
+            for (const item of plan.encounters) {
+                const overlap = Math.min(to, item.end + 1) - Math.max(from, item.start - 1);
+                if (overlap > most) { most = overlap; best = item; }
+            }
+            return best ? best.side : 1;
         };
         const rideSides = rideSpans(timeline).map(span => ({
-            entry: screenSide(span.start + ROOF.blend / 2), exit: screenSide(span.end - ROOF.blend / 2) }));
+            entry: screenSide(span.start + ROOF.blend * 0.4, span.start + ROOF.blend),
+            exit: screenSide(span.end - ROOF.blend, span.end - ROOF.blend * 0.4) }));
         return { at, encounters: plan.encounters, pageEncounter: plan.pageEncounter, turns, initialYaw,
             scenes, rideSides, path, addressAt: path.addressAt, timeAt: path.timeAt, trainAt: path.trainAt };
     };
@@ -317,13 +325,14 @@
     };
     const motionOf = options => options.reducedMotion ? 0 : clamp(options.motionAmount ?? 1, 0, 2)
         * clamp(options.animationIntensity ?? 1, 0, 2);
+    const blendAngle = (a, b, weight) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * weight;
     // How far the nose of the train runs ahead of the camera.
-    const leadAt = (timeline, scenes, t, motion) => {
+    const leadAt = (timeline, scenesBox, t, motion) => {
         if (!motion) return -0.4;
         const state = timeline.sample(t);
         const act = timeline.acts[state.actIndex];
         const move = crane(act, timeline.acts[Math.max(0, state.actIndex - 1)], t, timeline);
-        const staged = sceneAt({ scenes }, t);
+        const staged = sceneAt(scenesBox, t);
         const beside = staged?.scene.kind === 'TRACKSIDE' ? staged : null;
         const riding = rideAt(timeline, t);
         if (beside) return passing(beside.progress);
@@ -345,12 +354,13 @@
         const step = Math.max(1 / 30, duration / 120000);
         const count = Math.max(1, Math.ceil(duration / step));
         const train = new Float64Array(count + 1), camera = new Float64Array(count + 1);
-        let base = timeline.distanceAt(0, speed), lead = leadAt(timeline, scenes, 0, motion), ahead = 0;
+        const scenesBox = { scenes };
+        let base = timeline.distanceAt(0, speed), lead = leadAt(timeline, scenesBox, 0, motion), ahead = 0;
         train[0] = base - 0.4; camera[0] = train[0] - lead;
         for (let i = 1; i <= count; i++) {
             const t = Math.min(duration, i * step);
             const next = timeline.distanceAt(t, speed), travel = next - base;
-            const nextLead = leadAt(timeline, scenes, t, motion), change = nextLead - lead;
+            const nextLead = leadAt(timeline, scenesBox, t, motion), change = nextLead - lead;
             ahead += change > 0 ? Math.max(0, change - travel) : -Math.min(-change, travel * 0.65);
             base = next; lead = nextLead;
             train[i] = base - 0.4 + ahead;
@@ -373,6 +383,70 @@
         };
         return { addressAt, trainAt: sampler(train), timeAt };
     };
+    /*
+     * Each sung line gets one kind of move, chosen by what the line is like,
+     * so the ride does not sway the same way under every line: a held note
+     * leans in, a long line drifts back to show it, a new section rises, a
+     * chorus swings wide, and some lines are simply held. The moves keep the
+     * same out-and-back arch, so they meet at every line boundary, and none
+     * goes far enough to lose a screen being read.
+     */
+    const SHOTS = Object.freeze({
+        //          lateral  lift  push  fov   (multipliers on the line's arch)
+        drift: { lateral: 1, lift: 1, push: 1, fov: 1 },
+        lean: { lateral: 0.3, lift: 0.4, push: 2.2, fov: 1.8 },
+        rise: { lateral: 0.45, lift: 2.4, push: 0.2, fov: 0.6 },
+        back: { lateral: 0.5, lift: 0.8, push: -1.6, fov: -1.2 },
+        sweep: { lateral: 1.9, lift: 0.7, push: 0.6, fov: 1.2 },
+        hold: { lateral: 0.25, lift: 0.25, push: 0.2, fov: 0.35 }
+    });
+    const SHOT_PLANS = new WeakMap();
+    const planShots = timeline => {
+        if (SHOT_PLANS.has(timeline)) return SHOT_PLANS.get(timeline);
+        const lines = timeline.lines || [];
+        const plan = [];
+        lines.forEach((line, index) => {
+            const previous = lines[index - 1];
+            const end = line.vocalEndTime ?? line.endTime;
+            const duration = Math.max(0, end - line.startTime);
+            const words = Array.isArray(line.words) ? line.words : [];
+            const longest = words.reduce((most, word) => Math.max(most,
+                (word.endTime ?? 0) - (word.startTime ?? 0)), 0);
+            const length = String(line.fullText || line.text || '').trim().length;
+            const act = timeline.sample(line.startTime + 0.01);
+            const kind = timeline.acts[act.actIndex]?.kind;
+            const fresh = !previous || line.startTime - (previous.vocalEndTime ?? previous.endTime) > 4
+                || timeline.sample(previous.startTime + 0.01).actIndex !== act.actIndex;
+            const weights = { drift: 1.4, lean: 0.8, rise: 0.6, back: 0.7, sweep: 0.5, hold: 0.8 };
+            if (kind === 'Chorus' || kind === 'Open') { weights.sweep += 1.6; weights.lean += 0.6; weights.hold -= 0.5; }
+            else { weights.hold += 0.5; weights.drift += 0.4; }
+            if (fresh) { weights.rise += 1.8; weights.back += 0.8; }
+            if (longest >= 1.3 || duration > 6) { weights.lean += 1.4; weights.hold += 0.6; }
+            if (length >= 16) { weights.back += 1.2; weights.lean -= 0.4; }
+            else if (length && length <= 5) { weights.lean += 0.8; }
+            // As the ride turns to a dream, it turns still.
+            if ((act.dream ?? 0) > 0.5) { weights.hold += 1.4; weights.sweep -= 0.4; }
+            // Never the same move three lines running, and seldom twice.
+            const last = plan[index - 1], before = plan[index - 2];
+            if (last) weights[last] *= last === before ? 0 : 0.35;
+            const kinds = Object.keys(weights);
+            const total = kinds.reduce((sum, k) => sum + Math.max(0.05, weights[k]), 0);
+            // Neighbouring keys hash to neighbouring values; mix them apart.
+            let h = hashString(`${timeline.seed}:shot:${index}`) >>> 0;
+            h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+            h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+            h = (h ^ (h >>> 16)) >>> 0;
+            let pick = h / 4294967296 * total;
+            let chosen = kinds[kinds.length - 1];
+            for (const k of kinds) {
+                pick -= Math.max(0.05, weights[k]);
+                if (pick <= 0) { chosen = k; break; }
+            }
+            plan.push(chosen);
+        });
+        SHOT_PLANS.set(timeline, plan);
+        return plan;
+    };
     const pose = (timeline, track, time, options = {}) => {
         const t = clamp(time, 0, timeline.duration);
         const state = timeline.sample(t);
@@ -392,7 +466,6 @@
         const reading = readingEnvelope(timeline, t);
         const seed = timeline.seedHash;
         const handheld = motion * (1 - reading * 0.55);
-        const n = (frequency, offset) => noise(t * frequency, seed + offset);
         // Phrase-scale choreography, distinct from handheld vibration.
         // Zero velocity at the phrase edges avoids resetting motion on each word.
         const lineIndex = upperBound(timeline.lines, t, 'startTime') - 1;
@@ -405,9 +478,14 @@
         const directionSign = lineIndex % 2 ? -1 : 1;
         const strength = Math.min(1.5, motion);
         const openness = state.openness;
-        const lateralTravel = directionSign * arch * (0.35 + openness * 0.65) * strength;
-        const lift = arch * (0.12 + openness * 0.5) * strength;
-        const push = arch * openness * 0.6 * strength;
+        const shotName = line && motion ? planShots(timeline)[lineIndex] || 'drift' : 'drift';
+        const shot = SHOTS[shotName];
+        // In the cab there is little room: the wide swing and the travel along
+        // the line only open out as the camera leaves the train.
+        const wide = mix(Math.min(shot.lateral, 1.25), shot.lateral, openness);
+        const lateralTravel = directionSign * arch * (0.35 + openness * 0.65) * strength * wide;
+        const lift = arch * (0.12 + openness * 0.5) * strength * shot.lift;
+        const push = arch * openness * 0.6 * strength * shot.push;
         const move = crane(act, previous, t, timeline);
         const staged = motion ? sceneAt(track, t) : null;
         const inside = staged?.scene.kind === 'SALOON' ? staged : null;
@@ -426,16 +504,19 @@
         // The train keeps to the speed of the song whatever the camera does: it
         // is the camera that moves along the line to frame it. Drawing the train
         // ahead of the camera, or catching it up, never runs the train backwards.
-        const rel = leadAt(timeline, track.scenes, t, motion);
+        const rel = !motion ? -0.4
+            : beside ? passing(beside.progress)
+                : Math.max(mix(-0.4, move.rig.lead, move.lead),
+                    riding > 0 ? mix(-0.4, ROOF.lead, ride.lead) : -Infinity);
         const trainFront = track.trainAt ? track.trainAt(t) : distance - 0.4, along = trainFront - rel;
         const frame = track.at(along);
         if (riding > 0) move.height = mix(move.height, ROOF.height, ride.up);
         if (inside) move.height = mix(move.height, Math.max(move.height, SALOON.sill), inside.raised);
         if (beside) move.height = mix(move.height, TRACKSIDE.height, aside);
         const position = {
-            x: frame.position.x + frame.right.x * (-0.25 + n(0.8, 1) * 0.025 * handheld),
+            x: frame.position.x + frame.right.x * (-0.25 + noise(t * 0.8, seed + 1) * 0.025 * handheld),
             y: (motion ? move.height : 2.2) + Math.sin(t * Math.PI * 0.4) * 0.01 * handheld
-                + n(1.3, 2) * 0.018 * handheld + timeline.rhythmAt(t).impulse * 0.012 * handheld,
+                + noise(t * 1.3, seed + 2) * 0.018 * handheld + timeline.rhythmAt(t).impulse * 0.012 * handheld,
             z: frame.position.z + frame.right.z * -0.25
         };
         position.x += frame.right.x * lateralTravel + frame.forward.x * push;
@@ -452,15 +533,17 @@
         position.z += frame.right.z * swing;
         // A rig that looks back at the train turns as the train falls behind it,
         // keeping the cab in view as it goes by instead of spinning round in its path.
-        const lookBack = (() => {
-            if (!motion) return 0;
-            if (Math.abs(move.rig.yaw) <= 1.5) return move.out;
-            const across = Math.abs(move.rig.lateral) * move.out;
-            const behind = Math.max(0.01, -mix(-0.4, move.rig.lead, move.lead));
-            const settled = Math.PI - Math.atan2(Math.abs(move.rig.lateral), -move.rig.lead);
-            return Math.min(1, (Math.PI - Math.atan2(across, behind)) / settled) * ease(move.lead / 0.7);
-        })();
-        let yaw = frame.yaw + yawBias + n(0.55, 3) * 0.003 * handheld
+        let lookBack = 0;
+        if (motion) {
+            if (Math.abs(move.rig.yaw) <= 1.5) lookBack = move.out;
+            else {
+                const across = Math.abs(move.rig.lateral) * move.out;
+                const behind = Math.max(0.01, -mix(-0.4, move.rig.lead, move.lead));
+                const settled = Math.PI - Math.atan2(Math.abs(move.rig.lateral), -move.rig.lead);
+                lookBack = Math.min(1, (Math.PI - Math.atan2(across, behind)) / settled) * ease(move.lead / 0.7);
+            }
+        }
+        let yaw = frame.yaw + yawBias + noise(t * 0.55, seed + 3) * 0.003 * handheld
             + directionSign * arch * openness * 0.012 * strength + move.rig.yaw * lookBack;
         let pitch = mix(-0.025, -0.12, state.openness) + move.rig.pitch * (motion ? move.out : 0);
         const finale = state.act === 'Terminus' && motion && !timeline.isSinging(t)
@@ -471,9 +554,7 @@
         const encounterIndex = upperBound(encounters, t, 'start') - 1;
         const encounter = encounters[encounterIndex];
         const upcoming = encounters[encounterIndex + 1];
-        const blendAngle = (a, b, weight) => a
-            + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * weight;
-        let fov = motion ? state.fov - arch * (1.2 + openness * 1.8) * strength + move.rig.fov * move.out + ROOF.fov * ride.over : 48;
+        let fov = motion ? state.fov - arch * (1.2 + openness * 1.8) * strength * shot.fov + move.rig.fov * move.out + ROOF.fov * ride.over : 48;
         const halfFrame = Math.atan(Math.tan(fov * Math.PI / 360) * Math.max(0.35, options.aspect || 1.6)) * 0.84;
         // A screen is read from its own side of the frame, with the line ahead
         // still in view: the camera turns only as far as it takes to hold the
@@ -493,6 +574,16 @@
             const turn = Math.min(Math.abs(off), Math.max(needed, Math.abs(off) * 0.6 * (1 - Math.max(ride.lead, ride.out))));
             return { yaw: frame.yaw + Math.sign(off) * turn, pitch };
         };
+        // A screen wider than the picture (a narrow or upright window) is read
+        // with the lens opened just far enough to hold all of it, margins included.
+        let readFov = fov;
+        const fitFov = (item, weight) => {
+            if (!item?.width || weight <= 0) return;
+            const reach = Math.max(1, Math.hypot(item.position.x - position.x, item.position.z - position.z));
+            const half = Math.atan(item.width * 0.56 / reach);
+            const need = 2 * Math.atan(Math.tan(half) / Math.max(0.35, options.aspect || 1.6)) * 180 / Math.PI;
+            if (need > fov) readFov = Math.max(readFov, fov + (Math.min(78, need) - fov) * weight);
+        };
         let encounterId = null;
         const directHandoff = encounter && upcoming && t >= encounter.end
             && upcoming.start - encounter.end > 0 && upcoming.start - encounter.end <= 7;
@@ -501,6 +592,7 @@
             const weight = smooth((t - encounter.end) / (upcoming.start - encounter.end));
             yaw = blendAngle(a.yaw, b.yaw, weight);
             pitch = mix(a.pitch, b.pitch, weight);
+            fitFov(encounter, 1 - weight); fitFov(upcoming, weight);
             encounterId = weight < 0.5 ? encounter.id : upcoming.id;
             rig = 'WINDOW';
         }
@@ -512,6 +604,7 @@
                 const target = aim(encounter);
                 yaw = blendAngle(yaw, target.yaw, weight);
                 pitch = mix(pitch, target.pitch, weight);
+                fitFov(encounter, weight);
                 encounterId = encounter.id;
                 rig = 'WINDOW';
             }
@@ -523,9 +616,11 @@
                 const target = aim(upcoming);
                 yaw = blendAngle(yaw, target.yaw, weight);
                 pitch = mix(pitch, target.pitch, weight);
+                fitFov(upcoming, weight);
                 encounterId = upcoming.id;
             }
         }
+        fov = readFov;
         let eventFocus = null;
         const events = track.events || [];
         const event = events[upperBound(events, t, 'start') - 1];
@@ -553,8 +648,8 @@
         // The moon uses this same fixed celestial offset in the world renderer.
         yaw = blendAngle(yaw, Math.atan2(-210, 420), finale);
         pitch = mix(pitch, Math.atan2(300 - position.y, Math.hypot(210, 420)), finale);
-        pitch += n(0.7, 4) * 0.0025 * handheld * (1 - finale);
-        let roll = motion ? n(0.45, 5) * 0.002 * handheld + directionSign * arch * openness * 0.006 * strength : 0;
+        pitch += noise(t * 0.7, seed + 4) * 0.0025 * handheld * (1 - finale);
+        let roll = motion ? noise(t * 0.45, seed + 5) * 0.002 * handheld + directionSign * arch * openness * 0.006 * strength : 0;
         if (aside > 0) {
             // From the waterside the camera looks back in over the line, level
             // with the windows, and the train comes through the picture.
@@ -597,7 +692,7 @@
             cabinSunset: state.dusk ?? 0,
             cabinEmpty: Math.max(state.dream ?? 0, act?.kind === 'Interlude' ? 1 : 0.6),
             scene: staged && staged.weight > 0 ? { id: staged.scene.id, kind: staged.scene.kind, weight: staged.weight } : null,
-            shot: openness > 0.6 ? 'rising-traverse' : 'window-tracking',
+            shot: openness > 0.6 ? 'rising-traverse' : 'window-tracking', lineShot: shotName,
             rig: !motion ? 'CAB' : staged && staged.weight > 0.5 ? staged.scene.kind : rig,
             encounterId, reading, distance: along, state, chase, chaseRig: move.out > 0.5 ? move.rig.name : null,
             ride: riding > 0 ? ROOF.name : null,
@@ -607,5 +702,5 @@
                 z: position.z + direction.z * 30 }
         };
     };
-    global.MusicStageDioramaCamera = Object.freeze({ createTrack, pose, noise, readingEnvelope, planScenes });
+    global.MusicStageDioramaCamera = Object.freeze({ createTrack, pose, noise, readingEnvelope, planScenes, planShots });
 })(window);

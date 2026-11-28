@@ -14,6 +14,10 @@
     // Unit mass, stiffness 200, damping 20: analytic underdamped step response.
     const spring = seconds => seconds <= 0 ? 0 : 1 - Math.exp(-10 * seconds) * (Math.cos(10 * seconds) + Math.sin(10 * seconds));
     const lerp = (a, b, t) => a + (b - a) * t;
+    // Assigning text replaces the text node and lays the element out again,
+    // even when it is the same text; a frame only writes what changed.
+    const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    const setHidden = (node, hidden) => { if (node.hidden !== hidden) node.hidden = hidden; };
     const glowPulse = progress => progress <= 0 || progress >= 1 ? 0
         : progress < 0.3 ? ease(progress / 0.3) : (1 - progress) / 0.7;
 
@@ -66,39 +70,89 @@
         const y = offsetY + number(p.driftY, 0) * drift * motion + Math.cos(time * 1.5 + token.index) * float * 2.5;
         const angle = rotation ? (number(p.rotate, 0) + (instant ? 0 : 20 * (1 - enter))
             + number(p.passedRotate, 0) * drift) * motion : 0;
-        outer.style.transform = `translate3d(${x.toFixed(2)}px,${y.toFixed(2)}px,0) rotate(${angle.toFixed(2)}deg) scale(${Math.max(0.05, scale).toFixed(4)})`;
-        outer.style.opacity = String(elapsed < 0 ? number(tuning.waitingOpacity, 0) : lerp(1, 0.82, release));
-        outer.style.zIndex = active ? '3' : '1';
+        const tx = `translate3d(${x.toFixed(2)}px,${y.toFixed(2)}px,0) rotate(${angle.toFixed(2)}deg) scale(${Math.max(0.05, scale).toFixed(4)})`;
+        if (node._tx !== tx) { node._tx = tx; outer.style.transform = tx; }
+        const op = (elapsed < 0 ? number(tuning.waitingOpacity, 0) : lerp(1, 0.82, release)).toFixed(3);
+        if (node._op !== op) { node._op = op; outer.style.opacity = op; }
+        const z = active ? '3' : '1';
+        if (node._z !== z) { node._z = z; outer.style.zIndex = z; }
         const blur = instant ? 0 : Math.max(0, 10 * (1 - ease(elapsed / 0.2)));
-        body.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
+        const flt = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
+        if (node._flt !== flt) { node._flt = flt; body.style.filter = flt; }
         const mix = time < token.startTime ? 0 : passed
             ? 1 - ease((time - end) / (profile.reveal === 'fast' ? 0.24 : 0.8))
             : instant ? 1 : clamp((time - token.startTime) / Math.max(0.001, end - token.startTime));
-        body.style.color = `color-mix(in srgb, var(--word-color) ${(mix * 100).toFixed(2)}%, var(--performance-ink))`;
+        const col = `color-mix(in srgb, var(--word-color) ${(mix * 100).toFixed(1)}%, var(--performance-ink))`;
+        if (node._col !== col) { node._col = col; body.style.color = col; }
         const glowAmount = number(tuning.glow, 1);
         const fade = passed ? Math.pow(1 - clamp((time - end) / 0.9), 2) : 1;
-        token.glyphs.forEach((glyph, index) => {
+        const shadow = glowAmount <= 0 ? 'none'
+            : `0 0 ${20 * glowAmount}px var(--word-color),0 0 ${40 * glowAmount}px var(--word-color)`;
+        const shadowChanged = node._shadow !== shadow;
+        if (shadowChanged) node._shadow = shadow;
+        const gOps = node._gOps || (node._gOps = new Array(glyphs.length));
+        const tGlyphs = token.glyphs;
+        const multiGlyph = (token.sourceGlyphCount || tGlyphs.length) > 1;
+        for (let index = 0; index < tGlyphs.length; index += 1) {
+            const glyph = tGlyphs[index];
             let strength;
             if (instant) strength = glowPulse((time - token.startTime) / 0.067);
             else if (profile.reveal === 'fast') strength = glowPulse((time - token.startTime) / Math.max(0.12, end - token.startTime));
-            else if ((token.sourceGlyphCount || token.glyphs.length) > 1) {
+            else if (multiGlyph) {
                 strength = glowPulse((time - glyph.startTime) / Math.max(0.006, (glyph.endTime - glyph.startTime) * 6)) * fade;
             } else {
                 strength = time < token.startTime ? 0
                     : passed ? 0.9 * fade : ease((time - token.startTime) / Math.max(0.018, (end - token.startTime) * 0.18));
             }
-            glyphs[index].style.opacity = String(clamp(strength * glowAmount, 0, 1));
-            glyphs[index].style.textShadow = glowAmount <= 0 ? 'none'
-                : `0 0 ${20 * glowAmount}px var(--word-color),0 0 ${40 * glowAmount}px var(--word-color)`;
-        });
+            const gOp = clamp(strength * glowAmount, 0, 1).toFixed(3);
+            if (gOps[index] !== gOp) { gOps[index] = gOp; glyphs[index].style.opacity = gOp; }
+            if (shadowChanged) glyphs[index].style.textShadow = shadow;
+        }
         const rippleProgress = clamp((time - token.startTime) / 0.5);
         const showRipple = scene.line.isChorus && tuning.chorusRipple !== false && intensity > 0
             && time >= token.startTime && rippleProgress < 1;
-        ripple.hidden = !showRipple;
+        setHidden(ripple, !showRipple);
         if (showRipple) {
-            ripple.style.opacity = String((1 - rippleProgress) * 0.8);
-            ripple.style.transform = `translate(-50%,-50%) scale(${0.2 + rippleProgress * number(p.rippleScale, 2.5)})`;
+            const rOp = ((1 - rippleProgress) * 0.8).toFixed(3);
+            if (node._rOp !== rOp) { node._rOp = rOp; ripple.style.opacity = rOp; }
+            const rTx = `translate(-50%,-50%) scale(${(0.2 + rippleProgress * number(p.rippleScale, 2.5)).toFixed(3)})`;
+            if (node._rTx !== rTx) { node._rTx = rTx; ripple.style.transform = rTx; }
         }
+    };
+
+    // Where the words can reach inside the field, allowing for the swell of the
+    // word being sung, so a scene can be kept clear of the track card.
+    const contentBox = (layout) => {
+        let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+        const add = (p, ox, oy) => {
+            const scale = number(p.scale, 1) * 1.2;
+            const w = number(p.width, 0) * scale, h = number(p.height, number(layout.fontSize, 32) * 1.22) * scale;
+            const cx = ox + number(p.x, 0) + number(p.width, 0) / 2, cy = oy + number(p.y, 0) + h / scale / 2;
+            left = Math.min(left, cx - w / 2); right = Math.max(right, cx + w / 2);
+            top = Math.min(top, cy - h / 2); bottom = Math.max(bottom, cy + h / 2);
+        };
+        if (layout.groups) layout.groups.forEach(g => g.placements.forEach(p => add(p, number(g.x, 0), number(g.y, 0))));
+        else (layout.placements || []).forEach(p => add(p, 0, 0));
+        return Number.isFinite(left) ? { left, top, right, bottom } : null;
+    };
+    // The shift that takes a scene off the track card in the top left corner:
+    // whichever of right or down is shorter and still fits the stage.
+    const dodgeCard = (scene, card, width, height) => {
+        const box = scene.content;
+        if (!card || !box) return { x: 0, y: 0 };
+        const fit = number(scene.fitScale, 1);
+        const toX = fx => width / 2 + (fx - scene.width / 2) * fit;
+        const toY = fy => height / 2 + (fy - scene.height / 2) * fit;
+        const left = toX(box.left), right = toX(box.right), top = toY(box.top), bottom = toY(box.bottom);
+        const cardRight = (card.right + 1) / 2 * width, cardBottom = (1 - card.bottom) / 2 * height;
+        const cardLeft = (card.left + 1) / 2 * width, cardTop = (1 - card.top) / 2 * height;
+        if (left >= cardRight || right <= cardLeft || top >= cardBottom || bottom <= cardTop) return { x: 0, y: 0 };
+        const gap = 28;
+        const dx = cardRight + gap - left, dy = cardBottom + gap - top;
+        const roomX = right + dx <= width * 1.04, roomY = bottom + dy <= height * 1.12;
+        if (roomX && (!roomY || dx <= dy)) return { x: dx, y: 0 };
+        if (roomY) return { x: 0, y: dy };
+        return dx <= dy ? { x: Math.max(0, width * 1.04 - right), y: 0 } : { x: 0, y: Math.max(0, height * 1.12 - bottom) };
     };
 
     const mountScene = (layout, line, kind) => {
@@ -111,7 +165,7 @@
         root.append(field);
         const scene = {
             ...layout, line, kind, root, field, profile: L.profile(line),
-            nodes: [], groups: [], retireAt: null
+            nodes: [], groups: [], retireAt: null, content: contentBox(layout)
         };
         if (layout.groups) {
             layout.groups.forEach(group => {
@@ -142,7 +196,7 @@
         return scene;
     };
 
-    const renderScene = (scene, frame, tuning, intensity) => {
+    const renderScene = (scene, frame, tuning, intensity, shift = { x: 0, y: 0 }) => {
         const time = frame.playbackTime;
         const profile = scene.profile;
         const enter = profile.enter ? ease((time - scene.line.startTime) / profile.enter) : 1;
@@ -150,28 +204,49 @@
         const forcedExit = scene.retireAt === null ? 0 : clamp((time - scene.retireAt) / Math.max(0.03, profile.exit));
         const exit = Math.max(naturalExit, forcedExit);
         const transitions = tuning.sceneTransitions !== false && intensity > 0;
-        scene.root.style.opacity = String(transitions ? enter * (1 - ease(exit)) : (scene.retireAt === null && time <= profile.end ? 1 : 0));
-        scene.root.style.filter = transitions ? `blur(${((1 - enter) * 10 + exit * 20).toFixed(2)}px)` : 'none';
-        scene.root.style.transform = `scale(${transitions ? (0.9 + enter * 0.1 + exit * 0.1).toFixed(4) : 1})`;
+        const rootOp = (transitions ? enter * (1 - ease(exit)) : (scene.retireAt === null && time <= profile.end ? 1 : 0)).toFixed(3);
+        if (scene._op !== rootOp) { scene._op = rootOp; scene.root.style.opacity = rootOp; }
+        // blur(0.00px) draws the same as none but keeps an offscreen pass alive.
+        const sceneBlur = transitions ? ((1 - enter) * 10 + exit * 20).toFixed(2) : '0.00';
+        const rootFlt = sceneBlur !== '0.00' ? `blur(${sceneBlur}px)` : 'none';
+        if (scene._flt !== rootFlt) { scene._flt = rootFlt; scene.root.style.filter = rootFlt; }
+        const rootTx = `scale(${transitions ? (0.9 + enter * 0.1 + exit * 0.1).toFixed(4) : '1'})`;
+        if (scene._tx !== rootTx) { scene._tx = rootTx; scene.root.style.transform = rootTx; }
         const breath = number(tuning.breathing, 1) * intensity * number(tuning.motion, 1);
         const phase = (time % 7) / 7 * Math.PI * 2;
         const floatY = (-Math.sin(phase) * 14 + Math.sin(phase * 2) * 2) * breath;
-        scene.field.style.transform = `translate(-50%,-50%) translateY(${floatY.toFixed(2)}px) scale(${number(scene.fitScale, 1) * (1 + Math.sin(phase) * 0.01 * breath)})`;
-        scene.groups.forEach(group => {
+        const fieldScale = (number(scene.fitScale, 1) * (1 + Math.sin(phase) * 0.01 * breath)).toFixed(4);
+        const fieldTx = `translate(-50%,-50%) translate(${shift.x.toFixed(1)}px,${(shift.y + floatY).toFixed(2)}px) scale(${fieldScale})`;
+        if (scene._fieldTx !== fieldTx) { scene._fieldTx = fieldTx; scene.field.style.transform = fieldTx; }
+        const groups = scene.groups;
+        for (let gi = 0; gi < groups.length; gi += 1) {
+            const group = groups[gi];
             const entry = spring(time - group.startTime + profile.lookahead);
             const waiting = time < group.startTime - profile.lookahead;
-            group.wrapper.style.opacity = waiting ? '0' : '1';
-            group.wrapper.style.transform = `translateX(${((1 - entry) * (group.side === 'left' ? -40 : 40) * intensity).toFixed(2)}px)`;
-            group.guide.hidden = tuning.guideLines === false;
-            const progress = ease((time - group.startTime + profile.lookahead) / 0.4);
-            group.guide.style.transform = `scaleX(${progress})`;
-            group.guide.style.opacity = time <= group.endTime ? '0.8' : '0.24';
-            const reading = clamp((time - group.startTime) / Math.max(0.001, group.endTime - group.startTime));
-            group.head.hidden = tuning.guidePulse === false || waiting || time > group.endTime || intensity <= 0;
-            group.head.style.left = `${reading * 100}%`;
-            group.head.style.opacity = String(0.45 + clamp(frame.audio.vocal) * 0.55);
-        });
-        scene.nodes.forEach(node => animateWord(node, scene, time, tuning, intensity, frame.audio));
+            const wOp = waiting ? '0' : '1';
+            if (group._op !== wOp) { group._op = wOp; group.wrapper.style.opacity = wOp; }
+            const wTx = `translateX(${((1 - entry) * (group.side === 'left' ? -40 : 40) * intensity).toFixed(2)}px)`;
+            if (group._tx !== wTx) { group._tx = wTx; group.wrapper.style.transform = wTx; }
+            const hideGuide = tuning.guideLines === false;
+            setHidden(group.guide, hideGuide);
+            if (!hideGuide) {
+                const gTx = `scaleX(${ease((time - group.startTime + profile.lookahead) / 0.4).toFixed(4)})`;
+                if (group._gTx !== gTx) { group._gTx = gTx; group.guide.style.transform = gTx; }
+                const gOp = time <= group.endTime ? '0.8' : '0.24';
+                if (group._gOp !== gOp) { group._gOp = gOp; group.guide.style.opacity = gOp; }
+                const hideHead = tuning.guidePulse === false || waiting || time > group.endTime || intensity <= 0;
+                setHidden(group.head, hideHead);
+                if (!hideHead) {
+                    const reading = clamp((time - group.startTime) / Math.max(0.001, group.endTime - group.startTime));
+                    const hLeft = `${(reading * 100).toFixed(2)}%`;
+                    if (group._hLeft !== hLeft) { group._hLeft = hLeft; group.head.style.left = hLeft; }
+                    const hOp = (0.45 + clamp(frame.audio.vocal) * 0.55).toFixed(3);
+                    if (group._hOp !== hOp) { group._hOp = hOp; group.head.style.opacity = hOp; }
+                }
+            }
+        }
+        const nodes = scene.nodes;
+        for (let ni = 0; ni < nodes.length; ni += 1) animateWord(nodes[ni], scene, time, tuning, intensity, frame.audio);
     };
 
     const createManager = (id, label, container, services, compile, options = {}) => {
@@ -185,10 +260,21 @@
         const interlude = createInterludeVisualizer({ className: `stage-interlude-${id}` });
         subtitle.append(translation, upcoming);
         mode.root.append(viewport, subtitle, empty, interlude.root);
+        // The size is known from the resize observer; reading it each frame
+        // makes the browser lay the page out again before every frame.
+        let viewportSize = null;
+        if (global.ResizeObserver) {
+            const observer = new global.ResizeObserver(() => { viewportSize = null; });
+            observer.observe(viewport);
+            mode.scope.add(() => observer.disconnect());
+        }
+        let accentValue = '';
         mode.scope.add(() => interlude.destroy());
         const decor = ['luminous', 'partita', 'cadenza'].includes(id)
             ? global.MusicStageLyricDecor?.create(mode.root, id) : null;
         if (decor) mode.scope.add(() => decor.destroy());
+        const card = U.watchOverlay(viewport);
+        mode.scope.add(() => card.destroy());
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -199,6 +285,7 @@
         let trackKey = '';
         let currentLine = null;
         let layoutKey = '';
+        let layoutStamp = '';
         let fontEpoch = 0;
         let force = true;
         let pretext = null;
@@ -214,10 +301,15 @@
             scenes = [];
             currentLine = null;
         };
+        let lastMeasureFont = '';
         const getTuning = () => ({ ...options.defaults, ...mode.config.modes?.[id] });
         const measure = (text, size, family, weight = 700) => {
             if (!context) return text.length * size * 0.6;
-            context.font = `${weight} ${size}px ${family}`;
+            const font = `${weight} ${size}px ${family}`;
+            if (lastMeasureFont !== font) {
+                lastMeasureFont = font;
+                context.font = font;
+            }
             return context.measureText(text).width;
         };
         const getLayout = (line, env) => {
@@ -250,14 +342,18 @@
         mode.updateFrame = frame => {
             if (mode.destroyed || mode.suspended) return;
             latest = frame;
-            const width = Math.max(1, viewport.clientWidth);
-            const height = Math.max(1, viewport.clientHeight);
+            if (!viewportSize || !global.ResizeObserver) {
+                viewportSize = { width: Math.max(1, viewport.clientWidth), height: Math.max(1, viewport.clientHeight) };
+            }
+            const { width, height } = viewportSize;
             const tuning = getTuning();
-            const motion = reduced?.matches ? 0 : number(mode.config.animationIntensity, 1);
+            const motion = global.MusicStageRuntime.isReducedMotion(reduced) ? 0 : number(mode.config.animationIntensity, 1);
             const nextTrack = frame.track?.path || frame.track?.title || '';
             const changedSource = source !== frame.lines || trackKey !== nextTrack;
             const accent = U.resolveAccent(services.app);
-            const pausedKey = `${frame.playbackTime}:${width}:${height}:${configEpoch}:${fontEpoch}:${Boolean(pretext)}:${loadError}:${accent?.r}:${accent?.g}:${accent?.b}`;
+            const box = card.box;
+            const boxKey = box ? `${box.left},${box.top},${box.right},${box.bottom}` : '';
+            const pausedKey = `${frame.playbackTime}:${width}:${height}:${configEpoch}:${fontEpoch}:${Boolean(pretext)}:${loadError}:${accent?.r}:${accent?.g}:${accent?.b}:${boxKey}`;
             if (!force && !changedSource && !frame.isPlaying && pausedKey === lastPausedKey) return;
             if (!force && !changedSource && frame.isPlaying && mode.config.quality === 'energy-saving'
                 && frame.now - lastRenderNow < 1000 / 30) return;
@@ -271,16 +367,25 @@
                 invalidate();
             }
             const family = tuning.fontFamily || '"Segoe UI","Microsoft YaHei",sans-serif';
-            const key = JSON.stringify([width, height, family, tuning.fontScale, tuning.widthRatio,
-                tuning.wordSpacing, tuning.semanticLayout, tuning.staggerMin, tuning.staggerMax,
-                tuning.power, tuning.layoutStyle, tuning.heroEmphasis, tuning.wordColors, motion, fontEpoch, Boolean(pretext)]);
-            if (key !== layoutKey) {
-                layoutKey = key;
-                invalidate();
+            const stamp = `${width}|${height}|${configEpoch}|${fontEpoch}|${motion}|${Boolean(pretext)}`;
+            if (stamp !== layoutStamp) {
+                layoutStamp = stamp;
+                const key = JSON.stringify([width, height, family, tuning.fontScale, tuning.widthRatio,
+                    tuning.wordSpacing, tuning.semanticLayout, tuning.staggerMin, tuning.staggerMax,
+                    tuning.power, tuning.layoutStyle, tuning.heroEmphasis, tuning.wordColors, motion, fontEpoch, Boolean(pretext)]);
+                if (key !== layoutKey) {
+                    layoutKey = key;
+                    invalidate();
+                }
             }
-            mode.root.style.setProperty('--performance-accent', accent
+            const nextAccent = accent
                 ? `rgb(${clamp(accent.r, 0, 255)},${clamp(accent.g, 0, 255)},${clamp(accent.b, 0, 255)})`
-                : 'var(--stage-accent)');
+                : 'var(--stage-accent)';
+            // A custom property changed on the root restyles everything under it.
+            if (nextAccent !== accentValue) {
+                accentValue = nextAccent;
+                mode.root.style.setProperty('--performance-accent', nextAccent);
+            }
             decor?.update(frame, tuning, motion);
             const env = { width, height, tuning, motion, family, measure, pretext, trackKey };
             if (force || changedSource || jumped) {
@@ -309,7 +414,12 @@
                     scene.root.remove();
                     return false;
                 }
-                renderScene(scene, frame, tuning, motion);
+                if (!scene.shift || scene.shiftFor !== card.box || scene.shiftSize !== width * 1e5 + height) {
+                    scene.shift = dodgeCard(scene, card.box, width, height);
+                    scene.shiftFor = card.box;
+                    scene.shiftSize = width * 1e5 + height;
+                }
+                renderScene(scene, frame, tuning, motion, scene.shift);
                 return true;
             });
             const alive = line && scenes.some(scene => scene.line === line && frame.playbackTime <= scene.profile.end);
@@ -321,14 +431,16 @@
                 intensity: motion,
                 label: frame.lines.length ? '音乐间奏' : '纯音乐播放中'
             });
-            empty.hidden = Boolean((alive && scenes.length) || showInterlude);
-            empty.textContent = preparing
+            setHidden(empty, Boolean((alive && scenes.length) || showInterlude) && !compileError);
+            setText(empty, preparing
                 ? loadError ? '排版引擎加载失败，请重新进入舞台' : '正在准备空间排版…'
                 : compileError ? '歌词排版失败，请查看控制台'
-                    : '等待音乐';
-            if (compileError) empty.hidden = false;
-            translation.textContent = tuning.showTranslation === false ? '' : resolveSupplementalText(line);
-            upcoming.textContent = tuning.showUpcoming === false ? '' : frame.nextLines[0]?.fullText || '';
+                    : '等待音乐');
+            // A translation goes with its line: once the line has left (an
+            // interlude, the outro) it does not stay on alone under nothing.
+            const supplemental = tuning.showTranslation === false || !alive ? '' : resolveSupplementalText(line);
+            setText(translation, supplemental);
+            setText(upcoming, tuning.showUpcoming === false ? '' : frame.nextLines[0]?.fullText || '');
             // Preheat only the next line, using the same bounded layout cache.
             const next = frame.nextLines[0];
             if (next && next.startTime - frame.playbackTime < 1.2 && next.startTime > frame.playbackTime
@@ -346,7 +458,9 @@
         const resume = mode.resume;
         mode.resume = () => { resume(); if (latest) mode.updateFrame(latest); };
         mode.scope.listen(document.fonts, 'loadingdone', () => { fontEpoch += 1; invalidate(); });
-        mode.scope.listen(reduced, 'change', invalidate);
+        const onMotionChange = () => { invalidate(); lastRenderNow = -Infinity; if (latest) mode.updateFrame(latest); };
+        mode.scope.listen(reduced, 'change', onMotionChange);
+        mode.scope.listen(global, 'music-motion-change', onMotionChange);
         if (options.pretext) {
             L.loadPretext().then(module => {
                 if (mode.destroyed) return;

@@ -1,0 +1,192 @@
+// Musicmodules/music-lyrics-ai.js
+// 外语歌（日语、英语、韩语……）的歌词没有中文翻译时，用 VCP 上配置的模型翻好，放进每行的 translation，
+// 歌词区、首页歌词、舞台、桌面歌词都照常显示（关掉「显示翻译」也照常藏起来）。
+// 同一份歌词只翻一次（主进程缓存在歌词目录 translations/）；切歌了就不再往旧歌里填。
+// 开关：命令面板「AI 翻译外语歌词」，存本机（默认开）。没配模型时什么都不做。
+//
+// 对外：app.lyricsAi = { enabled（读写）, translateNow() }。纯函数 needsTranslation 供测试。
+(function (global) {
+    'use strict';
+
+    const KEY = 'musicLyricsAiTranslate';
+    const NOTICE_KEY = 'musicLyricsAiNoticeShown';
+
+    const textOf = (line) => {
+        const raw = line && (line.original ?? line.text ?? line.fullText);
+        if (!raw) return '';
+        return typeof raw === 'string' ? raw.trim() : String(raw).trim();
+    };
+
+    // 这份歌词要不要翻：已有翻译的（三成以上行有译文）不翻；有正文的行里一半以上是外语才翻。
+    // 外语 = 有假名或谚文，或者有拉丁字母而没有汉字。纯中文、纯音乐（没词）都不翻。
+    function needsTranslation(lines) {
+        if (!Array.isArray(lines) || lines.length < 2) return false;
+        let withText = 0, foreign = 0, translated = 0;
+        for (let li = 0; li < lines.length; li += 1) {
+            const line = lines[li];
+            const t = textOf(line);
+            if (!t) continue;
+            withText += 1;
+            const tr = line.translation;
+            if (tr && (typeof tr === 'string' ? tr.trim() : String(tr).trim())) translated += 1;
+            let isForeign = false;
+            let hasHan = false;
+            let latin = 0;
+            for (let i = 0; i < t.length; i += 1) {
+                const c = t.charCodeAt(i);
+                if ((c >= 0x3040 && c <= 0x30FF) || (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0x1100 && c <= 0x11FF)) {
+                    isForeign = true;
+                    break;
+                }
+                if (c >= 0x4E00 && c <= 0x9FFF) {
+                    hasHan = true;
+                } else if (!hasHan && latin < 3 && ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 0xC0 && c <= 0x24F))) {
+                    latin += 1;
+                }
+            }
+            if (isForeign || (!hasHan && latin >= 3)) foreign += 1;
+        }
+        if (withText < 2) return false;
+        if (translated >= withText * 0.3) return false;
+        return foreign >= withText * 0.5;
+    }
+
+    function setupMusicLyricsAi(app, { storage = (() => { try { return global.localStorage; } catch (e) { return null; } })() } = {}) {
+        if (!app || app.lyricsAi || typeof app.fetchAndDisplayLyrics !== 'function') return;
+        let enabled = true;
+        try { enabled = storage?.getItem(KEY) !== '0'; } catch (e) { /* 默认开 */ }
+        let unavailable = false; // 没配模型：这次运行不再问
+        let inFlight = null;     // { token, lines, manual }：防止自动与连点并发发出重复翻译请求
+
+        const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
+        const currentTrack = () => (Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] : null);
+
+        const run = async ({ manual = false } = {}) => {
+            if (!enabled && !manual) return;
+            if (unavailable && !manual) return;
+            if (!app.api?.translateMusicLyrics) return;
+            const lines = app.currentLyrics;
+            if (!needsTranslation(lines)) {
+                if (manual) toast(Array.isArray(lines) && lines.length ? '这份歌词已经有翻译，或者本来就是中文' : '这首还没有歌词');
+                return;
+            }
+            const token = app.lyricsRequestToken;
+            if (inFlight && inFlight.token === token && inFlight.lines === lines) {
+                if (manual) {
+                    inFlight.manual = true;
+                    toast('正在翻译歌词…');
+                }
+                return inFlight.promise;
+            }
+            const flight = { token, lines, manual, promise: null };
+            const task = (async () => {
+                const track = currentTrack();
+                const texts = new Array(lines.length);
+                for (let i = 0; i < lines.length; i += 1) texts[i] = textOf(lines[i]);
+                if (manual) toast('正在翻译歌词…');
+                let result;
+                try {
+                    result = await app.api.translateMusicLyrics({
+                        lines: texts,
+                        title: app.stripAudioExtension ? app.stripAudioExtension(track?.title || '') : (track?.title || ''),
+                        artist: track?.artist || '',
+                        force: manual
+                    });
+                } catch (e) {
+                    result = { status: 'error', message: e?.message || String(e) };
+                } finally {
+                    if (inFlight === flight) inFlight = null;
+                }
+                const wantManual = flight.manual;
+                // 切歌了、换了一份歌词、调了偏移：不往新的里填旧译文
+                if (app.lyricsRequestToken !== token || app.currentLyrics !== lines) return;
+                if (result?.status === 'unavailable') {
+                    unavailable = true;
+                    if (wantManual) toast(`没法翻译：${result.message}`);
+                    return;
+                }
+                if (result?.status !== 'success' || !Array.isArray(result.translations) || !result.translations.length || result.translations.length > texts.length) {
+                    if (wantManual) toast(`翻译没有成功：${result?.message || '模型没有回应'}`);
+                    return;
+                }
+                const next = new Array(lines.length);
+                for (let i = 0; i < lines.length; i += 1) {
+                    const line = lines[i];
+                    const tr = String(result.translations[i] || '').trim();
+                    next[i] = (!tr || tr === texts[i] || String(line.translation || '').trim())
+                        ? line
+                        : { ...line, translation: tr, translationSource: 'ai' };
+                }
+                // 换一个新数组：首页歌词、舞台按引用判断歌词变了没有
+                app.currentLyrics = next;
+                app._lyricLayout = null;
+                try { app.renderLyrics?.(); } catch (e) { /* 歌词区没准备好 */ }
+                try { app.syncLyricsAfterSeek?.(); } catch (e) { /* 同上 */ }
+                try { global.document?.dispatchEvent?.(new CustomEvent('music-lyrics-translated', { detail: { source: 'ai', cached: Boolean(result.cached) } })); } catch (e) { /* 旧内核 */ }
+                let shown = false;
+                try { shown = storage?.getItem(NOTICE_KEY) === '1'; } catch (e) { /* 照常提示 */ }
+                if (wantManual) toast('歌词翻译好了');
+                else if (!shown && !result.cached) {
+                    toast('外语歌词用 AI 翻成了中文；不想要可以在命令面板里关掉「AI 翻译外语歌词」');
+                    try { storage?.setItem(NOTICE_KEY, '1'); } catch (e) { /* 下次再提示 */ }
+                }
+            })();
+            flight.promise = task;
+            inFlight = flight;
+            return task;
+        };
+
+        // 取完歌词再看要不要翻译（取词是异步的，所以用 wrap 等它完成）。
+        (global.MusicAppHooks || require('./music-app-hooks.js')).wrap(app, 'fetchAndDisplayLyrics', 'lyrics-ai', (base) => async function (...args) {
+            const result = await base.apply(this, args);
+            run().catch((e) => console.warn('[MusicLyricsAi] translate failed:', e?.message || e));
+            return result;
+        });
+
+        let ntCacheRef = null;
+        let ntCacheLen = -1;
+        let ntCacheFirstTr = undefined;
+        let ntCacheMidTr = undefined;
+        let ntCacheLastTr = undefined;
+        let ntCacheVal = false;
+        const checkNeedsTranslation = () => {
+            const lines = app.currentLyrics;
+            if (!Array.isArray(lines) || lines.length < 2) {
+                ntCacheRef = lines;
+                ntCacheLen = Array.isArray(lines) ? lines.length : -1;
+                ntCacheVal = false;
+                return false;
+            }
+            const len = lines.length;
+            const firstTr = lines[0]?.translation;
+            const midTr = lines[len >> 1]?.translation;
+            const lastTr = lines[len - 1]?.translation;
+            if (lines === ntCacheRef && len === ntCacheLen
+                && firstTr === ntCacheFirstTr && midTr === ntCacheMidTr && lastTr === ntCacheLastTr) {
+                return ntCacheVal;
+            }
+            ntCacheRef = lines;
+            ntCacheLen = len;
+            ntCacheFirstTr = firstTr;
+            ntCacheMidTr = midTr;
+            ntCacheLastTr = lastTr;
+            ntCacheVal = needsTranslation(lines);
+            return ntCacheVal;
+        };
+
+        app.lyricsAi = {
+            get enabled() { return enabled; },
+            set enabled(v) {
+                enabled = Boolean(v);
+                try { storage?.setItem(KEY, enabled ? '1' : '0'); } catch (e) { /* 只是偏好 */ }
+                if (enabled) { unavailable = false; run().catch(() => {}); }
+            },
+            translateNow: () => run({ manual: true }),
+            needsTranslation: checkNeedsTranslation
+        };
+    }
+
+    const exported = { setupMusicLyricsAi, needsTranslation };
+    if (typeof module !== 'undefined' && module.exports) module.exports = exported;
+    global.setupMusicLyricsAi = setupMusicLyricsAi;
+})(typeof window !== 'undefined' ? window : globalThis);

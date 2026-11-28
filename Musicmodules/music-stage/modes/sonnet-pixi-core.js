@@ -6,8 +6,18 @@
 
     // 商籁 Pixi 动态图形与排版导演类
     class SonnetPixiDirector {
-        constructor(container) {
+        constructor(container, options = {}) {
+            // Multisampled canvas only when the stage will not be drawn through
+            // the print filter's own multisampled target (createPostProcess).
+            this.canvasAntialias = options.canvasAntialias !== false;
             this.container = container;
+            // The size is known from the resize observer; reading it every
+            // frame makes the browser lay the page out again before each one.
+            this.sizeKnown = false;
+            if (globalThis.ResizeObserver) {
+                this.sizeObserver = new globalThis.ResizeObserver(() => { this.sizeKnown = false; });
+                this.sizeObserver.observe(container);
+            }
             this.app = null;
             this.sceneContainer = null;
             this.frameDecorContainer = null;
@@ -35,30 +45,27 @@
 
         async init() {
             if (this.initialized || this.destroyed) return;
-            const PIXI = global.PIXI;
+            const PIXI = global.PIXI || await global.MusicStageRuntime?.ensurePixi?.();
+            if (this.destroyed) return;
             if (!PIXI) throw new Error('PIXI is not loaded');
 
-            const application = new PIXI.Application();
-            this.app = application;
-            await application.init({
+            // A renderer parked by a stage that just went away is reused when
+            // its canvas settings match (see createApplication).
+            const application = await Effects.createApplication(PIXI, {
                 backgroundAlpha: 0,
                 preference: 'webgl',
                 autoStart: false,
-                antialias: true,
+                // See canvasAntialias in the constructor.
+                antialias: this.canvasAntialias,
                 resolution: Math.min(2, global.devicePixelRatio || 1),
                 autoDensity: true
             });
-
-            if (this.destroyed || this.app !== application) {
-                // The mode may be destroyed while initialization is awaiting
-                // GPU setup. Avoid dereferencing or destroying an application
-                // which the synchronous teardown path has already released.
-                if (this.app === application) {
-                    application.destroy(true, { children: true });
-                    this.app = null;
-                }
+            if (this.destroyed) {
+                // destroy() ran while the renderer was being set up.
+                Effects.releaseApplication(application);
                 return;
             }
+            this.app = application;
             this.app.stop();
             this.container.appendChild(this.app.canvas);
             this.app.canvas.className = 'sonnet-pixi-canvas';
@@ -85,8 +92,12 @@
             this.sceneContainer.addChild(this.bloomContainer);
             this.app.stage.addChild(this.sceneContainer);
 
-            this.postProcess = Effects.createPostProcess(PIXI, this.app.stage);
+            this.postProcess = Effects.createPostProcess(PIXI, this.app.stage, { canvasAntialias: this.canvasAntialias });
             this.retirement = Effects.createRetirement(PIXI, this.app.stage, { dissolve: true });
+            if (this.postProcess?.glProgram && this.app.renderer?.gl) {
+                await global.MusicStageRuntime?.warmPrograms?.(this.app.renderer.gl, [this.postProcess.glProgram], () => !this.destroyed);
+                if (this.destroyed) return;
+            }
             this.initialized = true;
             this.resize();
             if (this.pendingShot) this.buildShot(...this.pendingShot);
@@ -94,6 +105,8 @@
 
         resize() {
             if (!this.initialized || !this.app) return;
+            if (this.sizeKnown && this.sizeObserver) return;
+            this.sizeKnown = true;
             const width = Math.max(1, this.container.clientWidth);
             const height = Math.max(1, this.container.clientHeight);
             if (width === this.width && height === this.height) return;
@@ -246,7 +259,7 @@
                 this.giantText.destroy();
                 this.giantText = null;
             }
-            const giantStr = line?.fullText ? global.MusicStageRuntime.splitGraphemes(line.fullText).slice(0, 8).join('') : 'SONNET';
+            const giantStr = line?.fullText ? global.MusicStageRuntime.splitGraphemes(line.fullText).slice(0, 8).join('') : '商籁';
             this.giantText = new PIXI.Text({
                 text: giantStr,
                 style: {
@@ -335,32 +348,54 @@
             const time = frame.playbackTime;
             const intensity = motion * Effects.amount(tuning.performanceIntensity, 1.25);
             const kick = tuning.performance.impact;
-            this.orbits.forEach((orbit, index) => {
-                orbit.visible = tuning.quality !== 'energy-saving' || index < 2;
-                const direction = index % 2 ? -1 : 1;
+            const showBg = tuning.showBackground !== false;
+            const showHud = showBg && tuning.guideLines !== false;
+            const showDecor = tuning.showDecor !== false;
+            this.hudContainer.visible = showHud;
+            this.frameDecorContainer.visible = showDecor;
+            this.geoContainer.visible = showBg;
+
+            if (showHud) {
                 const circular = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
-                orbit.rotation = circular
-                    ? (time * (0.07 + index * 0.025) + kick * 0.15) * direction * intensity
-                    : Math.sin(time * 0.16 + index) * 0.012 * intensity;
-                const depth = this.backgroundKind === 'perspective'
-                    ? Math.sin(time * 0.55 - index * 0.5) * 0.06 * intensity : 0;
-                const scale = 1 + depth + kick * (0.025 + index * 0.015) * intensity;
-                orbit.scale.set(scale, scale * (orbit.dataset?.flattened || 1));
-                orbit.position.set(this.width / 2,
-                    this.height / 2 + (circular ? 0 : Math.sin(time * 0.4 + index * 0.7) * 12 * intensity));
-                orbit.alpha = 0.55 + tuning.performance.energy * 0.35;
-            });
-            this.scan.rotation = time * 0.32 * intensity;
-            this.motif.visible = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
-            this.motif.rotation = -time * 0.035 * intensity;
-            this.motif.scale.set(1 + Math.sin(time * 0.6) * 0.025 * intensity);
-            this.frameDecorContainer.scale.set(1 + kick * 0.008 * intensity);
-            if (this.giantText) {
-                this.giantText.alpha = this.backgroundKind === 'editorial-lattice' ? 0.12 : 0.055;
-                this.giantText.scale.set(1 + tuning.performance.energy * 0.06 * intensity);
-                this.giantText.position.set(this.width * 0.5 + Math.sin(time * 0.14) * this.width * 0.12 * intensity,
-                    this.height * 0.5 - 20 + Math.cos(time * 0.19) * 18 * intensity);
-                this.giantText.rotation = Math.sin(time * 0.12) * 0.035 * intensity;
+                const isPerspective = this.backgroundKind === 'perspective';
+                const lowQuality = tuning.quality === 'energy-saving';
+                const energyAlpha = 0.55 + tuning.performance.energy * 0.35;
+                const orbits = this.orbits;
+                for (let index = 0; index < orbits.length; index += 1) {
+                    const orbit = orbits[index];
+                    const visible = !lowQuality || index < 2;
+                    orbit.visible = visible;
+                    if (!visible) continue;
+                    const direction = index % 2 ? -1 : 1;
+                    orbit.rotation = circular
+                        ? (time * (0.07 + index * 0.025) + kick * 0.15) * direction * intensity
+                        : Math.sin(time * 0.16 + index) * 0.012 * intensity;
+                    const depth = isPerspective
+                        ? Math.sin(time * 0.55 - index * 0.5) * 0.06 * intensity : 0;
+                    const scale = 1 + depth + kick * (0.025 + index * 0.015) * intensity;
+                    orbit.scale.set(scale, scale * (orbit.dataset?.flattened || 1));
+                    orbit.position.set(this.width / 2,
+                        this.height / 2 + (circular ? 0 : Math.sin(time * 0.4 + index * 0.7) * 12 * intensity));
+                    orbit.alpha = energyAlpha;
+                }
+                this.scan.rotation = time * 0.32 * intensity;
+            }
+            if (showBg) {
+                this.motif.visible = this.backgroundKind === 'orbital' || this.backgroundKind === 'orrery';
+                if (this.motif.visible) {
+                    this.motif.rotation = -time * 0.035 * intensity;
+                    this.motif.scale.set(1 + Math.sin(time * 0.6) * 0.025 * intensity);
+                }
+                if (this.giantText) {
+                    this.giantText.alpha = this.backgroundKind === 'editorial-lattice' ? 0.12 : 0.055;
+                    this.giantText.scale.set(1 + tuning.performance.energy * 0.06 * intensity);
+                    this.giantText.position.set(this.width * 0.5 + Math.sin(time * 0.14) * this.width * 0.12 * intensity,
+                        this.height * 0.5 - 20 + Math.cos(time * 0.19) * 18 * intensity);
+                    this.giantText.rotation = Math.sin(time * 0.12) * 0.035 * intensity;
+                }
+            }
+            if (showDecor) {
+                this.frameDecorContainer.scale.set(1 + kick * 0.008 * intensity);
             }
 
             if (!trackMode && !bloomMode) {
@@ -369,10 +404,6 @@
                 this.accents?.update(frame, tuning);
             }
 
-            // 4. 图层开关
-            this.hudContainer.visible = tuning.showBackground !== false && tuning.guideLines !== false;
-            this.frameDecorContainer.visible = tuning.showDecor !== false;
-            this.geoContainer.visible = tuning.showBackground !== false;
             const backgroundAlpha = this.retirement.update(frame, tuning) ?? 1;
             this.geoContainer.alpha = backgroundAlpha;
             this.hudContainer.alpha = backgroundAlpha;
@@ -390,6 +421,8 @@
         }
 
         destroy() {
+            this.sizeObserver?.disconnect();
+            this.sizeObserver = null;
             if (this.destroyed && !this.app) return;
             this.destroyed = true;
             this.pendingShot = null;
@@ -407,15 +440,11 @@
             this.retirement = null;
             this.postProcess?.destroy();
             this.postProcess = null;
-            // A rejected or interrupted init can allocate the renderer before
-            // `initialized` is set. Destroy any existing application regardless
-            // of that flag to release its WebGL context and canvas references.
+            // The renderer is parked for the next stage with the same canvas
+            // settings, or destroyed; an unclaimed one is destroyed shortly.
+            // (An init that fails disposes its own application.)
             if (this.app) {
-                try {
-                    this.app.destroy(true, { children: true });
-                } catch (error) {
-                    console.warn('[MusicStage:Sonnet] PIXI cleanup failed:', error);
-                }
+                Effects.releaseApplication(this.app);
                 this.app = null;
             }
             this.sceneContainer = null;

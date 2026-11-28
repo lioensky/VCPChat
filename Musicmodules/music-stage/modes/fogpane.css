@@ -1,0 +1,54 @@
+/* 雾笺（fogpane）：整扇车窗由着色器画。 */
+.music-stage-mode-fogpane {
+    isolation: isolate;
+    background: var(--fogpane-bg, #4a4f56);
+}
+.music-stage-mode-fogpane > .fogpane-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+    pointer-events: none;
+}
+.fogpane-kicker {
+    position: absolute;
+    z-index: 2;
+    top: calc(max(5%, 42px) + 26px);
+    right: calc(max(4%, 36px) + 2px);
+    color: var(--fogpane-mark, rgba(236, 240, 245, 0.66));
+    font: 600 10px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.24em;
+    pointer-events: none;
+}
+.music-stage-mode-fogpane > .fogpane-translation {
+    position: absolute;
+    left: 50%;
+    bottom: max(calc(16% + 12px), 122px);
+    z-index: 2;
+    max-width: min(76%, 1000px);
+    margin: 0;
+    transform: translateX(-50%);
+    color: var(--fogpane-mark, rgba(236, 240, 245, 0.66));
+    font-size: 15px;
+    line-height: 1.5;
+    text-align: center;
+    white-space: pre-line;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+.music-stage-mode-fogpane > .fogpane-translation:empty,
+.fogpane-notice[hidden] {
+    display: none;
+}
+.fogpane-notice {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    color: var(--fogpane-mark, rgba(236, 240, 245, 0.66));
+    font-size: 14px;
+}
+

@@ -7,8 +7,15 @@
     if (!Runtime || !Modes || !Config) throw new Error('Music stage runtime, config and modes must load before music-stage-host.js');
 
     const { clamp, DisposableScope } = Runtime;
+    // 模式外观特性（3D / 铺满 / 夜色）只在登记表里写一份，见 music-stage-advanced-modes.js
+    const modeTraits = (id) => Modes.traits?.(id) || { scene3d: false, opaque: false, night: false };
 
-    const fileUrl = (path) => path ? `file://${String(path).replace(/\\/g, '/')}` : '';
+    // 和 music-utils 的 app.fileUrl 一样：路径里的空格、#、?、'、% 都要编码，否则封面断图
+    const fileUrl = (path) => {
+        if (!path) return '';
+        const p = String(path).replace(/\\/g, '/');
+        return 'file://' + encodeURI(p.startsWith('/') ? p : '/' + p).replace(/[?#']/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+    };
 
     const resolveThemeAssetValue = (value) => {
         if (typeof value !== 'string' || !value.includes('url(')) return value;
@@ -54,8 +61,7 @@
 
     function setupMusicStage(app) {
         const root = document.getElementById('music-stage');
-        const toggleButton = document.getElementById('stage-toggle-btn');
-        if (!root || !toggleButton) {
+        if (!root) {
             console.warn('[MusicStage] Required DOM was not found.');
             return;
         }
@@ -67,7 +73,9 @@
             edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'),
             edgeCanvas: root.querySelector('.music-stage-edge-spectrum-canvas'),
             modeRoot: root.querySelector('.music-stage-mode-root'),
-            modeSwitcher: root.querySelector('.music-stage-mode-switcher'),
+            modeSwitcher: root.querySelector('.music-stage-mode-switcher')
+                || document.querySelector('#custom-title-bar .music-stage-mode-picker'),
+            homeButton: document.querySelector('#custom-title-bar .music-stage-home'),
             settings: root.querySelector('.music-stage-settings'),
             settingsToggle: root.querySelector('.music-stage-settings-toggle'),
             settingsCard: root.querySelector('.music-stage-settings-card'),
@@ -97,30 +105,6 @@
             emptyNotice: root.querySelector('.music-stage-empty-notice')
         };
 
-        // The spectrum lives in the outer band of the window, so each side has a
-        // strip canvas of its own instead of one canvas the size of the window.
-        const EDGE_SIDES = ['top', 'right', 'bottom', 'left'];
-        const edgeStrips = {};
-        EDGE_SIDES.forEach((side, index) => {
-            const canvas = index === 0 ? elements.edgeCanvas : elements.edgeCanvas?.cloneNode(false);
-            const context = canvas?.getContext?.('2d', { alpha: true });
-            if (!canvas || !context) return;
-            if (index > 0) elements.edgeCanvas.after(canvas);
-            edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0 };
-        });
-        const edgeContext = edgeStrips.left ? edgeStrips.top.context : null;
-        const prefersReducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
-        const edgeCanvasState = {
-            width: 0,
-            height: 0,
-            dpr: 1,
-            drawnAt: 0,
-            blank: false,
-            top: new Float32Array(0),
-            right: new Float32Array(0),
-            bottom: new Float32Array(0),
-            left: new Float32Array(0)
-        };
 
         const scope = new DisposableScope();
         let editingSettings = false;
@@ -136,10 +120,10 @@
             { key: 'cameraSoftness', label: '镜头平缓度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'cameraRoll', label: '镜头侧倾', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'lyricLayout', label: '歌词构图', type: 'select', options: [['lines', '整句分行'], ['phrases', '短语分组'], ['staircase', '阶梯短语'], ['editorial-track', '纵横连续版轨'], ['starbloom', '繁星如盛']] },
-            { key: 'trackVerticalChance', label: '版轨纵排概率', type: 'range', min: 0.1, max: 0.9, step: 0.05, unit: '%' },
-            { key: 'trackJunction', label: '版轨交错幅度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
-            { key: 'trackLookAhead', label: '镜头前路预瞄', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
-            { key: 'trackMinSegment', label: '错栏断句最短字数', type: 'range', min: 2, max: 8, step: 1, unit: '字' },
+            { key: 'trackVerticalChance', label: '版轨纵排概率', type: 'range', min: 0.1, max: 0.9, step: 0.05, unit: '%', onlyWhen: ['lyricLayout', ['editorial-track']] },
+            { key: 'trackJunction', label: '版轨交错幅度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%', onlyWhen: ['lyricLayout', ['editorial-track']] },
+            { key: 'trackLookAhead', label: '镜头提前看下一段', type: 'range', min: 0, max: 1, step: 0.05, unit: '%', onlyWhen: ['lyricLayout', ['editorial-track']] },
+            { key: 'trackMinSegment', label: '换栏最短字数', type: 'range', min: 2, max: 8, step: 1, unit: '字', onlyWhen: ['lyricLayout', ['editorial-track']] },
             { key: 'phraseLength', label: '短语目标字数', type: 'range', min: 6, max: 24, step: 1, unit: '字' },
             { key: 'phraseEmphasis', label: '短语聚光', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'cameraTracking', label: '逐词追焦', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
@@ -150,7 +134,7 @@
             { key: 'releaseDuration', label: '句尾消散', type: 'range', min: 0, max: 1.5, step: 0.05, unit: 's' },
             { key: 'lensDistortion', label: '镜头光学畸变', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
             { key: 'lensDispersion', label: '径向色散', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
-            { key: 'rgbShift', label: 'RGB 偏移', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+            { key: 'rgbShift', label: '色彩错位', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'grain', label: '胶片颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'contrast', label: '对比度增强', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'halftone', label: '半调网点', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
@@ -167,7 +151,7 @@
             { key: 'decorOpacity', label: '装饰可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
             { key: 'decorMotion', label: '装饰运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
         ];
-        const lyricLayoutStyle = { key: 'layoutStyle', label: '构图风格', type: 'select', options: [['calm', '平静'], ['normal', '原作标准'], ['chaotic', '奔放']] };
+        const lyricLayoutStyle = { key: 'layoutStyle', label: '构图风格', type: 'select', options: [['calm', '平静'], ['normal', '标准'], ['chaotic', '奔放']] };
         const tuningDefinitions = Object.freeze({
             tempera: [
                 { key: 'cameraIntensity', label: '镜头强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
@@ -176,7 +160,7 @@
                 { key: 'showBlocks', label: '色块场景', type: 'toggle' },
                 { key: 'showDecor', label: '装饰元素', type: 'toggle' },
                 { key: 'textInversion', label: '演唱强调色', type: 'toggle' },
-                { key: 'postProcess', label: '光学后处理（节能档关闭）', type: 'toggle' },
+                { key: 'postProcess', label: '光学后期（节能档关闭）', type: 'toggle' },
                 ...pixiTuningDefinitions
             ],
             sonnet: [
@@ -185,7 +169,7 @@
                 { key: 'guideLines', label: '轨迹线', type: 'toggle' },
                 { key: 'showBackground', label: '主场景', type: 'toggle' },
                 { key: 'showDecor', label: '背景装饰', type: 'toggle' },
-                { key: 'postProcess', label: '光学后处理（节能档关闭）', type: 'toggle' },
+                { key: 'postProcess', label: '光学后期（节能档关闭）', type: 'toggle' },
                 ...pixiTuningDefinitions
             ],
             diorama: [
@@ -201,11 +185,14 @@
                 { key: 'vignette', label: '镜头暗角', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
                 { key: 'narrativeStations', label: '沿线站台与电线杆', type: 'toggle' },
                 { key: 'stationIntensity', label: '沿线设施密度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
-                { key: 'waterReflection', label: '全局水面反射', type: 'toggle' },
-                { key: 'waterStrength', label: '水面反射强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'waterReflection', label: '水面倒影', type: 'toggle' },
+                { key: 'waterStrength', label: '倒影强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'cameraSpeed', label: '镜头速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
                 { key: 'motionAmount', label: '运动幅度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
-                { key: 'audioReactivity', label: '空间音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'lyricHop', label: '字随拍跳（正在唱的字随鼓点轻跳，0 关闭）', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'lyricFont', label: '歌词字体', type: 'select', options: [['sans', '黑体'], ['serif', '宋体（明朝）'], ['kai', '楷体']] },
+                { key: 'coverTint', label: '天色随封面（封面的主色染进天空与极光，0 关闭）', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
                 { key: 'showParticles', label: '天球星空', type: 'toggle' },
                 { key: 'geometryMode', label: '取景方式', type: 'select', options: [['clouds', '电影取景'], ['corridor', '全幅取景']] },
                 { key: 'cabinFrame', label: '车窗前景（侧望窗外时淡入）', type: 'toggle' },
@@ -214,7 +201,7 @@
             ],
             luminous: [
                 ...vectorDecorControls,
-                { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
                 { key: 'semanticLayout', label: '语义与标点组合', type: 'toggle' },
                 lyricLayoutStyle,
                 ...lyricPerformanceControls,
@@ -226,7 +213,7 @@
             partita: [
                 ...vectorDecorControls,
                 { key: 'guidePulse', label: '短语引导光点', type: 'toggle' },
-                { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
                 { key: 'glow', label: '逐字辉光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 { key: 'breathing', label: '整句呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 lyricLayoutStyle,
@@ -243,8 +230,8 @@
                 { key: 'breathing', label: '构图呼吸', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
                 ...lyricPerformanceControls,
                 { key: 'motion', label: '词片运动', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
-                { key: 'fontScale', label: '文字比例', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
-                { key: 'widthRatio', label: '构图宽度', type: 'range', min: 0.5, max: 0.95, step: 0.01, unit: '' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'widthRatio', label: '构图宽度', type: 'range', min: 0.5, max: 0.95, step: 0.01, unit: '%' },
                 { key: 'glow', label: '辉光强度', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             fume: [
@@ -261,8 +248,123 @@
                 { key: 'hidePrintSymbols', label: '隐藏打印标记', type: 'toggle' }
             ],
             starborn: [
-                { key: 'transitionLock', label: '转场锁定', type: 'range', min: 0.5, max: 12, step: 0.5, unit: 's' },
-                { key: 'avoidRepeat', label: '避免重复', type: 'toggle' }
+                { key: 'transitionLock', label: '换场最短间隔', type: 'range', min: 0.5, max: 12, step: 0.5, unit: 's' },
+                { key: 'avoidRepeat', label: '不连续用同一舞台', type: 'toggle' }
+            ],
+            inkdraft: [
+                { key: 'cameraCuts', label: '踩词硬切（多机位分镜）', type: 'toggle' },
+                { key: 'figures', label: '线稿', type: 'toggle' },
+                { key: 'inkScene', label: '意象场景', type: 'select', options: [['auto', '自动（每首歌一套）'], ['notebook', '演算纸'], ['rail', '铁道'], ['sea', '海'], ['night', '星夜'], ['city', '城市'], ['flora', '植物'], ['letters', '信笺'], ['weather', '天气'], ['score', '乐谱']] },
+                { key: 'collisions', label: '墨团对撞', type: 'toggle' },
+                { key: 'keywords', label: '关键词套色（反复出现的意象词用强调色）', type: 'toggle' },
+                { key: 'halftone', label: '半调网点', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'cloud', label: '墨云浓度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'grain', label: '砂纸颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'waitingOpacity', label: '未唱文字可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'inkFlip', label: '画面反相（纸墨对调）', type: 'toggle' },
+                { key: 'negativeShots', label: '反相镜头（偶尔一镜纸墨对调）', type: 'toggle' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            fogpane: [
+                { key: 'fog', label: '雾气浓度', type: 'range', min: 0.5, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'view', label: '窗外的景', type: 'select', options: [['alternate', '间奏时换景（街景／水族馆）'], ['street', '雨夜街景'], ['aquarium', '水族馆']] },
+                { key: 'rain', label: '窗外的天气', type: 'select', options: [['off', '晴'], ['light', '小雨'], ['heavy', '大雨'], ['snow', '下雪（窗上结霜）']] },
+                { key: 'drops', label: '玻璃上的水珠', type: 'toggle' },
+                { key: 'drips', label: '往下淌的水痕', type: 'toggle' },
+                { key: 'fireflies', label: '窗外萤火', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'cameraSpeed', label: '车速', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'grain', label: '颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' }
+            ],
+            impression: [
+                { key: 'timeOfDay', label: '每段换一个时辰的光', type: 'toggle' },
+                { key: 'flecks', label: '画上的光斑', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'frame', label: '画框', type: 'toggle' },
+                { key: 'lamp', label: '画灯', type: 'range', min: 0, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'grain', label: '颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            groupchat: [
+                { key: 'echoes', label: '副歌大家一起唱', type: 'toggle' },
+                { key: 'voiceNotes', label: '间奏发语音', type: 'toggle' },
+                { key: 'reactions', label: '点赞和已读', type: 'toggle' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            signal: [
+                { key: 'panel', label: '监视窗', type: 'select', options: [['lyrics', '歌词'], ['history', '电平记录'], ['off', '不显示']] },
+                { key: 'showSpectrum', label: '频谱条', type: 'toggle' },
+                { key: 'pulseRate', label: '脉冲', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'grain', label: '颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            orbit: [
+                { key: 'tilt', label: '轨道倾斜（扁到圆）', type: 'range', min: 0.15, max: 0.6, step: 0.01, unit: 'x' },
+                { key: 'roll', label: '轨道侧转', type: 'range', min: -30, max: 30, step: 1, unit: '°' },
+                { key: 'axisLine', label: '轴线', type: 'toggle' },
+                { key: 'nebula', label: '星尘星云', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'waitingOpacity', label: '未唱文字可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'grain', label: '颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            clockwork: [
+                { key: 'secondHand', label: '秒针', type: 'toggle' },
+                { key: 'wireframe', label: '蓝图线稿层', type: 'toggle' },
+                { key: 'perspective', label: '表盘透视（随歌换角度）', type: 'toggle' },
+                { key: 'parallax', label: '分层视差', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'smoke', label: '背景烟纹', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'waitingOpacity', label: '其他句可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'grain', label: '颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            hanabi: [
+                { key: 'density', label: '烟花密度', type: 'range', min: 0.4, max: 1.6, step: 0.05, unit: 'x' },
+                { key: 'trails', label: '尾迹长度', type: 'range', min: 0, max: 1.6, step: 0.05, unit: 'x' },
+                { key: 'smoke', label: '火药烟', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'bloom', label: '副歌泛光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'collage', label: '副歌拼贴（重复的句子拆成大小不一的词块）', type: 'toggle' },
+                { key: 'reflection', label: '河面倒影（节能档关闭）', type: 'toggle' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'waitingOpacity', label: '未唱文字可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'grain', label: '颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            lumiere: [
+                { key: 'smoke', label: '舞台烟雾', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'dust', label: '光里的浮尘', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'flare', label: '光源眩光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'bokeh', label: '前景散景', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'waitingOpacity', label: '未唱文字可见度', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'grain', label: '颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+            ],
+            kowloon: [
+                { key: 'cameraMode', label: '镜头（可拖拽看景，双击回正）', type: 'select', options: [['sandbox', '沙盒截面'], ['auto', '分镜运镜'], ['diorama', '斜俯视全景']] },
+                { key: 'rain', label: '雨（节能档减量）', type: 'select', options: [['off', '关'], ['light', '小雨'], ['heavy', '大雨']] },
+                { key: 'lightning', label: '副歌闪电', type: 'toggle' },
+                { key: 'reflections', label: '积水倒影（节能档关闭）', type: 'toggle' },
+                { key: 'fog', label: '雾气浓度', type: 'range', min: 0.5, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
+                { key: 'postProcess', label: '光学后期（节能档关闭）', type: 'toggle' },
+                { key: 'glow', label: '霓虹辉光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'grain', label: '胶片颗粒', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'vignette', label: '镜头暗角', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
             ],
             tunnel: [
                 { key: 'cameraSpeed', label: '穿行速度', type: 'range', min: 0.55, max: 1.85, step: 0.05, unit: 'x' },
@@ -277,17 +379,29 @@
                 { key: 'showShips', label: '飞船', type: 'toggle' },
                 { key: 'showStations', label: '空间站', type: 'toggle' },
                 { key: 'dissolveAmount', label: '点阵消散', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' },
-                { key: 'textHoldRatio', label: '歌词驻留', type: 'range', min: 0, max: 0.8, step: 0.05, unit: '%' },
+                { key: 'textHoldRatio', label: '已唱歌词驻留', type: 'range', min: 0, max: 0.8, step: 0.05, unit: '%' },
                 { key: 'fontScale', label: '歌词字号', type: 'range', min: 0.65, max: 1.5, step: 0.05, unit: 'x' },
+                { key: 'lyricFont', label: '歌词字体', type: 'select', options: [['sans', '黑体'], ['serif', '宋体（明朝）'], ['kai', '楷体']] },
                 { key: 'showTranslation', label: '翻译／罗马音', type: 'toggle' },
                 { key: 'glow', label: '点阵辉光', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
-                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' }
+                { key: 'audioReactivity', label: '音频响应', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'lyricHop', label: '字随拍跳（正在唱的字随鼓点轻跳，0 关闭）', type: 'range', min: 0, max: 2, step: 0.05, unit: 'x' },
+                { key: 'coverTint', label: '星云随封面（封面的主色染进星云，0 关闭）', type: 'range', min: 0, max: 1, step: 0.05, unit: '%' }
             ]
         });
         const state = {
             active: false,
             modeId: localStorage.getItem('musicStageMode') || 'luminous',
             modeInstance: null,
+            // Soft-focus switch: the old mode keeps performing until the new
+            // one has drawn, then one blurs away as the other settles in.
+            leaving: null,
+            arriving: null,
+            // Song handover: what the current mode is performing; see songHandover.
+            handover: null,
+            committedSong: null,
+            committedIdentity: null,
+            committedInstance: null,
             generation: 0,
             trackPath: null,
             trackSignature: '',
@@ -297,15 +411,16 @@
             draggingProgress: false,
             seekHold: null,
             lastTransportSignature: '',
+            lastTransportMode: '',
+            lastTransportVol: NaN,
+            lastProgTime: NaN,
+            lastProgDur: NaN,
             lastProgressWidth: '',
             lastCurrentTimeText: '',
             lastDurationText: '',
             lastProgressAriaValue: '',
             lastProgressAriaText: '',
             lastPlaybackState: null,
-            lastAudioPower: '',
-            lastAudioBass: '',
-            lastAudioVocal: '',
             lastNonZeroVolume: Math.max(0.35, Number(app.volumeSlider?.value) || 1),
             themeCatalog: [],
             appliedThemeVariables: new Set(),
@@ -319,23 +434,30 @@
                 modeSwitches: 0
             }
         };
+        // 边框频谱在 music-stage-edge.js
+        const edge = global.MusicStageEdge.create({ app, root, elements, state, scope, clamp });
 
-        const setButtonState = () => {
-            toggleButton.classList.toggle('is-active', state.active);
-            toggleButton.setAttribute('aria-pressed', String(state.active));
-            toggleButton.setAttribute('aria-label', state.active ? '退出歌词舞台' : '进入歌词舞台');
-            toggleButton.title = state.active ? '退出歌词舞台 (Esc)' : '进入歌词舞台';
-        };
-
-        const destroyMode = () => {
-            if (!state.modeInstance) return;
-            state.modeInstance.destroy();
-            state.modeInstance = null;
+        // A mode on its way out of a soft-focus switch; see setMode.
+        const dropLeaving = () => {
+            const leaving = state.leaving;
+            if (!leaving) return;
+            state.leaving = null;
+            leaving.instance.destroy();
             state.stats.modeDestroys += 1;
         };
 
-        const createMode = (modeId) => {
-            destroyMode();
+        const destroyMode = () => {
+            dropLeaving();
+            state.arriving = null;
+            if (!state.modeInstance) return;
+            state.modeInstance.destroy();
+            state.modeInstance = null;
+            delete root.dataset.stageMode;
+            state.stats.modeDestroys += 1;
+        };
+
+        const createMode = (modeId, { keepCurrent = false } = {}) => {
+            if (!keepCurrent) destroyMode();
             elements.modeRoot.classList.remove('is-switching');
             state.generation += 1;
             state.modeId = Modes.get(modeId).id;
@@ -348,15 +470,24 @@
             state.stats.modeCreates += 1;
             localStorage.setItem('musicStageMode', state.modeId);
             // The 3D modes paint every pixel themselves; see .stage-scene-3d.
-            const scene3d = state.modeId === 'diorama' || state.modeId === 'tunnel';
+            const traits = modeTraits(state.modeId);
+            const scene3d = traits.scene3d;
+            state.scene3d = scene3d;
             root.classList.toggle('stage-scene-3d', scene3d);
+            // 自己铺满整张纸的舞台：底下的模糊封面画了也看不见。
+            root.classList.toggle('stage-opaque', scene3d || traits.opaque);
+            // 雾笺、绘光的画面在浅色主题下也是夜色，左上角字标要换成浅色才看得见。
+            root.classList.toggle('stage-night', traits.night);
+            root.dataset.stageMode = state.modeId;
             document.body.classList.toggle('music-stage-scene-3d', scene3d);
 
             elements.modeSwitcher.querySelectorAll('[data-stage-mode]').forEach((button) => {
                 const selected = button.dataset.stageMode === state.modeId;
                 button.classList.toggle('is-active', selected);
-                button.setAttribute('aria-pressed', String(selected));
+                button.setAttribute(button.getAttribute('role') === 'menuitemradio' ? 'aria-checked' : 'aria-pressed', String(selected));
             });
+            syncModePickerLabel();
+            revealActiveMode();
 
             if (state.active) {
                 state.lastFrame = Runtime.createFrame(app, performance.now());
@@ -364,23 +495,111 @@
             }
         };
 
+        // 舞台切换：角落里一个按钮写着当前舞台，点开竖着弹出全部舞台（行高 28，和主程序设置页的下拉同一套）。
+        // 键盘：上下键 / Home / End 移动，回车或空格选中，Esc 或点外面收起；列表放不下时自己滚动。
+        const picker = { built: false, open: false, toggle: null, label: null, menu: null };
+        const isPicker = () => elements.modeSwitcher?.classList.contains('music-stage-mode-picker');
+        const modeMenu = () => (picker.built ? picker.menu : elements.modeSwitcher);
+        const modeOptions = () => Array.from(modeMenu()?.querySelectorAll('[data-stage-mode]') || []);
+        const buildModePicker = () => {
+            if (picker.built || !isPicker()) return;
+            const host = elements.modeSwitcher;
+            picker.toggle = createElement('button', 'music-stage-mode-picker-toggle', {
+                type: 'button',
+                'aria-haspopup': 'menu',
+                'aria-expanded': 'false',
+                title: '切换舞台'
+            });
+            picker.label = createElement('span', 'music-stage-mode-picker-label');
+            const chevron = createElement('span', 'music-stage-mode-picker-chevron', {
+                'aria-hidden': 'true',
+                html: '<svg viewBox="0 0 12 12" width="12" height="12"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+            });
+            picker.toggle.append(picker.label, chevron);
+            picker.menu = createElement('div', 'music-stage-mode-menu', { role: 'menu', 'aria-label': '歌词演出模式', tabindex: '-1' });
+            picker.menu.hidden = true;
+            host.replaceChildren(picker.toggle, picker.menu);
+            picker.built = true;
+        };
+        const syncModePickerLabel = () => {
+            if (!picker.built) return;
+            const entry = Modes.entries.find((item) => item.id === state.modeId);
+            picker.label.textContent = entry?.label || '';
+            picker.toggle.title = entry ? `舞台：${entry.label}（点开切换）` : '切换舞台';
+        };
+        const focusModeOption = (index) => {
+            const options = modeOptions();
+            if (!options.length) return;
+            const target = options[(index + options.length) % options.length];
+            target.focus({ preventScroll: true });
+            target.scrollIntoView?.({ block: 'nearest' });
+        };
+        const setModePickerOpen = (open, { focus = 'menu' } = {}) => {
+            if (!picker.built || picker.open === open) return;
+            picker.open = open;
+            picker.menu.hidden = !open;
+            picker.toggle.setAttribute('aria-expanded', String(open));
+            elements.modeSwitcher.classList.toggle('is-open', open);
+            if (open) {
+                const options = modeOptions();
+                const current = Math.max(0, options.findIndex((option) => option.dataset.stageMode === state.modeId));
+                if (focus === 'menu') focusModeOption(current);
+                else options[current]?.scrollIntoView?.({ block: 'nearest' });
+            } else if (focus === 'toggle') {
+                picker.toggle.focus({ preventScroll: true });
+            }
+        };
+
+        // 旧的横排页签在窄窗口里会横向滚动：把选中的那个留在可见范围里。竖向菜单打开时由 setModePickerOpen 负责。
+        const revealActiveMode = () => {
+            if (picker.built) return;
+            const bar = elements.modeSwitcher;
+            const button = bar?.querySelector('.music-stage-mode-button.is-active');
+            if (!button || bar.scrollWidth <= bar.clientWidth + 1) return;
+            const start = button.offsetLeft - 8;
+            const end = button.offsetLeft + button.offsetWidth + 8;
+            if (start < bar.scrollLeft) bar.scrollLeft = start;
+            else if (end > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = end - bar.clientWidth;
+        };
+
         const renderModeButtons = () => {
+            buildModePicker();
             const fragment = document.createDocumentFragment();
             const visibleIds = state.config.enabledModes.includes(state.modeId)
                 ? state.config.enabledModes
                 : [state.modeId, ...state.config.enabledModes];
             Modes.entries.filter((entry) => visibleIds.includes(entry.id)).forEach((entry) => {
-                const button = createElement('button', 'music-stage-mode-button', {
-                    type: 'button',
-                    text: entry.label,
-                    title: `切换至${entry.label}`,
-                    'data-stage-mode': entry.id,
-                    'aria-pressed': String(entry.id === state.modeId)
-                });
-                button.classList.toggle('is-active', entry.id === state.modeId);
+                const selected = entry.id === state.modeId;
+                const button = picker.built
+                    ? createElement('button', 'music-stage-mode-menu-item', {
+                        type: 'button',
+                        role: 'menuitemradio',
+                        tabindex: '-1',
+                        'data-stage-mode': entry.id,
+                        'aria-checked': String(selected)
+                    })
+                    : createElement('button', 'music-stage-mode-button', {
+                        type: 'button',
+                        text: entry.label,
+                        title: `切换至${entry.label}`,
+                        'data-stage-mode': entry.id,
+                        'aria-pressed': String(selected)
+                    });
+                if (picker.built) {
+                    button.append(
+                        createElement('span', 'music-stage-mode-menu-item-label', entry.label),
+                        createElement('span', 'music-stage-mode-menu-item-check', {
+                            'aria-hidden': 'true',
+                            html: '<svg viewBox="0 0 14 14" width="13" height="13"><path d="M3 7.2 5.8 10 11 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+                        })
+                    );
+                }
+                button.classList.toggle('is-active', selected);
                 fragment.appendChild(button);
             });
-            elements.modeSwitcher.replaceChildren(fragment);
+            modeMenu().replaceChildren(fragment);
+            syncModePickerLabel();
+            revealActiveMode();
         };
 
         const formatTuningValue = (definition, value) => {
@@ -390,8 +609,14 @@
             return `${Number(value).toFixed(definition.step < 0.1 ? 2 : 1)}${definition.unit || ''}`;
         };
 
+        let themeCatalogVersion = 0;
+        let lastAppliedThemeKey = '';
+        let lastEnabledModesKey = '';
+        const themeKeyOf = (cfg) => `${cfg.themeMode}|${cfg.themeFile}|${cfg.themeVariant}|${themeCatalogVersion}`;
+
         const applyStageTheme = () => {
             const config = state.config;
+            lastAppliedThemeKey = themeKeyOf(config);
             const useCustom = config.themeMode === 'custom';
             const selectedTheme = state.themeCatalog.find(theme => theme.fileName === config.themeFile);
             const variables = useCustom
@@ -439,13 +664,51 @@
             }
 
             updateTheme();
+            try { global.dispatchEvent(new CustomEvent('music-theme-change')); } catch (_) { /* 只是提示刷新 */ }
+        };
+
+        // 「主题」全窗口共用（首页、底栏、舞台），控件在底栏控制页「显示」组（music-dock-stage-settings.js）。
+        const themeChoices = () => {
+            const list = [{ value: 'global', label: '跟随全局主题' }];
+            state.themeCatalog.forEach((theme) => {
+                const name = theme.name || theme.fileName.replace(/^themes/, '').replace(/\.css$/i, '');
+                ['light', 'dark'].forEach((variant) => {
+                    if (theme.variables?.[variant] && Object.keys(theme.variables[variant]).length) {
+                        list.push({ value: `custom:${theme.fileName}:${variant}`, label: `${name} ${variant === 'light' ? '明' : '暗'}` });
+                    }
+                });
+            });
+            const config = state.config;
+            const current = config.themeMode === 'custom' ? `custom:${config.themeFile}:${config.themeVariant}` : 'global';
+            return { list, value: list.some(item => item.value === current) ? current : 'global' };
+        };
+        const setThemeChoice = (value) => {
+            const [kind, fileName, variant] = String(value || '').split(':');
+            Config.update(kind === 'custom'
+                ? { themeMode: 'custom', themeFile: fileName, themeVariant: variant }
+                : { themeMode: 'global', themeFile: '' });
+            // 选「某主题 明/暗」时窗口明暗跟过去
+            if (kind === 'custom' && typeof app.applyTheme === 'function'
+                && document.body.classList.contains('light-theme') !== (variant === 'light')) {
+                app.applyTheme(variant === 'light' ? 'light' : 'dark');
+            }
+        };
+        // 自定义主题当前那一版的强调色；跟随全局时为空。
+        const themeAccent = () => {
+            const config = state.config;
+            if (config.themeMode !== 'custom') return '';
+            const selected = state.themeCatalog.find(theme => theme.fileName === config.themeFile);
+            const value = selected?.variables?.[config.themeVariant]?.['--highlight-text'];
+            return value ? String(resolveThemeAssetValue(value)).trim() : '';
         };
 
         const loadThemeCatalog = async () => {
             if (!app.api?.getThemes) return;
             try {
                 const themes = await app.api.getThemes();
+                if (state.destroyed) return;
                 state.themeCatalog = Array.isArray(themes) ? themes : [];
+                themeCatalogVersion += 1;
                 if (
                     state.config.themeMode === 'custom'
                     && !state.themeCatalog.some(theme => theme.fileName === state.config.themeFile)
@@ -464,7 +727,7 @@
             const config = state.config;
             const modeFragment = document.createDocumentFragment();
             Modes.entries.forEach((entry) => {
-                const label = createElement('label', 'music-stage-mode-option', {
+                const label = createElement('label', 'music-stage-mode-menu-item', {
                     title: entry.description ? `${entry.label} · ${entry.description}` : entry.label
                 });
                 const checkbox = createElement('input', '', {
@@ -484,9 +747,19 @@
             const modeMeta = Config.modes.find((entry) => entry.id === state.modeId);
             if (elements.settingsHint) elements.settingsHint.textContent = modeMeta?.description || '';
             const tuningFragment = document.createDocumentFragment();
+            // Settings that only act under one choice of another setting (the
+            // editorial-track knobs, say) are hidden while that choice is off,
+            // so no slider in the list moves without changing anything.
+            const tuningDependents = [];
+            const syncTuningDependents = () => {
+                const current = state.config.modes?.[state.modeId] || {};
+                tuningDependents.forEach(({ row, when: [key, values] }) => {
+                    row.hidden = !values.includes(current[key]);
+                });
+            };
             (tuningDefinitions[state.modeId] || []).forEach((definition) => {
                 const value = config.modes[state.modeId]?.[definition.key];
-                const row = createElement('label', 'music-stage-tuning-row');
+                const row = createElement('label', definition.type !== 'range' ? 'music-stage-tuning-row is-value-hidden' : 'music-stage-tuning-row');
                 const header = createElement('span', 'music-stage-tuning-label');
                 const valueText = createElement('span', 'music-stage-tuning-value');
                 header.textContent = definition.label;
@@ -518,6 +791,7 @@
                 }
                 control.dataset.stageConfigKey = definition.key;
                 control.dataset.stageConfigType = definition.type;
+                if (definition.onlyWhen) tuningDependents.push({ row, when: definition.onlyWhen });
                 const handleControlChange = () => {
                     const next = definition.type === 'toggle'
                         ? control.checked
@@ -528,13 +802,17 @@
                     editingSettings = true;
                     try { Config.setModePatch(state.modeId, { [definition.key]: next }); }
                     finally { editingSettings = false; }
+                    syncTuningDependents();
                 };
-                control.addEventListener('input', handleControlChange);
-                control.addEventListener('change', handleControlChange);
+                if (definition.type === 'range') {
+                    control.addEventListener('input', handleControlChange);
+                    control.addEventListener('change', () => Config.flush?.());
+                } else control.addEventListener('change', handleControlChange);
                 row.append(header, valueText, control);
                 tuningFragment.appendChild(row);
             });
             elements.tuningControls.replaceChildren(tuningFragment);
+            syncTuningDependents();
 
             const commonFragment = document.createDocumentFragment();
             const edgeRow = createElement('label', 'music-stage-tuning-row');
@@ -571,58 +849,19 @@
                 const next = Number(intensity.value);
                 intensityValue.textContent = `${next.toFixed(2)}x`;
                 editingSettings = true;
-                try { Config.update({ animationIntensity: next }); }
+                try { Config.update({ animationIntensity: next }, { debounce: true }); }
                 finally { editingSettings = false; }
             });
+            intensity.addEventListener('change', () => Config.flush?.());
             const intensityRow = createElement('label', 'music-stage-tuning-row');
             intensityRow.append(createElement('span', 'music-stage-tuning-label', '动画总强度'), intensityValue, intensity);
-            commonFragment.append(qualityRow, intensityRow);
-
-            const themeSelect = createElement('select', 'music-stage-common-select', {
-                'aria-label': '舞台主题'
-            });
-            themeSelect.appendChild(createElement('option', '', {
-                value: 'global',
-                text: '跟随全局主题'
-            }));
-            state.themeCatalog.forEach((theme) => {
-                const name = theme.name || theme.fileName.replace(/^themes/, '').replace(/\.css$/i, '');
-                if (theme.variables?.light && Object.keys(theme.variables.light).length) {
-                    themeSelect.appendChild(createElement('option', '', {
-                        value: `custom:${theme.fileName}:light`,
-                        text: `${name} 明`
-                    }));
-                }
-                if (theme.variables?.dark && Object.keys(theme.variables.dark).length) {
-                    themeSelect.appendChild(createElement('option', '', {
-                        value: `custom:${theme.fileName}:dark`,
-                        text: `${name} 暗`
-                    }));
-                }
-            });
-            themeSelect.value = state.config.themeMode === 'custom'
-                ? `custom:${state.config.themeFile}:${state.config.themeVariant}`
-                : 'global';
-            if (![...themeSelect.options].some(option => option.value === themeSelect.value)) {
-                themeSelect.value = 'global';
-            }
-            themeSelect.addEventListener('change', () => {
-                const [kind, fileName, variant] = themeSelect.value.split(':');
-                editingSettings = true;
-                try {
-                    Config.update(kind === 'custom'
-                        ? { themeMode: 'custom', themeFile: fileName, themeVariant: variant }
-                        : { themeMode: 'global', themeFile: '' });
-                } finally {
-                    editingSettings = false;
-                }
-            });
-            const themeRow = createElement('label', 'music-stage-tuning-row');
-            themeRow.append(
-                createElement('span', 'music-stage-tuning-label', '舞台主题'),
-                themeSelect
-            );
-            commonFragment.appendChild(themeRow);
+            // Says when the 3D stage has had to draw below the chosen tier.
+            const degradeNote = createElement('p', 'music-stage-degrade-note');
+            degradeNote.hidden = true;
+            degradeNote.setAttribute('aria-live', 'polite');
+            elements.degradeNote = degradeNote;
+            state.lastDegradeNote = null;
+            commonFragment.append(qualityRow, degradeNote, intensityRow);
 
             elements.commonControls.replaceChildren(commonFragment);
         };
@@ -703,40 +942,107 @@
             }
 
             const show = (image) => {
+                // The 3D stages may take the cover's colour into their sky.
+                app.stageCoverColour = image ? global.MusicStageModeUtils?.coverColour?.(image) ?? null : null;
+                if (reducedMotion()) {
+                    if (softNext && softCurrent) paintSoft(softCurrent, image, 46, 1.45);
+                    elements.backdropCurrent.classList.toggle('is-empty', !nextUrl);
+                    elements.backdropCurrent.style.backgroundImage = cssImage;
+                    root.classList.remove('is-changing-cover');
+                    return;
+                }
                 if (softNext && softCurrent) paintSoft(softNext, image, 46, 1.45);
                 // A layer with no picture is still a blurred layer to the compositor.
                 elements.backdropNext.classList.toggle('is-empty', !nextUrl);
                 elements.backdropNext.style.backgroundImage = cssImage;
                 root.classList.add('is-changing-cover');
                 state.backgroundTimer = setTimeout(() => {
-                    if (softNext && softCurrent) paintSoft(softCurrent, image, 46, 1.45);
+                    if (state.destroyed) return;
+                    if (softNext && softCurrent) {
+                        if (image && softNext.host.classList.contains('is-soft') && softNext.canvas.width > 0 && softNext.canvas.height > 0) {
+                            softCurrent.canvas.width = softNext.canvas.width;
+                            softCurrent.canvas.height = softNext.canvas.height;
+                            softCurrent.context.drawImage(softNext.canvas, 0, 0);
+                            softCurrent.host.classList.add('is-soft');
+                        } else {
+                            paintSoft(softCurrent, image, 46, 1.45);
+                        }
+                    }
                     elements.backdropCurrent.classList.toggle('is-empty', !nextUrl);
                     elements.backdropCurrent.style.backgroundImage = cssImage;
                     root.classList.remove('is-changing-cover');
                     state.backgroundTimer = null;
                 }, 850);
             };
-            if (!nextUrl || !softNext || !softCurrent) { show(null); return; }
+            if (!nextUrl) { show(null); return; }
+            if (!softNext || !softCurrent) {
+                show(null);
+                loadImage(nextUrl).then((image) => {
+                    if (!state.destroyed && state.coverUrl === nextUrl) app.stageCoverColour = global.MusicStageModeUtils?.coverColour?.(image) ?? null;
+                });
+                return;
+            }
             loadImage(nextUrl).then((image) => {
                 if (!state.destroyed && state.coverUrl === nextUrl) show(image);
             });
         };
 
+        let titleAnimRaf = 0;
+        const cancelTitleAnim = () => {
+            if (titleAnimRaf) { global.cancelAnimationFrame?.(titleAnimRaf); titleAnimRaf = 0; }
+        };
+        scope.add(cancelTitleAnim);
+        let lastTrackObj = undefined;
+        let lastTrackPath = null;
+        let lastTrackTitle = null;
+        let lastTrackArtist = null;
+        let lastTrackAlbum = null;
+        let lastTrackArt = null;
+        let lastTrackTheme = null;
         const updateTrack = (track) => {
+            const theme = app.currentTheme;
+            if (
+                state.trackSignature
+                && track === lastTrackObj
+                && theme === lastTrackTheme
+                && (track?.path ?? null) === lastTrackPath
+                && (track?.title ?? null) === lastTrackTitle
+                && (track?.artist ?? null) === lastTrackArtist
+                && (track?.album ?? null) === lastTrackAlbum
+                && (track?.albumArt ?? null) === lastTrackArt
+            ) return;
+            lastTrackObj = track;
+            lastTrackPath = track?.path ?? null;
+            lastTrackTitle = track?.title ?? null;
+            lastTrackArtist = track?.artist ?? null;
+            lastTrackAlbum = track?.album ?? null;
+            lastTrackArt = track?.albumArt ?? null;
+            lastTrackTheme = theme;
+
             const title = app.stripAudioExtension?.(track?.title) || track?.title || '未选择歌曲';
             const artist = track?.artist || '未知艺术家';
             const album = track?.album || '';
             const coverUrl = fileUrl(track?.albumArt);
             const identity = track?.path || `${title}\u0001${artist}`;
-            const signature = `${identity}\u0001${title}\u0001${artist}\u0001${album}\u0001${coverUrl}\u0001${app.currentTheme}`;
+            const signature = `${identity}\u0001${title}\u0001${artist}\u0001${album}\u0001${coverUrl}\u0001${theme}`;
             if (signature === state.trackSignature) return;
             state.trackSignature = signature;
 
             if (identity !== state.trackPath) {
                 state.trackPath = identity;
+                cancelTitleAnim();
+                const hadChanging = elements.title.classList.contains('is-changing');
                 elements.title.classList.remove('is-changing');
-                void elements.title.offsetWidth;
-                elements.title.classList.add('is-changing');
+                if (!reducedMotion()) {
+                    if (hadChanging && typeof global.requestAnimationFrame === 'function') {
+                        titleAnimRaf = global.requestAnimationFrame(() => {
+                            titleAnimRaf = 0;
+                            if (!state.destroyed && state.active) elements.title.classList.add('is-changing');
+                        });
+                    } else {
+                        elements.title.classList.add('is-changing');
+                    }
+                }
             }
 
             elements.title.textContent = title;
@@ -752,6 +1058,9 @@
         };
 
         const updateProgress = (frame) => {
+            if (frame.playbackTime === state.lastProgTime && frame.duration === state.lastProgDur) return;
+            state.lastProgTime = frame.playbackTime;
+            state.lastProgDur = frame.duration;
             const percent = frame.duration > 0 ? clamp(frame.playbackTime / frame.duration) * 100 : 0;
             const width = `${percent.toFixed(3)}%`;
             if (width !== state.lastProgressWidth) {
@@ -792,190 +1101,6 @@
             elements.play.title = isPlaying ? '暂停' : '播放';
         };
 
-        // Thickness of the band a side can draw into: the line, its swing and its glow.
-        const edgeMetrics = (width, height) => {
-            const inset = clamp(Math.min(width, height) * 0.012, 7, 14);
-            const horizontalAmplitude = clamp(height * 0.052, 18, 48);
-            const verticalAmplitude = clamp(width * 0.038, 15, 42);
-            return { inset, horizontalAmplitude, verticalAmplitude,
-                horizontalBand: Math.ceil(inset + horizontalAmplitude + 24),
-                verticalBand: Math.ceil(inset + verticalAmplitude + 24) };
-        };
-
-        const resizeEdgeCanvas = (frame) => {
-            if (!edgeContext) return false;
-            const width = Math.max(1, root.clientWidth);
-            const height = Math.max(1, root.clientHeight);
-            // A glowing line gains nothing from more than this.
-            const dpr = Math.min(1.5, frame.viewport?.dpr || global.devicePixelRatio || 1);
-            if (
-                edgeCanvasState.width !== width
-                || edgeCanvasState.height !== height
-                || edgeCanvasState.dpr !== dpr
-            ) {
-                const { horizontalBand, verticalBand } = edgeMetrics(width, height);
-                const boxes = {
-                    top: [0, 0, width, horizontalBand],
-                    bottom: [0, height - horizontalBand, width, horizontalBand],
-                    left: [0, 0, verticalBand, height],
-                    right: [width - verticalBand, 0, verticalBand, height]
-                };
-                EDGE_SIDES.forEach((side) => {
-                    const strip = edgeStrips[side];
-                    [strip.x, strip.y, strip.width, strip.height] = boxes[side];
-                    strip.canvas.width = Math.round(strip.width * dpr);
-                    strip.canvas.height = Math.round(strip.height * dpr);
-                    Object.assign(strip.canvas.style, {
-                        left: `${strip.x}px`, top: `${strip.y}px`,
-                        width: `${strip.width}px`, height: `${strip.height}px`
-                    });
-                    // Draw in window coordinates, whichever strip it is.
-                    strip.context.setTransform(dpr, 0, 0, dpr, -strip.x * dpr, -strip.y * dpr);
-                });
-                edgeCanvasState.width = width;
-                edgeCanvasState.height = height;
-                edgeCanvasState.dpr = dpr;
-                edgeCanvasState.drawnAt = 0;
-                edgeCanvasState.pausedAt = 0;
-                edgeCanvasState.blank = false;
-            }
-            return true;
-        };
-
-        const clearEdgeStrips = () => EDGE_SIDES.forEach((side) => {
-            const strip = edgeStrips[side];
-            strip.context.clearRect(strip.x, strip.y, strip.width, strip.height);
-        });
-
-        const getSpectrumSample = (spectrum, ratio, offset = 0) => {
-            if (!spectrum?.length) return 0;
-            const wrappedRatio = (clamp(ratio) * 0.86 + offset) % 1;
-            const center = Math.floor(Math.pow(wrappedRatio, 1.55) * (spectrum.length - 1));
-            const radius = Math.max(1, Math.floor(spectrum.length / 180));
-            let total = 0;
-            let count = 0;
-            for (let index = Math.max(0, center - radius); index <= Math.min(spectrum.length - 1, center + radius); index += 1) {
-                total += Number(spectrum[index]) || 0;
-                count += 1;
-            }
-            const value = total / Math.max(1, count);
-            return clamp(Math.pow(Math.max(0, value - 0.025), 0.78));
-        };
-
-        const ensureEdgeBuffer = (side, pointCount) => {
-            const coordinateCount = pointCount * 2;
-            if (edgeCanvasState[side].length !== coordinateCount) {
-                edgeCanvasState[side] = new Float32Array(coordinateCount);
-            }
-            return edgeCanvasState[side];
-        };
-
-        const fillEdgePoints = (
-            points,
-            side,
-            spectrum,
-            offset,
-            inset,
-            width,
-            height,
-            amplitude,
-            idleScale
-        ) => {
-            const count = points.length / 2;
-            const span = side === 'top' || side === 'bottom'
-                ? width - inset * 2
-                : height - inset * 2;
-            for (let index = 0; index < count; index += 1) {
-                const ratio = index / Math.max(1, count - 1);
-                const edgeFade = Math.pow(Math.sin(ratio * Math.PI), 0.42);
-                const energy = getSpectrumSample(spectrum, ratio, offset) * edgeFade * idleScale;
-                const coordinateIndex = index * 2;
-                if (side === 'top') {
-                    points[coordinateIndex] = inset + ratio * span;
-                    points[coordinateIndex + 1] = inset + energy * amplitude;
-                } else if (side === 'bottom') {
-                    points[coordinateIndex] = width - inset - ratio * span;
-                    points[coordinateIndex + 1] = height - inset - energy * amplitude;
-                } else if (side === 'left') {
-                    points[coordinateIndex] = inset + energy * amplitude;
-                    points[coordinateIndex + 1] = height - inset - ratio * span;
-                } else {
-                    points[coordinateIndex] = width - inset - energy * amplitude;
-                    points[coordinateIndex + 1] = inset + ratio * span;
-                }
-            }
-        };
-
-        const strokeEdgePath = (edgeContext, points, color, alpha, blur) => {
-            if (!edgeContext || points.length < 4) return;
-            edgeContext.save();
-            edgeContext.beginPath();
-            edgeContext.moveTo(points[0], points[1]);
-            for (let index = 2; index < points.length - 2; index += 2) {
-                edgeContext.quadraticCurveTo(
-                    points[index],
-                    points[index + 1],
-                    (points[index] + points[index + 2]) / 2,
-                    (points[index + 1] + points[index + 3]) / 2
-                );
-            }
-            edgeContext.lineTo(points[points.length - 2], points[points.length - 1]);
-            edgeContext.lineCap = 'round';
-            edgeContext.lineJoin = 'round';
-            edgeContext.lineWidth = blur > 0 ? 2.8 : 1.05;
-            edgeContext.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
-            edgeContext.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${Math.min(0.9, alpha * 1.45)})`;
-            edgeContext.shadowBlur = blur;
-            edgeContext.stroke();
-            edgeContext.restore();
-        };
-
-        const drawEdgeSpectrum = (frame) => {
-            if (state.config.edgeSpectrum === false) return;
-            if (!resizeEdgeCanvas(frame) || !edgeContext) return;
-            const { width, height } = edgeCanvasState;
-            if (prefersReducedMotion?.matches || !frame.audio.spectrum?.length) {
-                if (!edgeCanvasState.blank) clearEdgeStrips();
-                edgeCanvasState.blank = true;
-                return;
-            }
-            // A paused stage holds a faint, still line: let it settle for a
-            // moment after the pause, then leave the canvases alone.
-            const now = performance.now();
-            if (frame.isPlaying) edgeCanvasState.pausedAt = 0;
-            else {
-                edgeCanvasState.pausedAt ||= now;
-                if (now - edgeCanvasState.pausedAt > 1500 && !edgeCanvasState.blank) return;
-                if (now - edgeCanvasState.drawnAt < 250) return;
-            }
-            edgeCanvasState.drawnAt = now;
-            edgeCanvasState.blank = false;
-            clearEdgeStrips();
-
-            const spectrum = frame.audio.spectrum;
-            const color = global.MusicStageModeUtils.resolveAccent(app);
-            const { inset, horizontalAmplitude, verticalAmplitude } = edgeMetrics(width, height);
-            const horizontalCount = clamp(Math.round(width / 15), 44, 104);
-            const verticalCount = clamp(Math.round(height / 15), 28, 72);
-            const idleScale = frame.isPlaying ? 1 : 0.12;
-
-            const top = ensureEdgeBuffer('top', horizontalCount);
-            const right = ensureEdgeBuffer('right', verticalCount);
-            const bottom = ensureEdgeBuffer('bottom', horizontalCount);
-            const left = ensureEdgeBuffer('left', verticalCount);
-            fillEdgePoints(top, 'top', spectrum, 0, inset, width, height, horizontalAmplitude, idleScale);
-            fillEdgePoints(right, 'right', spectrum, 0.11, inset, width, height, verticalAmplitude, idleScale);
-            fillEdgePoints(bottom, 'bottom', spectrum, 0.21, inset, width, height, horizontalAmplitude, idleScale);
-            fillEdgePoints(left, 'left', spectrum, 0.34, inset, width, height, verticalAmplitude, idleScale);
-
-            const alpha = 0.28 + frame.audio.power * 0.62;
-            // The wide soft pass stands in for the glow filters the canvas used to have.
-            [['top', top], ['right', right], ['bottom', bottom], ['left', left]].forEach(([side, points]) => {
-                const context = edgeStrips[side].context;
-                strokeEdgePath(context, points, color, alpha * 0.5, 18);
-                strokeEdgePath(context, points, color, alpha, 3.5);
-            });
-        };
 
         const getPlayModePresentation = () => {
             const mode = app.playModes[app.currentPlayMode] || 'repeat';
@@ -984,24 +1109,38 @@
             return { mode, label: '列表循环', icon: icons.repeat };
         };
 
+        let lastRenderedPlayMode = '';
+        let lastRenderedVolKey = '';
         const updateTransportControls = () => {
             const volume = clamp(Number(app.volumeSlider?.value) || 0);
+            const mode = app.playModes[app.currentPlayMode] || 'repeat';
+            if (state.lastTransportSignature && mode === state.lastTransportMode && volume === state.lastTransportVol) return;
             const presentation = getPlayModePresentation();
-            const signature = `${presentation.mode}:${volume.toFixed(3)}`;
+            const volKey = volume.toFixed(3);
+            const signature = `${presentation.mode}:${volKey}`;
+            state.lastTransportMode = mode;
+            state.lastTransportVol = volume;
             if (signature === state.lastTransportSignature) return;
             state.lastTransportSignature = signature;
 
-            elements.playMode.innerHTML = presentation.icon;
-            elements.playMode.title = presentation.label;
-            elements.playMode.setAttribute('aria-label', presentation.label);
-            elements.playMode.dataset.playMode = presentation.mode;
-            elements.playMode.classList.toggle('is-active', presentation.mode !== 'repeat');
+            if (presentation.mode !== lastRenderedPlayMode) {
+                lastRenderedPlayMode = presentation.mode;
+                elements.playMode.innerHTML = presentation.icon;
+                elements.playMode.title = presentation.label;
+                elements.playMode.setAttribute('aria-label', presentation.label);
+                elements.playMode.dataset.playMode = presentation.mode;
+                elements.playMode.classList.toggle('is-active', presentation.mode !== 'repeat');
+            }
 
-            elements.volumeSlider.value = String(volume);
-            elements.volumeSlider.style.setProperty('--stage-volume', `${(volume * 100).toFixed(1)}%`);
-            elements.volumeButton.classList.toggle('is-muted', volume <= 0.001);
-            elements.volumeButton.title = volume <= 0.001 ? '恢复音量' : '静音';
-            elements.volumeButton.setAttribute('aria-label', volume <= 0.001 ? '恢复音量' : '静音');
+            if (volKey !== lastRenderedVolKey) {
+                lastRenderedVolKey = volKey;
+                const muted = volume <= 0.001;
+                elements.volumeSlider.value = String(volume);
+                elements.volumeSlider.style.setProperty('--stage-volume', `${(volume * 100).toFixed(1)}%`);
+                elements.volumeButton.classList.toggle('is-muted', muted);
+                elements.volumeButton.title = muted ? '恢复音量' : '静音';
+                elements.volumeButton.setAttribute('aria-label', muted ? '恢复音量' : '静音');
+            }
             if (volume > 0.001) state.lastNonZeroVolume = volume;
         };
 
@@ -1011,11 +1150,192 @@
                 app.volumeSlider.value = String(volume);
                 app.updateVolumeSliderBackground?.(volume);
             }
-            app.api?.setMusicVolume?.(volume);
+            if (app.api?.setMusicVolume) {
+                if (app.sendLatest) app.sendLatest('volume', () => app.api.setMusicVolume(volume));
+                else app.api.setMusicVolume(volume);
+            }
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
             app.saveSettings?.();
             state.lastTransportSignature = '';
             updateTransportControls();
+        };
+
+        // Which song (and which lyrics) the current mode is performing. The
+        // player empties the lyrics when a song changes and fills them in a
+        // moment later, from cache or a search. A 3D mode that followed along
+        // directly would build its whole journey for a song without words,
+        // then again once the words arrive: two jumps. So the 3D modes stay
+        // on the song they have until the new one is ready, fade out softly,
+        // rebuild unseen and come back out of the same blur.
+        const SONG_LEAVE_MS = 360;
+        // Long enough for an in-world handover to have turned away from the old song.
+        const SONG_TILT_MS = 900;
+        const LYRICS_WAIT_MS = 2000;
+        const linesIds = new WeakMap();
+        let nextLinesId = 1;
+        let lastSongTrack = undefined;
+        let lastSongPath = null;
+        let lastSongTitle = null;
+        let lastSongArtist = null;
+        let lastSongLines = undefined;
+        let lastSongLinesLen = -1;
+        let lastSongOut = null;
+        const songKey = (frame) => {
+            const track = frame.track;
+            const lines = frame.lines;
+            const len = lines?.length || 0;
+            const tp = track?.path ?? null;
+            const tt = track?.title ?? null;
+            const ta = track?.artist ?? null;
+            if (lastSongOut && track === lastSongTrack && lines === lastSongLines && len === lastSongLinesLen
+                && tp === lastSongPath && tt === lastSongTitle && ta === lastSongArtist) {
+                return lastSongOut;
+            }
+            const identity = tp || `${tt || ''}\u0001${ta || ''}`;
+            let key;
+            if (!len) key = `${identity}\u0001-`;
+            else {
+                let lid = linesIds.get(lines);
+                if (!lid) { lid = nextLinesId++; linesIds.set(lines, lid); }
+                key = `${identity}\u0001${lid}`;
+            }
+            lastSongTrack = track;
+            lastSongPath = tp;
+            lastSongTitle = tt;
+            lastSongArtist = ta;
+            lastSongLines = lines;
+            lastSongLinesLen = len;
+            lastSongOut = { identity, key };
+            return lastSongOut;
+        };
+        // Returns whether the mode should get this frame.
+        const songHandover = (frame) => {
+            const instance = state.modeInstance;
+            const handover = state.handover;
+            if (!instance || !state.scene3d || reducedMotion() || state.arriving) {
+                if (handover) instance?.root.classList.remove('is-song-leaving');
+                state.handover = null;
+                state.committedSong = null;
+                state.committedIdentity = null;
+                state.committedInstance = instance;
+                return true;
+            }
+            const { identity, key } = songKey(frame);
+            if (state.committedSong === null || state.committedInstance !== instance) {
+                if (handover) instance.root.classList.remove('is-song-leaving');
+                state.handover = null;
+                state.committedSong = key;
+                state.committedIdentity = identity;
+                state.committedInstance = instance;
+                return true;
+            }
+            if (key === state.committedSong) {
+                if (handover) {
+                    // Went back to what is on screen (a quick skip back): show it again.
+                    instance.root.classList.remove('is-song-leaving');
+                    state.handover = null;
+                }
+                return true;
+            }
+            const now = performance.now();
+            const newSong = identity !== state.committedIdentity;
+            if (!handover || handover.newSong !== newSong) {
+                // A mode that can show the way to the next song in its own world
+                // does (镜台 tilts up to the sky and dissolves); the rest fade.
+                const inWorld = handover?.inWorld ?? Boolean(instance.beginSongHandover?.());
+                state.handover = { since: handover?.since ?? now, newSong, inWorld };
+                if (!inWorld) instance.root.classList.add('is-song-leaving');
+                state.stats.songHandovers = (state.stats.songHandovers || 0) + 1;
+            }
+            const waited = now - state.handover.since;
+            // A new song waits for its words, or until it is clearly playing without them.
+            const ready = !newSong || frame.lines?.length > 0 || waited >= LYRICS_WAIT_MS;
+            const leaveMs = state.handover.inWorld ? SONG_TILT_MS : SONG_LEAVE_MS;
+            if (waited < leaveMs || !ready) {
+                if (state.handover.inWorld) instance.holdFrame?.(frame);
+                return false;
+            }
+            state.handover = null;
+            state.committedSong = key;
+            state.committedIdentity = identity;
+            // Rebuild on this frame while hidden, then let the picture come back.
+            requestAnimationFrame(() => {
+                if (state.modeInstance === instance && !state.handover) instance.root.classList.remove('is-song-leaving');
+            });
+            return true;
+        };
+
+        const TIER_LABELS = { 'energy-saving': '节能', standard: '标准', ultimate: '极致' };
+        // Once a second (a cheap read): how far the 3D stage
+        // has stepped down below the chosen tier to keep its frame rate.
+        const updateDegradeNote = (now) => {
+            const note = elements.degradeNote;
+            if (!note || !note.isConnected || now - (state.degradeCheckedAt || 0) < 1000) return;
+            state.degradeCheckedAt = now;
+            const degrade = state.modeInstance?.getDegrade?.();
+            const steps = degrade?.steps || 0;
+            const drawn = degrade?.quality;
+            const chosen = state.config.quality;
+            const text = steps
+                ? `画面跟不上，已自动降低 ${steps} 格${drawn && drawn !== chosen ? `（实际按「${TIER_LABELS[drawn] || drawn}」画）` : '（降低分辨率）'}`
+                : '';
+            if (text === state.lastDegradeNote) return;
+            state.lastDegradeNote = text;
+            note.textContent = text;
+            note.hidden = !text;
+        };
+
+        // Route per-frame audio vars only to nodes that read them (avoids root restyle).
+        const audioSinks = [];
+        const pushNodes = (list) => { for (let i = 0; i < list.length; i += 1) audioSinks.push(list[i]); };
+        const collectAudioSinks = (opaque, edgeActive) => {
+            audioSinks.length = 0;
+            if (!opaque) pushNodes(root.querySelectorAll(':scope .music-stage-backdrop-layer'));
+            if (edgeActive && elements.edgeSpectrum) audioSinks.push(elements.edgeSpectrum);
+            if (elements.cover) audioSinks.push(elements.cover);
+            const kids = elements.modeRoot?.children;
+            for (let i = 0; kids && i < kids.length; i += 1) {
+                const c = kids[i];
+                if (c.classList.contains('music-stage-mode-tunnel')) audioSinks.push(c);
+                else if (c.classList.contains('music-stage-mode-starborn')) {
+                    pushNodes(c.querySelectorAll(':scope > .starborn-star, :scope > .starborn-transition-burst'));
+                }
+            }
+        };
+        const audioSinkRefs = [];
+        const audioSinkClasses = [];
+        let audioSinkInitialized = false, audioSinkOpaque = false, audioSinkEdge = true;
+        let lastAudioPQ = -1, lastAudioBQ = -1, lastAudioVQ = -1;
+        const writeAudioLevels = (audio) => {
+            const kids = elements.modeRoot?.children;
+            const len = kids ? kids.length : 0;
+            const opaque = root.classList.contains('stage-opaque');
+            const edgeActive = state.config.edgeSpectrum !== false && !reducedMotion();
+            let changed = !audioSinkInitialized || len !== audioSinkRefs.length || opaque !== audioSinkOpaque || edgeActive !== audioSinkEdge;
+            for (let i = 0; !changed && i < len; i += 1) {
+                if (kids[i] !== audioSinkRefs[i] || kids[i].className !== audioSinkClasses[i]) changed = true;
+            }
+            const pQ = Math.round((+audio.power || 0) * 10000);
+            const bQ = Math.round((+audio.bass || 0) * 10000);
+            const vQ = Math.round((+audio.vocal || 0) * 10000);
+            if (!changed && pQ === lastAudioPQ && bQ === lastAudioBQ && vQ === lastAudioVQ) return;
+            if (changed) {
+                audioSinkInitialized = true; audioSinkOpaque = opaque; audioSinkEdge = edgeActive;
+                audioSinkRefs.length = len; audioSinkClasses.length = len;
+                for (let i = 0; i < len; i += 1) { audioSinkRefs[i] = kids[i]; audioSinkClasses[i] = kids[i].className; }
+                collectAudioSinks(opaque, edgeActive);
+            }
+            lastAudioPQ = pQ; lastAudioBQ = bQ; lastAudioVQ = vQ;
+            let power = '', bass = '', vocal = '';
+            for (let i = 0; i < audioSinks.length; i += 1) {
+                const node = audioSinks[i];
+                if (node.__stPQ === pQ && node.__stBQ === bQ && node.__stVQ === vQ) continue;
+                node.__stPQ = pQ; node.__stBQ = bQ; node.__stVQ = vQ;
+                if (!power) { power = (pQ / 10000).toFixed(4); bass = (bQ / 10000).toFixed(4); vocal = (vQ / 10000).toFixed(4); }
+                node.style.setProperty('--stage-audio-power', power);
+                node.style.setProperty('--stage-audio-bass', bass);
+                node.style.setProperty('--stage-audio-vocal', vocal);
+            }
         };
 
         const updateFrame = (timestamp) => {
@@ -1029,23 +1349,30 @@
             updateProgress(frame);
             updatePlaybackState(frame.isPlaying);
             updateTransportControls();
-            const audioPower = frame.audio.power.toFixed(4);
-            if (audioPower !== state.lastAudioPower) {
-                state.lastAudioPower = audioPower;
-                root.style.setProperty('--stage-audio-power', audioPower);
+            writeAudioLevels(frame.audio);
+            edge.draw(frame);
+            if (songHandover(frame)) state.modeInstance?.updateFrame?.(frame);
+            updateDegradeNote(timestamp);
+            if (state.leaving || state.arriving) {
+                state.leaving?.instance.updateFrame?.(frame);
+                advanceSoftSwitch(performance.now());
             }
-            const audioBass = frame.audio.bass.toFixed(4);
-            if (audioBass !== state.lastAudioBass) {
-                state.lastAudioBass = audioBass;
-                root.style.setProperty('--stage-audio-bass', audioBass);
-            }
-            const audioVocal = frame.audio.vocal.toFixed(4);
-            if (audioVocal !== state.lastAudioVocal) {
-                state.lastAudioVocal = audioVocal;
-                root.style.setProperty('--stage-audio-vocal', audioVocal);
-            }
-            drawEdgeSpectrum(frame);
-            state.modeInstance?.updateFrame?.(frame);
+        };
+
+        // The lyric stages draw at most 60 frames a second, as the 3D stages do
+        // on their standard tier: a 120 or 144 Hz display would otherwise run
+        // every one of them twice as often as the eye can follow, at twice the
+        // power. The 3D modes pace their own drawing, and the ultimate tier is
+        // left unpaced. Calls from the stage itself (enter, theme) still draw.
+        const frameCap = global.MusicStageModeUtils.createFrameCap();
+        let lastPaced = -Infinity;
+        const paceFrame = (timestamp) => {
+            // A clock that went back (a caller's own timeline) starts over.
+            if (timestamp < lastPaced) frameCap.reset();
+            lastPaced = timestamp;
+            if (!state.scene3d && state.config.quality !== 'ultimate'
+                && !frameCap.take(timestamp, 'standard')) return;
+            updateFrame(timestamp);
         };
 
         // The player polls the engine every 250 ms. During a drag, and until the
@@ -1085,12 +1412,16 @@
             app.lastStateUpdateTime = Date.now();
         };
 
+        let progressDragRect = null;
         const seekFromPointer = async (event, commit) => {
-            const rect = elements.progressTrack.getBoundingClientRect();
+            const rect = (progressDragRect && progressDragRect.width > 0)
+                ? progressDragRect
+                : elements.progressTrack.getBoundingClientRect();
             const ratio = clamp((event.clientX - rect.left) / Math.max(rect.width, 1));
             const duration = state.lastFrame?.duration || app.lastKnownDuration || 0;
             const target = duration * ratio;
             const width = `${(ratio * 100).toFixed(3)}%`;
+            state.lastProgTime = NaN;
             state.lastProgressWidth = width;
             elements.progressFill.style.width = width;
             if (elements.progressGlow) elements.progressGlow.style.width = width;
@@ -1098,11 +1429,17 @@
             state.lastCurrentTimeText = currentTimeText;
             elements.currentTime.textContent = currentTimeText;
             holdSeek(target, commit);
-            if (commit && duration > 0) await app.api?.seekMusic?.(target);
+            if (commit && duration > 0) await (app.seekTo ? app.seekTo(target) : app.api?.seekMusic?.(target));
         };
 
         const updateTheme = () => {
             if (state.destroyed) return;
+            // 舞台未打开且无挂载实例时跳过主题探测（enter() 打开前必定再调一次 updateTheme()），
+            // 避免启动阶段和后台切主题时触发 11 次同步样式重算与离屏 canvas 读回。
+            if (!state.active && !state.modeInstance) {
+                state.trackSignature = '';
+                return;
+            }
             // Custom palettes are already scoped to the stage root. Global mode
             // reads the page's computed wallpaper and color variables.
             if (state.config.themeMode !== 'custom') {
@@ -1117,6 +1454,18 @@
             if (state.active) updateFrame(performance.now());
         };
 
+        // 舞台选了自定义主题时，舞台和它上面的底栏、面板、标题栏按这份主题自己的明/暗取色，
+        // 全局的「外观」亮暗切换原来对它不起作用（切了只有部分画面变）。切亮暗时（首页和舞台都算），
+        // 自定义主题也换到同名主题的明/暗那一版；这份主题没有那一版就照旧。
+        const followGlobalTheme = (theme) => {
+            if (state.destroyed || state.config.themeMode !== 'custom') return;
+            const variant = theme === 'light' ? 'light' : 'dark';
+            if (state.config.themeVariant === variant) return;
+            const selected = state.themeCatalog.find(item => item.fileName === state.config.themeFile);
+            if (!selected?.variables?.[variant] || !Object.keys(selected.variables[variant]).length) return;
+            Config.update({ themeVariant: variant });
+        };
+
         const enter = () => {
             if (state.active || state.destroyed) return;
             state.active = true;
@@ -1127,7 +1476,6 @@
             root.setAttribute('aria-hidden', 'false');
             updateTheme();
             createMode(state.modeId);
-            setButtonState();
             const enterGeneration = state.generation;
             requestAnimationFrame(() => {
                 if (!state.active || state.destroyed || state.generation !== enterGeneration) return;
@@ -1140,11 +1488,12 @@
         const exit = () => {
             if (!state.active || state.destroyed) return;
             if (state.settingsOpen) setSettingsOpen(false);
+            setModePickerOpen(false, { focus: 'none' });
             state.active = false;
             app.isStageActive = false;
+            cancelTitleAnim();
             root.classList.remove('is-visible');
             document.body.classList.remove('music-stage-active', 'music-stage-scene-3d');
-            setButtonState();
             const generation = ++state.generation;
             requestAnimationFrame(() => {
                 if (state.active || state.destroyed || generation !== state.generation) return;
@@ -1153,15 +1502,89 @@
             scope.timeout(() => {
                 if (state.active || state.destroyed || generation !== state.generation) return;
                 destroyMode();
+                edge.release();
                 state.lastFrame = null;
                 root.hidden = true;
                 root.setAttribute('aria-hidden', 'true');
-                toggleButton.focus({ preventScroll: true });
+                document.querySelector('#music-dock-root [data-md="stage"]')?.focus({ preventScroll: true });
                 app.createAmbientPixi?.();
             }, 380);
         };
 
         const toggle = () => state.active ? exit() : enter();
+
+        const reducedMotionMedia = global.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
+        const reducedMotion = () => Boolean(global.MusicMotion?.reduced?.()
+            ?? reducedMotionMedia?.matches);
+
+        // Whether a mode has drawn its first real frame. The 3D modes report
+        // `initialized` once their shaders are warm and a frame has run (or
+        // `fallbackMode` once they settled for text); the others are ready
+        // the moment they exist.
+        const modeReady = (instance) => {
+            if (!instance || instance.destroyed) return true;
+            const snapshot = instance.getDebugSnapshot?.();
+            if (!snapshot || !('initialized' in snapshot)) return true;
+            if (snapshot.ready === false && !snapshot.fallbackMode) return false;
+            return Boolean(snapshot.initialized || snapshot.fallbackMode);
+        };
+
+        // How long a switch waits for the new mode before showing it anyway.
+        // A cold 3D start on a slow GPU can take longer; it then shows its
+        // own text fallback until the scene is up, as it did before.
+        const SWITCH_WAIT_MS = 2600;
+        const SWITCH_LEAVE_MS = 360;
+        const SWITCH_SETTLE_MS = 600;
+
+        // Switch modes without a blank in between: the new mode is built
+        // unseen behind the old one, both keep receiving frames, and once the
+        // new one has drawn the old drifts forward and blurs away while the
+        // new one comes out of the same blur.
+        const softSwitch = (modeId) => {
+            dropLeaving();
+            if (state.arriving) {
+                // Switched again before the last one was shown: that one never appeared.
+                state.arriving = null;
+                state.modeInstance?.destroy();
+                state.stats.modeDestroys += 1;
+                state.modeInstance = null;
+            }
+            const outgoing = state.modeInstance;
+            state.modeInstance = null;
+            if (outgoing) {
+                state.leaving = { instance: outgoing, removeAt: Infinity };
+                outgoing.root.classList.add('is-soft-leaving-wait');
+            }
+            createMode(modeId, { keepCurrent: true });
+            const incoming = state.modeInstance;
+            if (!incoming) return;
+            incoming.root.classList.add('is-soft-arriving');
+            state.arriving = { instance: incoming, since: performance.now() };
+            advanceSoftSwitch(performance.now());
+        };
+
+        const advanceSoftSwitch = (now) => {
+            const arriving = state.arriving;
+            if (arriving) {
+                if (arriving.instance !== state.modeInstance) { state.arriving = null; return; }
+                if (!modeReady(arriving.instance) && now - arriving.since < SWITCH_WAIT_MS) return;
+                state.arriving = null;
+                const root = arriving.instance.root;
+                // Start from the blurred state on a committed frame, then let it settle.
+                root.classList.add('is-soft-settling');
+                root.classList.remove('is-soft-arriving');
+                requestAnimationFrame(() => root.classList.remove('is-soft-settling'));
+                scope.timeout(() => root.classList.remove('is-soft-settling', 'is-soft-arriving'), SWITCH_SETTLE_MS + 200);
+                if (state.leaving) {
+                    state.leaving.instance.root.classList.remove('is-soft-leaving-wait');
+                    state.leaving.instance.root.classList.add('is-soft-leaving');
+                    state.leaving.removeAt = now + SWITCH_LEAVE_MS + 40;
+                }
+                return;
+            }
+            if (state.leaving && now >= state.leaving.removeAt) dropLeaving();
+        };
+
 
         const setMode = (modeId) => {
             const resolved = Modes.get(modeId).id;
@@ -1171,6 +1594,10 @@
             renderSettingsControls();
             if (!state.active) {
                 localStorage.setItem('musicStageMode', resolved);
+                return;
+            }
+            if (!reducedMotion() && state.modeInstance) {
+                softSwitch(resolved);
                 return;
             }
             elements.modeRoot.classList.add('is-switching');
@@ -1202,14 +1629,18 @@
                         first.focus({ preventScroll: true });
                     }
                 }
-            } else if (event.key === 'Escape') {
+            } else if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing) {
                 event.preventDefault();
+                if (picker.open) {
+                    setModePickerOpen(false, { focus: 'toggle' });
+                    return;
+                }
                 if (state.settingsOpen) {
                     setSettingsOpen(false);
                     return;
                 }
                 exit();
-            } else if (event.code === 'Space' && !event.target.closest('button, input, select')) {
+            } else if (event.code === 'Space' && !event.defaultPrevented && !event.isComposing && !event.target?.closest?.('button, input, select, textarea, [contenteditable]')) {
                 event.preventDefault();
                 app.toggleTransport();
             } else if (event.key === 'ArrowLeft' && event.altKey) {
@@ -1227,6 +1658,15 @@
 
             if (nextOpen) settingsReturnFocus = document.activeElement;
             state.settingsOpen = nextOpen;
+            const ret = settingsReturnFocus;
+            const focusTarget = !state.settingsOpen && !state.destroyed
+                ? (ret && ret !== document.body && ret.isConnected && !elements.settingsCard?.contains(ret) && !ret.closest?.('[inert], [hidden]') ? ret : elements.settingsToggle)
+                : null;
+            if (!state.settingsOpen) {
+                if (focusTarget) focusTarget.focus?.({ preventScroll: true });
+                else if (elements.settingsCard?.contains(document.activeElement)) document.activeElement?.blur?.();
+                settingsReturnFocus = null;
+            }
             if (elements.settingsCard) {
                 elements.settingsCard.hidden = !state.settingsOpen;
                 elements.settingsCard.setAttribute('aria-hidden', String(!state.settingsOpen));
@@ -1236,30 +1676,39 @@
             if (state.settingsOpen) {
                 renderSettingsControls();
                 elements.settingsClose?.focus({ preventScroll: true });
-            } else if (!state.destroyed) {
-                const focusTarget = settingsReturnFocus?.isConnected
-                    ? settingsReturnFocus
-                    : elements.settingsToggle;
-                focusTarget?.focus?.({ preventScroll: true });
-                settingsReturnFocus = null;
+            } else if (focusTarget && document.activeElement !== focusTarget) {
+                focusTarget.focus?.({ preventScroll: true });
             }
         };
 
+        let settingsStatusTimer = 0;
+        scope.add(() => global.clearTimeout(settingsStatusTimer));
         const handleConfigChange = (config) => {
             state.config = config;
             root.classList.toggle('stage-edge-spectrum-off', config.edgeSpectrum === false);
-            applyStageTheme();
-            renderModeButtons();
+            const nextThemeKey = themeKeyOf(config);
+            if (nextThemeKey !== lastAppliedThemeKey) applyStageTheme();
+            const nextModesKey = `${state.modeId}|${config.enabledModes.join(',')}`;
+            if (nextModesKey !== lastEnabledModesKey) {
+                lastEnabledModesKey = nextModesKey;
+                renderModeButtons();
+            }
             if (!editingSettings) renderSettingsControls();
             state.modeInstance?.updateConfig?.(config);
             if (elements.settingsStatus) {
                 elements.settingsStatus.textContent = '已保存';
                 elements.settingsStatus.classList.add('is-visible');
-                scope.timeout(() => elements.settingsStatus.classList.remove('is-visible'), 1200);
+                global.clearTimeout(settingsStatusTimer);
+                settingsStatusTimer = global.setTimeout(() => {
+                    settingsStatusTimer = 0;
+                    if (!state.destroyed) elements.settingsStatus.classList.remove('is-visible');
+                }, 1200);
             }
         };
 
         root.classList.toggle('stage-edge-spectrum-off', state.config.edgeSpectrum === false);
+        lastEnabledModesKey = `${state.modeId}|${state.config.enabledModes.join(',')}`;
+        lastAppliedThemeKey = themeKeyOf(state.config);
         renderModeButtons();
         renderSettingsControls();
         loadThemeCatalog();
@@ -1269,13 +1718,12 @@
         elements.volumeButton.innerHTML = `${icons.volume}${icons.muted}`;
         updateTransportControls();
 
-        scope.listen(toggleButton, 'click', toggle);
         // 面板仅通过 Esc 或关闭按钮关闭，避免再次点击入口时误关闭。
         scope.listen(elements.settingsToggle, 'click', () => setSettingsOpen(true));
         scope.listen(elements.settingsClose, 'click', () => setSettingsOpen(false));
         scope.listen(elements.settingsReset, 'click', () => Config.reset());
         scope.listen(elements.modeOptions, 'change', (event) => {
-            const checkbox = event.target.closest('[data-stage-config-mode]');
+            const checkbox = event.target?.closest?.('[data-stage-config-mode]');
             if (!checkbox) return;
             Config.toggleMode(checkbox.dataset.stageConfigMode, checkbox.checked);
         });
@@ -1301,12 +1749,50 @@
             setVolume(current > 0.001 ? 0 : state.lastNonZeroVolume);
         });
         scope.listen(elements.volumeSlider, 'input', (event) => setVolume(event.target.value));
+        // 左上角字标就是「返回首页」：和 Esc、底栏舞台按钮走同一条退出路径
+        scope.listen(elements.homeButton, 'click', () => exit());
         scope.listen(elements.modeSwitcher, 'click', (event) => {
-            const button = event.target.closest('[data-stage-mode]');
-            if (button) setMode(button.dataset.stageMode);
+            if (picker.built && event.target?.closest?.('.music-stage-mode-picker-toggle')) {
+                // 鼠标点开时不抢焦点到列表（免得出现键盘焦点框），键盘打开时直接落到当前舞台上
+                setModePickerOpen(!picker.open, { focus: event.detail === 0 ? 'menu' : 'none' });
+                return;
+            }
+            const button = event.target?.closest?.('[data-stage-mode]');
+            if (!button) return;
+            setMode(button.dataset.stageMode);
+            setModePickerOpen(false, { focus: event.detail === 0 ? 'toggle' : 'none' });
         });
+        scope.listen(elements.modeSwitcher, 'keydown', (event) => {
+            if (!picker.built) return;
+            const options = modeOptions();
+            const index = options.indexOf(document.activeElement);
+            if (event.target === picker.toggle && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+                event.preventDefault();
+                event.stopPropagation();
+                setModePickerOpen(true);
+                return;
+            }
+            if (!picker.open) return;
+            const moves = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: options.length - 1 };
+            if (event.key in moves) {
+                event.preventDefault();
+                event.stopPropagation();
+                focusModeOption(index < 0 && event.key === 'ArrowUp' ? options.length - 1 : moves[event.key]);
+            } else if (event.key === 'Escape' && !event.isComposing) {
+                // 只收起菜单，不退出舞台
+                event.preventDefault();
+                event.stopPropagation();
+                setModePickerOpen(false, { focus: 'toggle' });
+            } else if (event.key === 'Tab') {
+                setModePickerOpen(false, { focus: 'none' });
+            }
+        });
+        scope.listen(document, 'pointerdown', (event) => {
+            if (picker.open && !(event.target && typeof event.target.nodeType === 'number' && elements.modeSwitcher.contains(event.target))) setModePickerOpen(false, { focus: 'none' });
+        }, true);
         scope.listen(elements.progressTrack, 'pointerdown', (event) => {
             state.draggingProgress = true;
+            progressDragRect = elements.progressTrack.getBoundingClientRect();
             elements.progressTrack.setPointerCapture?.(event.pointerId);
             seekFromPointer(event, false);
         });
@@ -1318,43 +1804,95 @@
             state.draggingProgress = false;
             elements.progressTrack.releasePointerCapture?.(event.pointerId);
             seekFromPointer(event, true);
+            progressDragRect = null;
         });
         scope.listen(elements.progressTrack, 'pointercancel', () => {
             state.draggingProgress = false;
+            progressDragRect = null;
             cancelSeekHold();
         });
         scope.listen(elements.progressTrack, 'keydown', (event) => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            const key = event.key;
+            if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Home' && key !== 'End') return;
             event.preventDefault();
             const duration = state.lastFrame?.duration || app.lastKnownDuration || 0;
             let target = app.lastKnownCurrentTime || 0;
-            if (event.key === 'ArrowLeft') target -= 5;
-            if (event.key === 'ArrowRight') target += 5;
-            if (event.key === 'Home') target = 0;
-            if (event.key === 'End') target = duration;
+            if (key === 'ArrowLeft') target -= 5;
+            if (key === 'ArrowRight') target += 5;
+            if (key === 'Home') target = 0;
+            if (key === 'End') target = duration;
             target = clamp(target, 0, duration);
             state.seekHold = null;
             holdSeek(target, true);
-            app.api?.seekMusic?.(target);
+            if (app.seekTo) app.seekTo(target); else app.api?.seekMusic?.(target);
         });
         scope.listen(global, 'keydown', onKeyDown);
+        // Dragging a window edge fires resize many times a frame, and each
+        // resize redraws the whole 3D picture: do it once per frame.
+        let resizeFrame = 0;
+        scope.add(() => global.cancelAnimationFrame?.(resizeFrame));
         scope.listen(global, 'resize', () => {
-            edgeCanvasState.width = 0;
-            edgeCanvasState.height = 0;
-            state.modeInstance?.resize?.({
-                width: global.innerWidth,
-                height: global.innerHeight,
-                dpr: Math.min(2, global.devicePixelRatio || 1)
+            if (!state.active && !state.modeInstance && !state.leaving) return;
+            edge.invalidate();
+            if (resizeFrame) return;
+            resizeFrame = global.requestAnimationFrame(() => {
+                resizeFrame = 0;
+                if (state.destroyed) return;
+                const viewport = {
+                    width: global.innerWidth,
+                    height: global.innerHeight,
+                    dpr: Math.min(2, global.devicePixelRatio || 1)
+                };
+                state.modeInstance?.resize?.(viewport);
+                state.leaving?.instance.resize?.(viewport);
             });
         });
         scope.listen(document, 'visibilitychange', () => {
-            if (!state.modeInstance) return;
-            if (document.hidden) state.modeInstance.suspend?.();
-            else state.modeInstance.resume?.();
+            // A hidden window would leave the old mode half faded out; finish the switch.
+            if (document.hidden) { state.arriving = null; dropLeaving(); }
+            if (state.modeInstance) {
+                state.modeInstance.root.classList.remove('is-soft-arriving', 'is-soft-settling');
+                if (document.hidden) state.modeInstance.suspend?.();
+                else state.modeInstance.resume?.();
+            }
+        });
+        scope.listen(global, 'music-motion-change', () => {
+            if (state.active && !state.destroyed) updateFrame(performance.now());
         });
         scope.listen(global, 'beforeunload', () => app.stageHost?.destroy?.(), { once: true });
 
-        setButtonState();
+        // When 镜台 is the stage the listener will most likely open, build its
+        // fixed shapes once the window has settled and is idle, so the first
+        // visit does not stop the entry transition for them. A quarter of a
+        // second of work, once per window, and nothing on the GPU.
+        const PREPARE_AFTER_MS = 4000;
+        const preparePreferredStage = (attempt = 0) => {
+            if (state.active || state.destroyed || state.modeId !== 'diorama') return;
+            const World = global.MusicStageDioramaWorld;
+            if (!global.THREE || !World?.prepareShapes) return;
+            // Not while the opening plays or anything else is moving on screen.
+            if (document.hidden || document.body.classList.contains('music-intro-playing')) {
+                if (attempt < 5) scope.timeout(() => preparePreferredStage(attempt + 1), PREPARE_AFTER_MS);
+                return;
+            }
+            try { World.prepareShapes(global.THREE); } catch (error) {
+                console.warn('[MusicStage] preparing the diorama ahead failed:', error);
+            }
+        };
+        let prepareIdleId = 0;
+        scope.add(() => {
+            if (prepareIdleId) global.cancelIdleCallback?.(prepareIdleId);
+            prepareIdleId = 0;
+        });
+        scope.timeout(() => {
+            if (typeof global.requestIdleCallback === 'function') {
+                prepareIdleId = global.requestIdleCallback(() => {
+                    prepareIdleId = 0;
+                    preparePreferredStage();
+                }, { timeout: 10000 });
+            } else preparePreferredStage();
+        }, PREPARE_AFTER_MS);
+
         root.hidden = true;
         root.setAttribute('aria-hidden', 'true');
 
@@ -1363,9 +1901,13 @@
             exit,
             toggle,
             setMode,
-            updateFrame,
+            updateFrame: paceFrame,
             updateTrack,
             updateTheme,
+            followGlobalTheme,
+            themeChoices,
+            setThemeChoice,
+            themeAccent,
             get active() { return state.active; },
             get modeId() { return state.modeId; },
             getDebugSnapshot() {
@@ -1374,8 +1916,11 @@
                     modeId: state.modeId,
                     generation: state.generation,
                     hasModeInstance: Boolean(state.modeInstance),
+                    switching: state.arriving ? 'waiting' : state.leaving ? 'crossfading' : null,
+                    leavingModeId: state.leaving?.instance.id || null,
+                    songHandover: state.handover ? (state.handover.newSong ? 'new-song' : 'new-lyrics') : null,
                     modeRootChildren: elements.modeRoot.childElementCount,
-                    canvasCount: elements.modeRoot.querySelectorAll('canvas').length,
+                    canvasCount: elements.modeRoot.querySelectorAll('canvas:not(.stage-handover-veil)').length,
                     ...state.stats,
                     mode: state.modeInstance?.getDebugSnapshot?.() || null
                 };
@@ -1389,12 +1934,10 @@
                 state.generation += 1;
                 if (state.backgroundTimer) clearTimeout(state.backgroundTimer);
                 destroyMode();
-                EDGE_SIDES.forEach((side) => {
-                    const strip = edgeStrips[side];
-                    if (!strip) return;
-                    strip.canvas.width = 1;
-                    strip.canvas.height = 1;
-                });
+                edge.release();
+                for (const soft of [softCurrent, softNext, softWallpaper]) {
+                    if (soft?.canvas) { soft.canvas.width = 0; soft.canvas.height = 0; }
+                }
                 scope.destroy();
                 document.body.classList.remove('music-stage-active', 'music-stage-scene-3d');
                 root.remove();

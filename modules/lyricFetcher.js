@@ -13,11 +13,15 @@ const {
 
 const lyricApiUrl = 'https://music.163.com/api/song/lyric';
 const searchApiUrl = 'https://music.163.com/api/search/get/';
+const LRC_TIMESTAMP_LINE_RE = /\[(\d{2}:\d{2}[.:]\d{2,3})\](.*)/;
+const ILLEGAL_FILE_CHARS_RE = /[\\/:"*?<>|]/g;
+const SLASH_RE = /\//g;
+let legacyTmpSeq = 0;
 
 async function searchSongId(title, artist) {
     if (!title) return null;
     try {
-        const cleanedArtist = artist ? artist.replace(/\//g, ' ') : '';
+        const cleanedArtist = artist ? (artist.indexOf('/') !== -1 ? artist.replace(SLASH_RE, ' ') : artist) : '';
         const response = await axios.get(searchApiUrl, {
             params: {
                 s: `${title} ${cleanedArtist}`.trim(),
@@ -31,7 +35,7 @@ async function searchSongId(title, artist) {
             timeout: 8000
         });
 
-        if (response.data.code === 200 && response.data.result && response.data.result.songs && response.data.result.songs.length > 0) {
+        if (response.data?.code === 200 && response.data.result && response.data.result.songs && response.data.result.songs.length > 0) {
             return response.data.result.songs; // Return all found songs
         }
         console.warn(`[LyricFetcher] Could not find any songs for "${title} - ${artist}". API response:`, response.data);
@@ -80,25 +84,29 @@ function parseLyric(lyricData) {
 
     const tlyricMap = new Map();
     for (const line of tlyricLines) {
-        const match = line.match(/\[(\d{2}:\d{2}[.:]\d{2,3})\](.*)/);
-        if (match && match[2].trim()) { // Ensure translation is not empty
-            tlyricMap.set(match[1], match[2].trim());
+        if (line.indexOf('[') === -1) continue;
+        const match = LRC_TIMESTAMP_LINE_RE.exec(line);
+        if (match) {
+            const text = match[2].trim();
+            if (text) tlyricMap.set(match[1], text);
         }
     }
 
     for (const line of lrcLines) {
-        const match = line.match(/\[(\d{2}:\d{2}[.:]\d{2,3})\](.*)/);
-        if (match) {
-            const timestamp = match[1];
-            mergedLrc.push(line); // Push original line
-            const translatedText = tlyricMap.get(timestamp);
-            if (translatedText) {
-                // To keep sync, add translated line with same timestamp
-                mergedLrc.push(`[${timestamp}]${translatedText}`);
+        if (line.indexOf('[') !== -1) {
+            const match = LRC_TIMESTAMP_LINE_RE.exec(line);
+            if (match) {
+                const timestamp = match[1];
+                mergedLrc.push(line); // Push original line
+                const translatedText = tlyricMap.get(timestamp);
+                if (translatedText) {
+                    // To keep sync, add translated line with same timestamp
+                    mergedLrc.push(`[${timestamp}]${translatedText}`);
+                }
+                continue;
             }
-        } else {
-            mergedLrc.push(line);
         }
+        mergedLrc.push(line);
     }
 
     return mergedLrc.join('\n');
@@ -115,24 +123,28 @@ function getBestMatch(songs, artist) {
 
     // Simple string similarity function (Jaro-Winkler-like)
     const calculateSimilarity = (s1, s2) => {
+        if (s1 === s2) {
+            return 1.0;
+        }
         const longer = s1.length > s2.length ? s1 : s2;
         const shorter = s1.length > s2.length ? s2 : s1;
         const longerLength = longer.length;
         if (longerLength === 0) {
             return 1.0;
         }
-        const matchDistance = Math.floor(longerLength / 2) - 1;
-        const shorterMatches = new Array(shorter.length).fill(false);
-        const longerMatches = new Array(longerLength).fill(false);
+        const matchDistance = Math.max(0, Math.floor(longerLength / 2) - 1);
+        const shorterMatches = new Uint8Array(shorter.length);
+        const longerMatches = new Uint8Array(longerLength);
         let matches = 0;
         for (let i = 0; i < shorter.length; i++) {
             const start = Math.max(0, i - matchDistance);
             const end = Math.min(i + matchDistance + 1, longerLength);
+            const ch = shorter[i];
             for (let j = start; j < end; j++) {
                 if (longerMatches[j]) continue;
-                if (shorter[i] !== longer[j]) continue;
-                shorterMatches[i] = true;
-                longerMatches[j] = true;
+                if (ch !== longer[j]) continue;
+                shorterMatches[i] = 1;
+                longerMatches[j] = 1;
                 matches++;
                 break;
             }
@@ -156,8 +168,16 @@ function getBestMatch(songs, artist) {
         return (matches / shorter.length + matches / longer.length + (matches - transpositions) / matches) / 3;
     };
 
-    for (const song of songs) {
-        const songArtists = song.artists.map(a => a.name).join(' ');
+    for (let i = 0; i < songs.length; i += 1) {
+        const song = songs[i];
+        const artists = song?.artists;
+        let songArtists = '';
+        if (Array.isArray(artists)) {
+            for (let j = 0; j < artists.length; j += 1) {
+                const name = artists[j]?.name;
+                if (name) songArtists = songArtists ? `${songArtists} ${name}` : name;
+            }
+        }
         const score = calculateSimilarity(artist, songArtists);
 
         if (score > maxScore) {
@@ -213,18 +233,28 @@ async function fetchAndSaveLyrics(artist, title, lyricDir, options = {}) {
     }
 
     const songId = bestMatch.id;
-    console.log(`[LyricFetcher] Found legacy match song ID: ${songId} for "${title}" (Artist: ${bestMatch.artists.map(a => a.name).join('/')})`);
+    console.log(`[LyricFetcher] Found legacy match song ID: ${songId} for "${title}" (Artist: ${(bestMatch.artists || []).map(a => a?.name || '').filter(Boolean).join('/')})`);
     const lrcContent = await getLyric(songId);
 
     if (lrcContent) {
         try {
-            await fs.mkdir(lyricDir, { recursive: true });
-            const sanitize = (str) => str.replace(/[\\/:"*?<>|]/g, '_').trim();
+            const sanitize = (str) => String(str ?? '').replace(ILLEGAL_FILE_CHARS_RE, '_').trim();
             const sanitizedTitle = sanitize(title);
-            const lrcFileName = artist ? `${sanitize(artist)} - ${sanitizedTitle}.lrc` : `${sanitizedTitle}.lrc`;
-            const lrcFilePath = path.join(lyricDir, lrcFileName);
-            await fs.writeFile(lrcFilePath, lrcContent);
-            console.log(`[LyricFetcher] Lyric saved to ${lrcFilePath}`);
+            if (sanitizedTitle && lyricDir) {
+                await fs.mkdir(lyricDir, { recursive: true });
+                const sanitizedArtist = sanitize(artist);
+                const lrcFileName = sanitizedArtist ? `${sanitizedArtist} - ${sanitizedTitle}.lrc` : `${sanitizedTitle}.lrc`;
+                const lrcFilePath = path.join(lyricDir, lrcFileName);
+                const tmpPath = `${lrcFilePath}.${process.pid}.${++legacyTmpSeq}.tmp`;
+                try {
+                    await fs.writeFile(tmpPath, lrcContent, 'utf8');
+                    await fs.rename(tmpPath, lrcFilePath);
+                } catch (writeErr) {
+                    await fs.unlink(tmpPath).catch(() => {});
+                    throw writeErr;
+                }
+                console.log(`[LyricFetcher] Lyric saved to ${lrcFilePath}`);
+            }
             return lrcContent;
         } catch (error) {
             console.error(`[LyricFetcher] Error saving lyric file:`, error);

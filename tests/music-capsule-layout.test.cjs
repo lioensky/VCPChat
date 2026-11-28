@@ -85,6 +85,8 @@ test('portrait capsule follows sidebar width with equal gutters and safe title l
         window.pushMusic({ open: true, title: 'I', trackKey: 'start', playing: true });
     });
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+    // Let Chromium settle its compositor frame after switching prefers-reduced-motion so the first rAF doesn't swallow the 240ms transition window.
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
     for (const [name, key] of [['超长曲名'.repeat(40), 'grow'], ['I', 'shrink']]) {
         const frames = await page.evaluate(async ({ name, key }) => {
             const surface = document.querySelector('.music-capsule-surface');
@@ -95,10 +97,14 @@ test('portrait capsule follows sidebar width with equal gutters and safe title l
             const start = read();
             window.pushMusic({ open: true, title: name, trackKey: key, playing: true });
             const samples = [];
-            const until = performance.now() + 350;
-            while (performance.now() < until) {
+            let startedAt = 0;
+            const hardStop = performance.now() + 1200;
+            while (performance.now() < hardStop) {
                 await new Promise(requestAnimationFrame);
+                const now = performance.now();
+                if (!startedAt) startedAt = now;
                 samples.push(read());
+                if (now - startedAt >= 350 && samples.length >= 4) break;
             }
             return { start, samples, end: read() };
         }, { name, key });

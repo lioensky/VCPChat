@@ -1,0 +1,239 @@
+// Musicmodules/desktop-lyrics/desktop-lyrics.js
+// 桌面歌词条本身：收音乐窗口送来的「这一行 / 下一行 / 进度」，自己按进度填色；悬停出工具条。
+// 只在播放、而且这一行还没填满时跑动画帧；暂停或填满就停。
+
+(function () {
+    'use strict';
+
+    const api = window.utilityAPI || window.electronAPI;
+    const $ = (id) => document.getElementById(id);
+    const cur = $('cur');
+    const next = $('next');
+    const playBtn = $('play');
+    const lockBtn = $('lock');
+    const body = document.body;
+
+    let snap = null;       // 最近一份状态
+    let words = null;      // 当前行每个字：{ el, s, e }
+    let lineSpan = null;   // 没有逐字时间时整句的起止
+    let lineKey = '';
+    let lastNextText = '';
+    let lastPlaying = null;
+    let lastPaused = null;
+    let lastLocked = null;
+    let frame = 0;
+    let size = 34;
+    let locked = false;
+    const reducedMq = window.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
+
+    const send = (cmd, value) => { try { api?.sendDesktopLyricsCommand?.(cmd, value); } catch (e) { /* 主进程没有这个接口 */ } };
+    const now = () => (snap ? snap.position + (snap.playing ? Math.max(0, Date.now() - (snap.at || Date.now())) / 1000 : 0) : 0);
+    const pct = (t, s, e) => (t >= e ? 100 : t <= s ? 0 : ((t - s) / Math.max(0.05, e - s)) * 100);
+
+    const wordSpan = (text) => {
+        const el = document.createElement('span');
+        el.className = 'w';
+        el.textContent = text;
+        el.dataset.t = text;
+        return el;
+    };
+
+    const render = () => {
+        const playing = Boolean(snap && snap.playing);
+        const paused = Boolean(snap && !snap.playing);
+        if (playing !== lastPlaying) {
+            lastPlaying = playing;
+            body.classList.toggle('playing', playing);
+            if (playBtn) {
+                const title = playing ? '暂停' : '播放';
+                playBtn.title = title;
+                playBtn.setAttribute('aria-label', title);
+            }
+        }
+        if (paused !== lastPaused) {
+            lastPaused = paused;
+            body.classList.toggle('paused', paused);
+        }
+
+        const line = snap && snap.line;
+        const key = snap ? `${snap.path ?? ''}\u0001${snap.index}\u0001${(line && line.text) || ''}` : '';
+        if (key !== lineKey) {
+            lineKey = key;
+            cur.classList.remove('idle', 'swap');
+            words = null;
+            lineSpan = null;
+            if (line && line.text) {
+                if (Array.isArray(line.words) && line.words.length) {
+                    const frag = document.createDocumentFragment();
+                    const srcWords = line.words;
+                    const len = srcWords.length;
+                    words = new Array(len);
+                    for (let i = 0; i < len; i += 1) {
+                        const w = srcWords[i];
+                        const el = wordSpan(w.text);
+                        frag.appendChild(el);
+                        words[i] = { el, s: w.s, e: w.e, last: -1 };
+                    }
+                    if (typeof cur.replaceChildren === 'function') cur.replaceChildren(frag);
+                    else { cur.textContent = ''; cur.appendChild(frag); }
+                } else {
+                    // 整句按到下一句的时间填（最长 8 秒，免得长间奏前的一句填得太慢）
+                    const s = line.time;
+                    const nextAt = snap.next ? snap.next.time : s + 4;
+                    const el = wordSpan(line.text);
+                    if (typeof cur.replaceChildren === 'function') cur.replaceChildren(el);
+                    else { cur.textContent = ''; cur.appendChild(el); }
+                    lineSpan = { el, s, e: s + Math.min(8, Math.max(0.6, nextAt - s)), last: -1 };
+                }
+            } else {
+                // 间奏、前奏或没有歌词：显示歌名
+                cur.classList.add('idle');
+                cur.textContent = snap && snap.title ? (snap.artist ? `${snap.title} — ${snap.artist}` : snap.title) : '没有在放的歌';
+            }
+            // fit() 读取宽度正好完成一次布局刷新，随后再加 swap 重启动画，避免两次连续强制重排
+            fit();
+            if (line && line.text && !reducedMq?.matches) cur.classList.add('swap');
+        }
+        const nx = snap && snap.next;
+        const nextText = (line && line.tr ? line.tr : nx ? nx.text : '') || (snap && !snap.hasLyrics && snap.path ? '这首歌没有歌词' : '');
+        if (nextText !== lastNextText) {
+            lastNextText = nextText;
+            next.textContent = nextText;
+        }
+        paint();
+    };
+
+    const onFrame = () => {
+        frame = 0;
+        paint();
+    };
+    const paint = () => {
+        const t = now();
+        let moving = false;
+        if (words) {
+            for (let i = 0; i < words.length; i += 1) {
+                const w = words[i];
+                if (t >= w.e) {
+                    if (w.last !== 1000) {
+                        w.last = 1000;
+                        w.el.style.setProperty('--f', '100.0%');
+                    }
+                    continue;
+                }
+                moving = true;
+                if (t <= w.s) {
+                    if (w.last !== 0) {
+                        w.last = 0;
+                        w.el.style.setProperty('--f', '0.0%');
+                    }
+                    continue;
+                }
+                const q = Math.round(pct(t, w.s, w.e) * 10);
+                if (q !== w.last) {
+                    w.last = q;
+                    w.el.style.setProperty('--f', (q / 10).toFixed(1) + '%');
+                }
+            }
+        } else if (lineSpan) {
+            let q;
+            if (t >= lineSpan.e) {
+                q = 1000;
+            } else {
+                moving = true;
+                q = t <= lineSpan.s ? 0 : Math.round(pct(t, lineSpan.s, lineSpan.e) * 10);
+            }
+            if (q !== lineSpan.last) {
+                lineSpan.last = q;
+                lineSpan.el.style.setProperty('--f', q === 1000 ? '100.0%' : q === 0 ? '0.0%' : (q / 10).toFixed(1) + '%');
+            }
+        }
+        const wantFrame = Boolean(moving && snap && snap.playing && !document.hidden);
+        if (wantFrame) {
+            if (!frame) frame = requestAnimationFrame(onFrame);
+        } else if (frame) {
+            cancelAnimationFrame(frame);
+            frame = 0;
+        }
+    };
+
+    // 一行太长就把字缩小到放得下（不低于设定字号的 60%）
+    const fit = () => {
+        if (cur.style.fontSize) cur.style.fontSize = '';
+        const room = cur.clientWidth;
+        const need = cur.scrollWidth;
+        if (room > 0 && need > room) cur.style.fontSize = Math.max(size * 0.6, (size * room) / need).toFixed(1) + 'px';
+    };
+
+    const applyPrefs = (p) => {
+        if (!p) return;
+        let sizeChanged = false;
+        if (Number.isFinite(p.size) && p.size !== size) {
+            size = p.size;
+            document.documentElement.style.setProperty('--dl-size', size + 'px');
+            sizeChanged = true;
+        }
+        locked = p.locked === true;
+        if (!locked) hoverUnlock = false;
+        if (locked !== lastLocked) {
+            lastLocked = locked;
+            body.classList.toggle('locked', locked);
+            if (lockBtn) {
+                lockBtn.title = locked ? '解锁：可以拖动、点按钮' : '锁定：鼠标穿过歌词，点不到它';
+                lockBtn.setAttribute('aria-label', locked ? '解锁' : '锁定');
+            }
+        }
+        if (sizeChanged) fit();
+    };
+
+    // ---- 交互 ----
+    document.addEventListener('click', (e) => {
+        const b = e.target?.closest?.('button[data-cmd]');
+        if (!b) return;
+        const cmd = b.dataset.cmd;
+        if (cmd === 'toggle') send(snap && snap.playing ? 'pause' : 'play');
+        else if (cmd === 'smaller') send('size', size - 2);
+        else if (cmd === 'bigger') send('size', size + 2);
+        else if (cmd === 'lock') send('lock', !locked);
+        else send(cmd);
+    });
+    // 悬停：锁定时鼠标事件是穿透转发来的，只用来露出锁形按钮；移到锁上才临时接收点击
+    let hoverUnlock = false;
+    const setHoverUnlock = (on) => {
+        const next = Boolean(on && locked);
+        if (next === hoverUnlock) return;
+        hoverUnlock = next;
+        send('hover', next);
+    };
+    let hovering = false;
+    const enter = () => {
+        if (hovering) return;
+        hovering = true;
+        body.classList.add('hover');
+    };
+    document.addEventListener('mouseenter', enter);
+    document.addEventListener('mousemove', enter, { passive: true });
+    document.addEventListener('mouseleave', () => {
+        if (hovering) { hovering = false; body.classList.remove('hover'); }
+        setHoverUnlock(false);
+    });
+    lockBtn?.addEventListener('mouseenter', () => setHoverUnlock(true));
+    lockBtn?.addEventListener('mouseleave', () => setHoverUnlock(false));
+    document.addEventListener('wheel', (e) => { if (!locked && e.ctrlKey) send('size', size + (e.deltaY < 0 ? 2 : -2)); }, { passive: true });
+    document.addEventListener('visibilitychange', paint);
+    let fitRaf = 0;
+    window.addEventListener('resize', () => {
+        if (fitRaf) return;
+        fitRaf = requestAnimationFrame(() => { fitRaf = 0; fit(); });
+    });
+    const unsubState = api?.onDesktopLyricsState?.((s) => { if (s && typeof s === 'object') { snap = s; render(); } });
+    const unsubPrefs = api?.onDesktopLyricsPrefs?.(applyPrefs);
+    window.addEventListener('beforeunload', () => {
+        cancelAnimationFrame(frame); frame = 0;
+        if (fitRaf) { cancelAnimationFrame(fitRaf); fitRaf = 0; }
+        try { if (typeof unsubState === 'function') unsubState(); } catch (e) { /* noop */ }
+        try { if (typeof unsubPrefs === 'function') unsubPrefs(); } catch (e) { /* noop */ }
+    }, { once: true });
+    render();
+
+    window.__desktopLyrics = { debug: () => ({ key: lineKey, cur: cur.textContent, next: next.textContent, words: words ? words.map((w) => w.el.style.getPropertyValue('--f')) : null, locked, size }) };
+})();

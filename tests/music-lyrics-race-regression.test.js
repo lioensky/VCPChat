@@ -13,7 +13,7 @@ function deferred() {
 
 function setup(api = {}) {
     const context = vm.createContext({ console, setTimeout, clearTimeout });
-    for (const name of ['music-lyrics.js', 'music-player.js']) {
+    for (const name of ['music-app-hooks.js', 'music-lyrics.js', 'music-player.js']) {
         vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules', name), 'utf8'), context);
     }
     const app = {
@@ -124,4 +124,112 @@ test('backend ties prefer word timing, then target duration proximity', () => {
     const near = entry(180500, true);
     assert.equal(near.durationDifference, 500);
     assert.strictEqual(rankAuditedLyrics([line, far, near])[0], near);
+});
+test('a saved lyrics file with no timed lines says so instead of leaving the pane blank', async () => {
+    let searched = false;
+    const app = setup({
+        getMusicLyrics: async () => '[ti:夜航]\n[ar:远舟]\n只是一段没有时间的歌词\n第二行',
+        searchMusicLyricsCandidates: async () => { searched = true; return { success: true, candidates: [] }; }
+    });
+    let rendered = 0;
+    app.renderLyrics = () => { rendered++; };
+    await app.fetchAndDisplayLyrics('远舟', '夜航');
+    assert.equal(rendered, 0);
+    assert.match(app.lyricsList.innerHTML, /没有时间轴/);
+    assert.equal(searched, false, 'does not go and replace the user\'s own file');
+});
+
+test('a failing saved-lyrics read ends the loading message', async () => {
+    const app = setup({ getMusicLyrics: async () => { throw new Error('EACCES'); } });
+    await app.fetchAndDisplayLyrics('远舟', '夜航');
+    assert.match(app.lyricsList.innerHTML, /歌词读取失败/);
+    assert.equal(app.lyricsLoadingToken, null);
+});
+
+test('Batch 72: resetLyrics & beforeunload cancel 500ms lyric settle timer immediately and dispose query listener', async () => {
+    const activeTimers = new Map();
+    let nextId = 1;
+    let disposed = 0;
+    const winListeners = new Map();
+    const ctx = vm.createContext({
+        console,
+        setTimeout: (fn, ms) => { const id = nextId++; activeTimers.set(id, { fn, ms }); return id; },
+        clearTimeout: (id) => { activeTimers.delete(id); },
+        window: { addEventListener: (t, fn) => winListeners.set(t, fn), removeEventListener: () => {} }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), ctx);
+    let searched = 0;
+    const app = {
+        lyricsRequestToken: 0,
+        lyricsList: { innerHTML: '', style: {} },
+        currentLyrics: [],
+        playlist: [],
+        api: {
+            onMusicCurrentLyricsRequest: () => () => { disposed += 1; },
+            getMusicLyrics: async () => null,
+            searchMusicLyricsCandidates: async () => { searched += 1; return { success: true, candidates: [] }; },
+            applyMusicLyricsCandidate: async () => ({ success: false })
+        }
+    };
+    ctx.setupLyrics(app);
+
+    const pending = app.fetchAndDisplayLyrics('A', 'Track 1');
+    await new Promise((r) => setImmediate(r));
+    assert.equal(activeTimers.size, 1, '500ms settle timer armed while waiting before network search');
+
+    // Skipping immediately calls resetLyrics -> cancels settle timer and resolves pending fetch right away without network call
+    app.resetLyrics();
+    await pending;
+    assert.equal(activeTimers.size, 0, 'resetLyrics cancels pending 500ms settle timer immediately');
+    assert.equal(searched, 0, 'cancelled settle never triggers network search');
+
+    // beforeunload disposes onMusicCurrentLyricsRequest listener
+    winListeners.get('beforeunload')?.();
+    assert.equal(disposed, 1, 'beforeunload disposes current-lyrics IPC listener');
+    assert.equal(app.disposeCurrentLyricsQuery, null);
+});
+
+test('Batch 101: resetLyrics skips redundant loading innerHTML rewrite and plainLyricLines caps at 400 lines', async () => {
+    let htmlWrites = 0;
+    let currentHtml = '';
+    const lyricsList = {
+        style: {},
+        childElementCount: 0,
+        firstElementChild: null,
+        get innerHTML() { return currentHtml; },
+        set innerHTML(v) {
+            htmlWrites += 1;
+            currentHtml = String(v);
+            if (currentHtml === '<li class="no-lyrics">正在加载歌词…</li>') {
+                this.childElementCount = 1;
+                this.firstElementChild = { className: 'no-lyrics', textContent: '正在加载歌词…' };
+            } else {
+                this.childElementCount = 0;
+                this.firstElementChild = null;
+            }
+        }
+    };
+    const rawPlain = Array.from({ length: 450 }, (_, i) => `Line ${i}`).join('\n');
+    const ctx = vm.createContext({ console, setTimeout, clearTimeout });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), ctx);
+    const app = {
+        lyricsRequestToken: 0,
+        lyricsList,
+        currentLyrics: [],
+        playlist: [{ path: 'C:/a.flac', title: 'A', artist: 'X' }],
+        currentTrackIndex: 0,
+        api: {
+            getMusicLyrics: async () => rawPlain
+        }
+    };
+    ctx.setupLyrics(app);
+    await app.fetchAndDisplayLyrics('X', 'A');
+    assert.equal(app.currentLyricsPlainLines.length, 400, 'plainLyricLines stops early at 400 lines');
+    assert.equal(app.currentLyricsPlainLines[399], 'Line 399');
+
+    htmlWrites = 0;
+    app.resetLyrics();
+    assert.equal(htmlWrites, 1, 'first resetLyrics writes loading placeholder');
+    app.resetLyrics();
+    assert.equal(htmlWrites, 1, 'repeated resetLyrics skips redundant innerHTML write when already showing placeholder');
 });

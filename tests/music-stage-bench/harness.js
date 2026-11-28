@@ -36,8 +36,25 @@
       const add = (rows, gap) => rows.forEach(text => { out.push({ time: +t.toFixed(2), original: text, translation: 'Translation for: ' + text.length + ' chars line of the song' }); t += gap; });
       add(verseA, 4.2); add(chorus, 4.6); t += 4; add(verseB, 4.2); add(chorus, 4.6); t += 20; add(bridge, 4.4); add(chorus, 4.6);
       return out; },
-    none: () => []
+    none: () => [],
+    // ?lyrics=custom：stage2d.cjs 用 LRC=文件 读进来的真实歌词（双语 LRC：同一时刻第一行原文、第二行翻译）
+    custom: () => (window.__customLyrics || []).slice(),
+    // ?lyrics=plain：没有时间的纯文本歌词，放在 app.currentLyricsPlainLines
+    plain: () => [],
+    // ?lyrics=long：一首都是超长句的歌（中文长句、英文长句、不带空格的长串）
+    long: () => {
+      const rows = [
+        '穿过人海穿过岁月漫长的隧道去往有你在的远方我依然相信光会照进每一个没有名字的清晨',
+        'When the night falls over the harbour and every single light along the water starts to hum our song again',
+        '我把这一路上看见的风景都写进了一封永远也寄不出去的信里然后把它折好放进口袋',
+        'Supercalifragilisticexpialidocious-and-a-very-long-unbroken-token-that-has-no-spaces-at-all',
+        '短句',
+        '就算终点没有人等待我也要把这首歌唱完唱到最后一个音符落下唱到天亮唱到海风停下来'
+      ];
+      return rows.map((original, i) => ({ time: 14 + i * 9, original, translation: i % 2 ? '' : 'A translation that is also rather long so it has to wrap onto a second line in narrow windows' }));
+    }
   };
+  const PLAIN = ['清晨的站台还没有人','列车带走昨夜的梦','我把车票折成纸船','放进口袋慢慢地等','窗外的风景向后退','像谁没说完的那句话','带我去水天相接的地方','让星光替我照亮远方','就算终点没有人等待','我也要把这首歌唱完'];
   const lyricsKind = q.get('lyrics') || 'lrc';
   const duration = Number(q.get('duration') || 200);
   const bins = 128; const spectrum = new Array(bins).fill(0);
@@ -50,7 +67,7 @@
     stripAudioExtension: t => String(t||'').replace(/\.(mp3|flac|wav|m4a|ogg)$/i,''),
     currentTheme: 'dark',
     playlist: [{ path: 'C:/music/demo-a.flac', title: '测试曲目 A.flac', artist: '测试歌手', album: '专辑', duration }, { path: 'C:/music/demo-b.flac', title: 'Second Track.flac', artist: 'Artist B', album: '', duration: 150 }],
-    currentTrackIndex: 0, currentLyrics: fixtures[lyricsKind](), currentLyricIndex: -1,
+    currentTrackIndex: 0, currentLyrics: fixtures[lyricsKind](), currentLyricsPlainLines: lyricsKind === 'plain' ? PLAIN.slice() : [], currentLyricIndex: -1,
     isPlaying: true, lastKnownCurrentTime: clock.engineBase, lastStateUpdateTime: Date.now(), lastKnownDuration: duration,
     currentVisualizerData: spectrum, isStageActive: false,
     pauseTrack(){ __h.pause(); }, playTrack(){ __h.play(); }, prevTrack(){ __h.track(0); }, nextTrack(){ __h.track(1); },

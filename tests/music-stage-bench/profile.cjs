@@ -28,6 +28,8 @@ const TOP = Number(args.top) || 25;
 const serve = () => require('./serve.cjs')(ROOT);
 
 const tunnelBare = { showPlanets: false, showRings: false, showShips: false, showStations: false };
+// 町景默认是沙盒截面；分镜运镜那一档单独量。
+const kowloonShots = { cameraMode: 'auto' };
 const SCENARIOS = [
     { name: 'diorama verse', mode: 'diorama', t: 30 },
     { name: 'diorama chorus', mode: 'diorama', t: 56 },
@@ -38,7 +40,14 @@ const SCENARIOS = [
     { name: 'tunnel rings', mode: 'tunnel', t: 46 },
     { name: 'tunnel rings, energy-saving', mode: 'tunnel', t: 46, config: { quality: 'energy-saving' } },
     { name: 'tunnel rings, ultimate', mode: 'tunnel', t: 46, config: { quality: 'ultimate' } },
-    { name: 'tunnel rings, no bodies', mode: 'tunnel', t: 46, config: { modes: { tunnel: tunnelBare } } }
+    { name: 'tunnel rings, no bodies', mode: 'tunnel', t: 46, config: { modes: { tunnel: tunnelBare } } },
+    { name: 'kowloon sandbox verse', mode: 'kowloon', t: 30 },
+    { name: 'kowloon sandbox chorus', mode: 'kowloon', t: 56 },
+    { name: 'kowloon sandbox chorus, energy-saving', mode: 'kowloon', t: 56, config: { quality: 'energy-saving' } },
+    { name: 'kowloon verse', mode: 'kowloon', t: 30, config: { modes: { kowloon: kowloonShots } } },
+    { name: 'kowloon chorus', mode: 'kowloon', t: 56, config: { modes: { kowloon: kowloonShots } } },
+    { name: 'kowloon chorus, energy-saving', mode: 'kowloon', t: 56, config: { quality: 'energy-saving', modes: { kowloon: kowloonShots } } },
+    { name: 'kowloon chorus, ultimate', mode: 'kowloon', t: 56, config: { quality: 'ultimate', modes: { kowloon: kowloonShots } } }
 ];
 
 // Runs in the page before any script: counts what reaches WebGL.

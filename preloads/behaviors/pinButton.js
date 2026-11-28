@@ -58,20 +58,23 @@ function isExcludedWindowContext() {
     );
 }
 
-function createPinIcon() {
+function createPinIcon(musicStyle) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    // Lucide pin
-    svg.setAttribute('width', '13');
-    svg.setAttribute('height', '13');
+    const size = musicStyle ? '16' : '13';
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('fill', 'none');
     svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-width', musicStyle ? '1.6' : '2');
     svg.setAttribute('stroke-linecap', 'round');
     svg.setAttribute('stroke-linejoin', 'round');
     svg.setAttribute('aria-hidden', 'true');
     svg.style.pointerEvents = 'none';
-    for (const d of ['M12 17v5', 'M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z']) {
+    const paths = musicStyle
+        ? ['M7 4h10l-2 3v4l5 3v2H4v-2l5-3V7Z', 'M12 16v5']
+        : ['M12 17v5', 'M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z'];
+    for (const d of paths) {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', d);
         svg.appendChild(path);
@@ -128,7 +131,7 @@ function installPinButton(_ctx, roleApi) {
     };
 
     // 纯单向事件流：统一由主进程广播驱动
-    roleApi.onWindowPinnedChanged(renderPinned);
+    const unsubPin = roleApi.onWindowPinnedChanged(renderPinned);
 
     const fetchInitialStateOnce = () => {
         if (initialFetched) return;
@@ -147,7 +150,8 @@ function installPinButton(_ctx, roleApi) {
         pinBtn.setAttribute('aria-label', '置顶窗口');
         pinBtn.setAttribute('aria-pressed', String(currentPinnedState));
         if (currentPinnedState) pinBtn.classList.add('is-pinned');
-        pinBtn.appendChild(createPinIcon());
+        const musicStyle = Boolean(container.querySelector('#minimize-music-btn'));
+        pinBtn.appendChild(createPinIcon(musicStyle));
 
         // 防连击与单向事件流：通过 roleApi.togglePinWindow 触发命令，状态统一由 onWindowPinnedChanged 驱动
         pinBtn.addEventListener('click', async (event) => {
@@ -182,6 +186,8 @@ function installPinButton(_ctx, roleApi) {
     let mountedPinBtn = null;
     let mountedContainer = null;
     let mountScheduled = false;
+    let mountRafId = 0;
+    let disposed = false;
 
     const cleanupNarrowObserver = () => {
         if (narrowObserver) {
@@ -198,10 +204,12 @@ function installPinButton(_ctx, roleApi) {
     };
 
     const scheduleMount = () => {
-        if (mountScheduled) return;
+        if (disposed || mountScheduled) return;
         mountScheduled = true;
-        requestAnimationFrame(() => {
+        mountRafId = requestAnimationFrame(() => {
+            mountRafId = 0;
             mountScheduled = false;
+            if (disposed) return;
             tryMount();
         });
     };
@@ -333,10 +341,20 @@ function installPinButton(_ctx, roleApi) {
     // 初始启动搜寻
     startRootObserver();
 
-    window.addEventListener('unload', () => {
+    const dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        if (mountRafId && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(mountRafId);
+            mountRafId = 0;
+        }
+        mountScheduled = false;
         cleanupNarrowObserver();
         cleanupRootObserver();
-    }, { once: true });
+        try { if (typeof unsubPin === 'function') unsubPin(); } catch { /* noop */ }
+    };
+    window.addEventListener('beforeunload', dispose, { once: true });
+    window.addEventListener('unload', dispose, { once: true });
 }
 
 module.exports = { installPinButton };

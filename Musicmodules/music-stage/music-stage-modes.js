@@ -9,41 +9,82 @@
         { id: 'partita', label: '云阶', manager: global.MusicStagePartitaManager },
         { id: 'cadenza', label: '心象', manager: global.MusicStageCadenzaManager }
     ];
+    const NO_TRAITS = Object.freeze({ scene3d: false, opaque: false, night: false });
     const registry = new Map();
     core.forEach(({ id, label, manager }) => {
         if (!manager?.create) throw new Error(`Music stage manager missing: ${id}`);
-        registry.set(id, { id, label, create: (container, services) => manager.create(container, services) });
+        registry.set(id, { id, label, traits: NO_TRAITS, create: (container, services) => manager.create(container, services) });
     });
     global.MusicStageAdvancedModes?.entries?.forEach(entry => registry.set(entry.id, entry));
 
     const STARBORN_CANDIDATE_IDS = Object.freeze([
         'luminous', 'partita', 'cadenza', 'fume', 'tempera', 'sonnet'
     ]);
+    // 候选模式在注册表初始化后保持不变，预先过滤避免每次切句重复分配数组
+    const STARBORN_IDS = STARBORN_CANDIDATE_IDS.filter(id => registry.has(id));
 
     const resolveSegment = frame => {
         const current = frame.activeLine;
         const track = frame.track?.path || frame.track?.title || 'unknown-track';
+        let lines = [];
+        if (current) {
+            lines.push(current);
+            const nextLines = frame.nextLines;
+            for (let i = 0; nextLines && i < nextLines.length; i += 1) {
+                const candidate = nextLines[i];
+                if (candidate && candidate.fullText.trim()) { lines.push(candidate); break; }
+            }
+        }
         return {
             key: `${track}:${getLineKey(current)}`,
-            lines: current ? [current, frame.nextLines.find(line => line.fullText.trim())].filter(Boolean) : []
+            lines
         };
     };
     const chooseMode = (frame, segment, previous, recent, config) => {
         // Diorama is deliberately excluded: Starborn crossfades can temporarily
         // own two children, which is unsuitable for concurrent Three/WebGL scenes.
-        const ids = STARBORN_CANDIDATE_IDS.filter(id => registry.has(id));
-        const text = segment.lines.map(line => line.fullText).join(' ');
-        const chars = splitGraphemes(text).filter(char => char.trim()).length;
-        const words = segment.lines.reduce((sum, line) => sum + (line.words?.length || 0), 0);
-        const syllables = segment.lines.reduce((sum, line) => sum + (line.words || [])
-            .reduce((count, word) => count + (word.syllables?.length || 0), 0), 0);
-        const duration = segment.lines.reduce((sum, line) => sum + Math.max(0.2, line.endTime - line.startTime), 0);
-        const translated = segment.lines.some(line => line.translation);
-        const romanized = segment.lines.some(line => line.romanization);
-        const chorus = segment.lines.some(line => line.isChorus);
-        const hintedFast = segment.lines.some(line =>
-            ['fast', 'instant'].includes(line.renderHints?.wordRevealMode));
-        const marks = (text.match(/[!?！？…—]/g) || []).length;
+        const ids = STARBORN_IDS;
+        const segLines = segment.lines;
+        let text = '';
+        let words = 0;
+        let syllables = 0;
+        let duration = 0;
+        let translated = false;
+        let romanized = false;
+        let chorus = false;
+        let hintedFast = false;
+        for (let i = 0; i < segLines.length; i += 1) {
+            const line = segLines[i];
+            if (i > 0) text += ' ';
+            text += line.fullText;
+            const lineWords = line.words;
+            if (lineWords && lineWords.length) {
+                words += lineWords.length;
+                for (let wi = 0; wi < lineWords.length; wi += 1) {
+                    const syls = lineWords[wi].syllables;
+                    if (syls) syllables += syls.length;
+                }
+            }
+            const span = line.endTime - line.startTime;
+            duration += span > 0.2 ? span : 0.2;
+            if (!translated && line.translation) translated = true;
+            if (!romanized && line.romanization) romanized = true;
+            if (!chorus && line.isChorus) chorus = true;
+            if (!hintedFast) {
+                const reveal = line.renderHints?.wordRevealMode;
+                if (reveal === 'fast' || reveal === 'instant') hintedFast = true;
+            }
+        }
+        const graphemes = splitGraphemes(text);
+        let chars = 0;
+        for (let i = 0; i < graphemes.length; i += 1) {
+            if (graphemes[i].trim()) chars += 1;
+        }
+        let marks = 0;
+        for (let i = 0; i < text.length; i += 1) {
+            const c = text.charCodeAt(i);
+            if (c === 33 || c === 63 || c === 0xff01 || c === 0xff1f || c === 0x2026 || c === 0x2014) marks += 1;
+        }
         const random = seededRandom(`starborn:${segment.key}`);
         const scores = {
             luminous: random() * 0.42 + frame.audio.vocal * 1.05 + frame.audio.bass * 0.72
@@ -67,18 +108,41 @@
         if (chars >= 20 && chars <= 42) scores.sonnet += 0.28;
         scores[ids[hashString(segment.key) % ids.length]] += 0.44;
         const avoid = config.modes?.starborn?.avoidRepeat !== false;
-        if (avoid) recent.forEach((id, index) => { if (scores[id] !== undefined) scores[id] -= index === 0 ? 0.72 : 0.34; });
-        const candidates = ids.filter(id => !avoid || id !== previous);
-        return registry.get((candidates.length ? candidates : ids).sort((a, b) => scores[b] - scores[a])[0]);
+        if (avoid) {
+            for (let i = 0; i < recent.length; i += 1) {
+                const rid = recent[i];
+                if (scores[rid] !== undefined) scores[rid] -= i === 0 ? 0.72 : 0.34;
+            }
+        }
+        let bestId = '';
+        let bestScore = -Infinity;
+        for (let i = 0; i < ids.length; i += 1) {
+            const id = ids[i];
+            if (avoid && id === previous) continue;
+            const sc = scores[id];
+            if (sc > bestScore) { bestScore = sc; bestId = id; }
+        }
+        if (!bestId) {
+            for (let i = 0; i < ids.length; i += 1) {
+                const id = ids[i];
+                const sc = scores[id];
+                if (sc > bestScore) { bestScore = sc; bestId = id; }
+            }
+        }
+        return registry.get(bestId);
     };
 
     const createStarborn = (container, services) => {
         const mode = makeModeBase('starborn', '星诞', container, services);
         const cue = createElement('div', 'starborn-director-cue');
         const burst = createElement('div', 'starborn-transition-burst');
+        // The small star cluster reads the vocal level; as an element of its own
+        // it takes that level without restyling the performances beside it.
+        const star = createElement('div', 'starborn-star');
         cue.setAttribute('aria-hidden', 'true');
         burst.setAttribute('aria-hidden', 'true');
-        mode.root.append(cue, burst);
+        star.setAttribute('aria-hidden', 'true');
+        mode.root.append(cue, burst, star);
         const children = new Set();
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         let current = null;
@@ -98,13 +162,13 @@
             child.layer.remove();
         };
         const clear = () => {
-            Array.from(children).forEach(release);
+            for (const child of children) release(child);
             current = null;
         };
         const mount = (entry, frame) => {
             // A retiring instance is still owned and always destroyed, including
             // exits during crossfade; no cancellation can bypass its disposer.
-            Array.from(children).forEach(child => { if (child !== current) release(child); });
+            for (const child of children) { if (child !== current) release(child); }
             if (current) current.retireAt = frame.playbackTime;
             const layer = createElement('div', 'starborn-performance-layer');
             layer.style.transition = 'none';
@@ -118,7 +182,7 @@
             count += 1;
             recent.unshift(entry.id);
             recent.splice(2);
-            cue.textContent = `STAR BORN · ${String(count).padStart(2, '0')} / ${entry.label}`;
+            cue.textContent = `星诞 · ${String(count).padStart(2, '0')} / ${entry.label}`;
             mode.root.dataset.directedMode = entry.id;
             mode.root.dataset.transitionCount = String(count);
             lastTransition = frame.playbackTime;
@@ -126,8 +190,9 @@
         mode.updateFrame = frame => {
             if (mode.destroyed || mode.suspended) return;
             latest = frame;
-            const segment = resolveSegment(frame);
+            const line = frame.activeLine;
             const nextTrack = frame.track?.path || frame.track?.title || '';
+            const nextSegKey = `${nextTrack || 'unknown-track'}:${getLineKey(line)}`;
             const trackChanged = track !== nextTrack;
             const sourceChanged = source !== frame.lines;
             const previousTime = lastTime;
@@ -147,16 +212,15 @@
                 // A clock correction, seek, or refreshed lyric array is not a
                 // musical cut. Keep the renderer and synchronize its new frame.
                 // Discard outgoing layers whose old timestamps no longer apply.
-                Array.from(children).forEach(child => { if (child !== current) release(child); });
+                for (const child of children) { if (child !== current) release(child); }
                 if (current) current.born = frame.playbackTime - 0.52;
                 if (backward) lastTransition = frame.playbackTime;
-                segmentKey = segment.key;
+                segmentKey = nextSegKey;
                 observedLine = null;
                 protectedUntil = -Infinity;
             }
-            const line = frame.activeLine;
-            const lineChanged = segment.key !== segmentKey;
-            segmentKey = segment.key;
+            const lineChanged = nextSegKey !== segmentKey;
+            segmentKey = nextSegKey;
             const lock = mode.config.modes?.starborn?.transitionLock ?? 4;
             // Cold start may mount mid-line. All subsequent automatic cuts must
             // occur at a fresh line boundary, never when a deferred lock expires.
@@ -168,6 +232,7 @@
                 && frame.playbackTime - lastTransition >= lock
                 && line.startTime >= protectedUntil - 0.001;
             if (!current || canCut) {
+                const segment = resolveSegment(frame);
                 mount(chooseMode(frame, segment, current?.id, recent, mode.config), frame);
             }
             if (line && observedLine !== line) {
@@ -179,16 +244,23 @@
                     line.vocalEndTime ?? line.endTime
                 );
             }
-            const duration = reduced?.matches ? 0.001 : 0.52;
-            children.forEach(child => {
+            const duration = global.MusicStageRuntime.isReducedMotion(reduced) ? 0.001 : 0.52;
+            const lowPower = mode.config?.quality === 'energy-saving';
+            for (const child of children) {
                 const retired = child.retireAt !== null;
                 const elapsed = frame.playbackTime - (retired ? child.retireAt : child.born);
-                if (retired && elapsed >= duration) { release(child); return; }
+                if (retired && elapsed >= duration) { release(child); continue; }
                 const progress = Math.max(0, Math.min(1, elapsed / duration));
-                child.layer.style.opacity = String(retired ? 1 - progress : progress);
-                child.layer.style.filter = `blur(${(retired ? progress : 1 - progress) * 12}px)`;
+                const rawOp = retired ? 1 - progress : progress;
+                const nextOp = rawOp <= 0 ? '0' : rawOp >= 1 ? '1' : rawOp.toFixed(3);
+                if (child._op !== nextOp) { child._op = nextOp; child.layer.style.opacity = nextOp; }
+                // A settled layer needs no filter: blur(0) is drawn the same,
+                // but still costs a whole-stage offscreen pass every frame.
+                const blur = lowPower ? 0 : (retired ? progress : 1 - progress) * 12;
+                const nextFilter = blur > 0.05 ? `blur(${blur.toFixed(1)}px)` : 'none';
+                if (child._filter !== nextFilter) { child._filter = nextFilter; child.layer.style.filter = nextFilter; }
                 child.mode.updateFrame(frame);
-            });
+            }
         };
         const updateConfig = mode.updateConfig;
         mode.updateConfig = config => {
@@ -221,6 +293,8 @@
         ids: Object.freeze(Array.from(registry.keys())),
         entries: Object.freeze(Array.from(registry.values())),
         get(id) { return registry.get(id) || registry.get('luminous'); },
+        // 模式的外观特性（见 music-stage-advanced-modes.js）；不认识的 id 一律当普通 2D 模式
+        traits(id) { return registry.get(id)?.traits || NO_TRAITS; },
         create(id, container, services) { return this.get(id).create(container, services); }
     });
 })(window);

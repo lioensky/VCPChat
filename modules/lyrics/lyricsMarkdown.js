@@ -1,11 +1,19 @@
 'use strict';
 
+const ESC_ALL_RE = /[&<>\\`*_{}\[\]()#+.!|~-]|\r\n?|\n/g;
+const ESC_REPL = (token) => {
+    if (token === '&') return '&amp;';
+    if (token === '<') return '&lt;';
+    if (token === '>') return '&gt;';
+    const c0 = token.charCodeAt(0);
+    if (c0 === 13 || c0 === 10) return ' ';
+    return '\\' + token;
+};
+
 // 只输出可读正文，不向工具结果暴露逐字计时等内部 JSON。
 function escapeMarkdown(value) {
-    return (typeof value === 'string' ? value : '')
-        .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
-        .replace(/([\\`*_{}\[\]()#+.!|~-])/g, '\\$1')
-        .replace(/\r\n?|\n/g, ' ').trim();
+    if (typeof value !== 'string' || !value) return '';
+    return value.replace(ESC_ALL_RE, ESC_REPL).trim();
 }
 
 function formatCurrentLyrics(snapshot) {
@@ -32,7 +40,7 @@ function formatCurrentLyrics(snapshot) {
     }
     return header.join('\n') + '\n\n' + (paragraphs.length
         ? '#### 歌词\n\n' + paragraphs.join('\n\n')
-        : '当前歌曲暂无歌词。');
+        : snapshot.loading ? '歌词还在加载，过几秒再读一次。' : '当前歌曲暂无歌词。');
 }
 
 module.exports = { formatCurrentLyrics };

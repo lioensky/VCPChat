@@ -17,6 +17,9 @@ pub struct PersistentSettings {
     
     // Device settings
     pub device_id: Option<usize>,
+    /// Name of the chosen output device. The id is only its position in the
+    /// device list, which shifts when a USB device is plugged in or out.
+    pub device_name: Option<String>,
     pub exclusive_mode: bool,
     
     // EQ settings
@@ -48,6 +51,9 @@ pub struct PersistentSettings {
     // Dynamic Loudness
     pub dynamic_loudness_enabled: bool,
     pub dynamic_loudness_strength: f64,
+
+    // Crossfade between tracks (0 = off, plain gapless)
+    pub crossfade_ms: u32,
     
     // Resampling
     pub target_samplerate: Option<u32>,
@@ -61,6 +67,7 @@ impl Default for PersistentSettings {
         Self {
             volume: 0.7,
             device_id: None,
+            device_name: None,
             exclusive_mode: false,
             eq_type: "IIR".to_string(),
             eq_enabled: false,
@@ -80,6 +87,7 @@ impl Default for PersistentSettings {
             crossfeed_mix: 0.3,
             dynamic_loudness_enabled: false,
             dynamic_loudness_strength: 1.0,
+            crossfade_ms: 0,
             target_samplerate: None,
             resample_quality: "hq".to_string(),
             use_cache: false,
@@ -159,6 +167,9 @@ impl SettingsManager {
         if let Some(device_id) = update.device_id {
             self.settings.device_id = device_id;
         }
+        if let Some(device_name) = update.device_name {
+            self.settings.device_name = device_name;
+        }
         if let Some(exclusive_mode) = update.exclusive_mode {
             self.settings.exclusive_mode = exclusive_mode;
         }
@@ -213,6 +224,9 @@ impl SettingsManager {
         if let Some(dynamic_loudness_enabled) = update.dynamic_loudness_enabled {
             self.settings.dynamic_loudness_enabled = dynamic_loudness_enabled;
         }
+        if let Some(crossfade_ms) = update.crossfade_ms {
+            self.settings.crossfade_ms = crossfade_ms.min(12_000);
+        }
         if let Some(dynamic_loudness_strength) = update.dynamic_loudness_strength {
             self.settings.dynamic_loudness_strength = dynamic_loudness_strength;
         }
@@ -243,6 +257,8 @@ impl SettingsManager {
 pub struct PersistentSettingsUpdate {
     pub volume: Option<f32>,
     pub device_id: Option<Option<usize>>,
+    #[serde(default)]
+    pub device_name: Option<Option<String>>,
     pub exclusive_mode: Option<bool>,
     pub eq_type: Option<String>,
     pub eq_enabled: Option<bool>,
@@ -262,6 +278,7 @@ pub struct PersistentSettingsUpdate {
     pub crossfeed_mix: Option<f64>,
     pub dynamic_loudness_enabled: Option<bool>,
     pub dynamic_loudness_strength: Option<f64>,
+    pub crossfade_ms: Option<u32>,
     pub target_samplerate: Option<Option<u32>>,
     pub resample_quality: Option<String>,
     pub use_cache: Option<bool>,

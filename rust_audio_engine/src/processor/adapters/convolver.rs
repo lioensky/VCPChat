@@ -71,6 +71,13 @@ impl ConvolverProcessor {
     }
 
     /// Clone the control-plane handle associated with this audio consumer.
+    /// No kernel playing, none arriving and no wet/dry transition running:
+    /// processing would pass the block through unchanged.
+    pub fn is_idle(&self) -> bool {
+        self.owned.is_none() && self.incoming.is_none() && self.pending_retire.is_none()
+            && self.transition_remaining_frames == 0 && !self.control.is_enabled()
+    }
+
     pub fn control(&self) -> ConvolverControl {
         self.control.clone()
     }

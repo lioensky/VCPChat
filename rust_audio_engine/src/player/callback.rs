@@ -6,7 +6,8 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use crossbeam::channel::Sender;
+use rtrb::Producer;
+use super::track_buffer::TrackBuffer;
 
 use super::state::{SharedState, PlayerState,
     EVENT_TRACK_CHANGED, EVENT_NEEDS_PRELOAD_RESET, EVENT_PLAYBACK_ENDED};
@@ -101,15 +102,130 @@ pub struct VchatDspPipeline {
     source_post: DspChain,
     /// Device/output domain after Rubato: final True-Peak Limiter → Noise Shaper.
     output: DspChain,
+    /// What the stages are set to, read once per block to decide on direct mode.
+    probe: TransparencyProbe,
+    /// Direct ("bit-perfect") mode: nothing would change the samples, so every
+    /// stage is skipped, including the limiter's ~10 ms look-ahead.
+    direct: DirectMode,
+}
+
+/// Parameter handles needed to tell whether the chain would be a no-op.
+struct TransparencyProbe {
+    eq: Arc<AtomicEqParams>,
+    saturation: Arc<AtomicSaturationParams>,
+    crossfeed: Arc<AtomicCrossfeedParams>,
+    volume: Arc<AtomicVolumeParams>,
+    noise_shaper: Arc<AtomicNoiseShaperParams>,
+    dynamic_loudness: Arc<AtomicDynamicLoudnessParams>,
+}
+
+impl TransparencyProbe {
+    fn chain_is_identity(&self) -> bool {
+        let eq = self.eq.read();
+        self.volume.effective_volume() == 1.0
+            && (!eq.enabled || eq.gains.iter().all(|g| *g == 0.0))
+            && !self.saturation.is_enabled()
+            && !self.crossfeed.is_enabled()
+            && !self.dynamic_loudness.is_enabled()
+            && !self.noise_shaper.is_enabled()
+    }
+}
+
+/// Switching between the full chain and direct mode moves the output by the
+/// limiter's look-ahead, so the switch dips to silence and back (~8 ms each way)
+/// instead of jumping.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum DirectPhase {
+    /// No decision yet: the first block picks a mode without a fade.
+    Unset,
+    Steady,
+    FadingOut,
+    FadingIn,
+}
+
+struct DirectMode {
+    active: bool,
+    phase: DirectPhase,
+    gain: f64,
+    /// Frames to stay silent after switching into the chain: its look-ahead
+    /// starts out empty, so the fade-in waits for real audio to come through.
+    hold: usize,
+}
+
+impl DirectMode {
+    fn new() -> Self {
+        Self { active: false, phase: DirectPhase::Unset, gain: 1.0, hold: 0 }
+    }
 }
 
 impl VchatDspPipeline {
     fn process_source_pre(&mut self, buffer: &mut [f64], channels: usize) -> Result<(), crate::processor::ProcessError> {
+        if self.direct.active { return Ok(()); }
         self.source_pre.process(buffer, channels).map(|_| ())
     }
 
     fn process_source_post(&mut self, buffer: &mut [f64], channels: usize) -> Result<(), crate::processor::ProcessError> {
+        if self.direct.active { return Ok(()); }
         self.source_post.process(buffer, channels).map(|_| ())
+    }
+
+    /// Decide once per block whether the chain can be skipped. `others_idle` covers
+    /// what the pipeline cannot see: loudness normalization, resampling, convolver.
+    fn plan_direct(&mut self, others_idle: bool) {
+        let want = others_idle && self.probe.chain_is_identity();
+        match self.direct.phase {
+            DirectPhase::Unset => {
+                self.direct.active = want;
+                self.direct.phase = DirectPhase::Steady;
+            }
+            DirectPhase::Steady if want != self.direct.active => {
+                self.direct.phase = DirectPhase::FadingOut;
+            }
+            // Changed back while fading in: fade out again from where we are.
+            DirectPhase::FadingIn if want != self.direct.active => {
+                self.direct.phase = DirectPhase::FadingOut;
+            }
+            _ => {}
+        }
+    }
+
+    /// Ramp the switch fade over the finished block; flip modes at silence.
+    fn apply_direct_fade(&mut self, data: &mut [f64], channels: usize) {
+        if !matches!(self.direct.phase, DirectPhase::FadingOut | DirectPhase::FadingIn) {
+            return;
+        }
+        let step = 1.0 / FADE_FRAMES as f64;
+        for frame in data.chunks_mut(channels.max(1)) {
+            match self.direct.phase {
+                DirectPhase::FadingOut => self.direct.gain = (self.direct.gain - step).max(0.0),
+                DirectPhase::FadingIn if self.direct.hold > 0 => self.direct.hold -= 1,
+                DirectPhase::FadingIn => self.direct.gain = (self.direct.gain + step).min(1.0),
+                _ => {}
+            }
+            for sample in frame.iter_mut() {
+                *sample *= self.direct.gain;
+            }
+        }
+        if self.direct.phase == DirectPhase::FadingOut && self.direct.gain <= 0.0 {
+            // Silent now: switch, and start the chain from clean state so the
+            // limiter's look-ahead holds silence rather than the old audio.
+            self.direct.active = !self.direct.active;
+            self.reset_stages();
+            self.direct.hold = if self.direct.active {
+                0
+            } else {
+                self.source_pre.latency().frames() + self.source_post.latency().frames() + self.output.latency().frames()
+            };
+            self.direct.phase = DirectPhase::FadingIn;
+        } else if self.direct.phase == DirectPhase::FadingIn && self.direct.gain >= 1.0 {
+            self.direct.phase = DirectPhase::Steady;
+        }
+    }
+
+    fn reset_stages(&mut self) {
+        let _ = self.source_pre.reset();
+        let _ = self.source_post.reset();
+        let _ = self.output.reset();
     }
 
     /// Process the final device-domain stages after the rate boundary.
@@ -118,6 +234,14 @@ impl VchatDspPipeline {
         buffer: &mut [f64],
         channels: usize,
     ) -> Result<(), crate::processor::ProcessError> {
+        if self.direct.active {
+            // Nothing scales the signal in direct mode; only keep it inside full scale
+            // (a no-op for integer sources, a guard for hot float files).
+            for sample in buffer.iter_mut() {
+                *sample = sample.clamp(-1.0, 1.0);
+            }
+            return Ok(());
+        }
         self.output.process(buffer, channels).map(|_| ())
     }
 
@@ -131,9 +255,11 @@ impl VchatDspPipeline {
     }
 
     fn reset(&mut self) {
-        let _ = self.source_pre.reset();
-        let _ = self.source_post.reset();
-        let _ = self.output.reset();
+        self.reset_stages();
+        // A new stream: pick the mode again without a fade.
+        if !matches!(self.direct.phase, DirectPhase::FadingOut | DirectPhase::FadingIn) {
+            self.direct.phase = DirectPhase::Unset;
+        }
     }
 }
 
@@ -223,12 +349,22 @@ impl LockfreeDspContext {
             fir_ir_kernel: parking_lot::Mutex::new(None),
         };
 
+        let probe = TransparencyProbe {
+            eq: Arc::clone(&ctx.eq_params),
+            saturation: Arc::clone(&ctx.saturation_params),
+            crossfeed: Arc::clone(&ctx.crossfeed_params),
+            volume: Arc::clone(&ctx.volume_params),
+            noise_shaper: Arc::clone(&ctx.noise_shaper_params),
+            dynamic_loudness: Arc::clone(&ctx.dynamic_loudness_params),
+        };
         (
             ctx,
             VchatDspPipeline {
                 source_pre,
                 source_post,
                 output,
+                probe,
+                direct: DirectMode::new(),
             },
         )
     }
@@ -397,6 +533,63 @@ fn convolve_interleaved_ir(a: &[f64], b: &[f64], channels: usize) -> Result<Vec<
 // AUDIO CALLBACK
 // ============================================================================
 
+/// Crossfade length in source frames of the current track (0 = off).
+fn crossfade_frames(shared: &SharedState) -> usize {
+    let ms = shared.crossfade_ms.load(Ordering::Relaxed);
+    (ms * shared.sample_rate.load(Ordering::Relaxed) / 1000) as usize
+}
+
+/// Equal-power crossfade of the block in `buf` (outgoing track, starting `offset`
+/// frames into the window) with the first frames of `next`. Appends the incoming
+/// frames behind the outgoing ones inside the same pre-allocated buffer (capacity is
+/// 8192 frames, blocks are at most 4096), mixes, then truncates: no allocation.
+fn mix_crossfade(buf: &mut Vec<f64>, next: &TrackBuffer, offset: usize, window: usize, channels: usize) {
+    let n = buf.len();
+    let frames = n / channels;
+    if buf.capacity() < n * 2 || next.channels() != channels {
+        return;
+    }
+    next.extend_into(offset, frames, buf);
+    buf.resize(n + frames * channels, 0.0); // a still-decoding next track fades in from silence
+    let (out, inc) = buf.split_at_mut(n);
+    for f in 0..frames {
+        let t = ((offset + f) as f64 + 0.5) / window as f64;
+        let angle = t.clamp(0.0, 1.0) * std::f64::consts::FRAC_PI_2;
+        let (g_in, g_out) = angle.sin_cos();
+        for c in 0..channels {
+            let i = f * channels + c;
+            out[i] = out[i] * g_out + inc[i] * g_in;
+        }
+    }
+    buf.truncate(n);
+}
+
+/// Frames for a full 0↔1 fade (~8 ms at 48 kHz). Short enough to feel
+/// instant, long enough to remove the click of a hard stop/start.
+pub const FADE_FRAMES: f32 = 384.0;
+
+/// Ramp the block toward the pause/resume fade target.
+#[inline]
+fn apply_fade(data: &mut [f64], shared: &SharedState, channels: usize) {
+    let target = f32::from_bits(shared.fade_target.load(Ordering::Acquire));
+    let mut gain = f32::from_bits(shared.fade_gain.load(Ordering::Relaxed));
+    if gain == target && gain == 1.0 {
+        return;
+    }
+    let step = 1.0 / FADE_FRAMES;
+    for frame in data.chunks_mut(channels.max(1)) {
+        if gain < target {
+            gain = (gain + step).min(target);
+        } else if gain > target {
+            gain = (gain - step).max(target);
+        }
+        for sample in frame.iter_mut() {
+            *sample *= gain as f64;
+        }
+    }
+    shared.fade_gain.store(gain.to_bits(), Ordering::Relaxed);
+}
+
 /// Main f64 audio callback core shared by CPAL and WASAPI.
 ///
 /// CPAL executes the complete source/rate/output chain and converts to f32 only
@@ -410,7 +603,7 @@ pub fn audio_callback_lockfree(
     dsp_pipeline: &mut VchatDspPipeline,
     convolver: &mut ConvolverProcessor,
     loudness_state: &Arc<AtomicLoudnessState>,
-    spectrum_tx: &Sender<f64>,
+    spectrum_tx: &mut Producer<f32>,
     channels: usize,
     process_buf: &mut Vec<f64>,
     resampler: &mut Option<StreamingResampler>,
@@ -419,6 +612,14 @@ pub fn audio_callback_lockfree(
     resample_output: &mut Vec<f64>,
     finalize_output_domain: bool,
 ) {
+    // Shared-mode streams are kept (paused) between tracks and reused. Some
+    // backends keep calling a paused stream; never play while not Playing.
+    // (WASAPI exclusive drives its own start/stop and passes `false`.)
+    if finalize_output_domain && shared.state.load() != PlayerState::Playing {
+        data.fill(0.0);
+        return;
+    }
+
     // Format-specific chains are prepared before stream construction. The
     // callback only resets state at a block boundary; it never redesigns
     // filters, resizes storage, or logs.
@@ -427,13 +628,39 @@ pub fn audio_callback_lockfree(
     ).is_ok() {
         dsp_pipeline.reset();
         let _ = convolver.reset();
+        // A reused output stream must not carry the previous track's
+        // resampler history or buffered output into the new one.
+        if let Some(processor) = resampler.as_mut() {
+            let _ = processor.reset();
+        }
+        resample_leftover.clear();
+        *resample_leftover_pos = 0;
     }
+
+    dsp_pipeline.plan_direct(!loudness_state.enabled() && resampler.is_none() && convolver.is_idle());
 
     let has_leftover = *resample_leftover_pos < resample_leftover.len();
 
     // Gapless and EOF handling
-    let total = shared.total_frames.load(Ordering::Relaxed) as usize;
+    // The track buffer may still be filling (streaming load). Only frames
+    // below `ready` are readable; the length is exact once `complete`.
+    let buf = shared.audio_buffer.load();
+    let ready = buf.ready_frames() as usize;
+    let complete = buf.is_complete();
+    let total = buf.duration_frames() as usize;
+    if shared.total_frames.load(Ordering::Relaxed) != total as u64 {
+        shared.total_frames.store(total as u64, Ordering::Relaxed);
+    }
     let mut current_pos = shared.position_frames.load(Ordering::Relaxed) as usize;
+
+    // Decoder has not caught up with the play position (start of a streamed
+    // track, or a seek past the decoded range): output silence without
+    // advancing and without treating it as end of track.
+    if !complete && current_pos >= ready && !has_leftover {
+        shared.buffering.store(true, Ordering::Relaxed);
+        data.fill(0.0);
+        return;
+    }
 
     // Signal preload — request next track preloading early enough to allow
     // full decode + optional resampling before EOF. 5 seconds of lead time
@@ -443,7 +670,7 @@ pub fn audio_callback_lockfree(
     let sr = shared.sample_rate.load(Ordering::Relaxed) as usize;
     let remaining_frames = total.saturating_sub(current_pos);
     if remaining_frames > 0
-        && remaining_frames < sr * 5
+        && remaining_frames < sr * 5 + crossfade_frames(shared)
         && !shared.pending_ready.load(Ordering::Relaxed)
         && !shared.needs_preload.load(Ordering::Acquire)
     {
@@ -477,16 +704,22 @@ pub fn audio_callback_lockfree(
                     return;
                 }
 
-                // Store new audio buffer (wait-free ArcSwap)
-                shared.audio_buffer.store(next);
+                // Swap in the next track (wait-free ArcSwap). The outgoing
+                // buffer is handed to a non-realtime thread to be freed.
+                drop(buf);
+                let previous = shared.audio_buffer.swap(next);
+                let _ = shared.retired_buffers_tx.try_send(previous);
+                shared.buffering.store(false, Ordering::Relaxed);
                 shared.total_frames.store(next_frames, Ordering::Relaxed);
                 shared.sample_rate.store(next_sr, Ordering::Relaxed);
                 shared.channels.store(next_ch, Ordering::Relaxed);
-                shared.position_frames.store(0, Ordering::Relaxed);
+                // After a crossfade the incoming track has already played its first frames.
+                let faded_from = shared.crossfade_from.swap(u64::MAX, Ordering::Relaxed);
+                let start = if faded_from < total as u64 && crossfade_frames(shared) > 0 { (total as u64 - faded_from).min(next_frames) } else { 0 };
+                shared.position_frames.store(start, Ordering::Relaxed);
 
                 shared.pending_ready.store(false, Ordering::Release);
                 shared.needs_preload.store(false, Ordering::Relaxed);
-                shared.dsp_reset_pending.store(true, Ordering::Release);
 
                 // Signal events via bitmask (single atomic op)
                 shared.event_flags.fetch_or(
@@ -502,19 +735,20 @@ pub fn audio_callback_lockfree(
                 let pending_gain_db = f64::from_bits(pending_gain_bits);
                 loudness_state.set_target_gain(pending_gain_db);
 
-                // Reset every canonical DSP domain and preserve the existing
-                // source-to-device Rubato geometry for the next normalized track.
-                dsp_pipeline.reset();
-                let _ = convolver.reset();
-                if let Some(processor) = resampler.as_mut() {
-                    let _ = processor.reset();
-                }
+                // Same rate and channels (checked above): keep EQ, convolver, limiter and
+                // resampler state running, exactly as if both tracks were one file. Resetting
+                // here restarted the output chain from silence at every join and dropped the
+                // old track's tail still inside the resampler — an audible dip on live albums.
                 resample_leftover.clear();
                 *resample_leftover_pos = 0;
-                shared.dsp_reset_pending.store(false, Ordering::Release);
 
-                data.fill(0.0);
-                return;
+                // Continue straight into the next track in this same block
+                // instead of emitting a block of silence at the boundary.
+                return audio_callback_lockfree(
+                    data, shared, dsp_pipeline, convolver, loudness_state, spectrum_tx, channels,
+                    process_buf, resampler, resample_leftover, resample_leftover_pos,
+                    resample_output, finalize_output_domain,
+                );
             }
         }
 
@@ -559,26 +793,43 @@ pub fn audio_callback_lockfree(
             source_frames_needed = 4096;
         }
 
-        let available_source = total.saturating_sub(current_pos);
+        let available_source = ready.saturating_sub(current_pos);
         if available_source == 0 { break; }
 
         // Clamp frames_to_read to pre-allocated buffer capacity to prevent
         // heap allocation inside the audio callback (P0-3 fix)
         let max_frames_from_capacity = process_buf.capacity() / channels;
-        let frames_to_read = source_frames_needed.min(available_source).min(4096).min(max_frames_from_capacity);
-        let start_sample = current_pos * channels;
-        let end_sample = start_sample + frames_to_read * channels;
+        let mut frames_wanted = source_frames_needed.min(available_source).min(4096).min(max_frames_from_capacity);
+
+        // Crossfade window: the last `xf` frames of a complete track overlap the start
+        // of the preloaded next one. A block never straddles the window start, so the
+        // decision (fade or plain gapless) is taken exactly once, at its first frame.
+        let xf = crossfade_frames(shared).min(total / 2);
+        let window_start = total - xf;
+        if xf > 0 && complete && current_pos < window_start {
+            frames_wanted = frames_wanted.min(window_start - current_pos);
+        }
+        if xf > 0 && complete && current_pos == window_start {
+            let next_ok = shared.pending_ready.load(Ordering::Acquire)
+                && shared.pending_sample_rate.load(Ordering::Relaxed) == shared.sample_rate.load(Ordering::Relaxed)
+                && shared.pending_channels.load(Ordering::Relaxed) as usize == channels;
+            shared.crossfade_from.store(if next_ok { window_start as u64 } else { u64::MAX }, Ordering::Relaxed);
+        }
 
         process_buf.clear();
-        {
-            let buf = shared.audio_buffer.load();
-            if end_sample <= buf.len() {
-                process_buf.extend_from_slice(&buf[start_sample..end_sample]);
-            }
+        let frames_to_read = if buf.channels() == channels {
+            buf.extend_into(current_pos, frames_wanted, process_buf)
+        } else {
+            0
+        };
+        if frames_to_read == 0 {
+            break;
         }
-        
-        if process_buf.is_empty() {
-            continue;
+
+        if xf > 0 && shared.crossfade_from.load(Ordering::Relaxed) == window_start as u64 && current_pos >= window_start {
+            if let Some(next) = shared.pending_buffer.load().as_ref() {
+                mix_crossfade(process_buf, next, current_pos - window_start, xf, channels);
+            }
         }
 
         // Source position is committed only after every DSP/rate stage accepts
@@ -668,6 +919,29 @@ pub fn audio_callback_lockfree(
         }
     }
 
+    // The track ended inside this block and the next one is ready: render
+    // the rest of the block from it (gapless), rather than padding silence.
+    if samples_written < output_len
+        && complete
+        && current_pos >= ready
+        && *resample_leftover_pos >= resample_leftover.len()
+        && shared.pending_ready.load(Ordering::Acquire)
+        && shared.state.load() == PlayerState::Playing
+    {
+        drop(buf);
+        let (_, rest) = data.split_at_mut(samples_written);
+        audio_callback_lockfree(
+            rest, shared, dsp_pipeline, convolver, loudness_state, spectrum_tx, channels,
+            process_buf, resampler, resample_leftover, resample_leftover_pos,
+            resample_output, finalize_output_domain,
+        );
+        return;
+    }
+
+    shared
+        .buffering
+        .store(samples_written < output_len && !complete, Ordering::Relaxed);
+
     // Fill remaining with silence
     if samples_written < output_len {
         for i in samples_written..output_len {
@@ -675,18 +949,21 @@ pub fn audio_callback_lockfree(
         }
     }
 
-    // Spectrum output
+    dsp_pipeline.apply_direct_fade(data, channels);
+    apply_fade(data, shared, channels);
+
+    // Spectrum output: mono-downmix the first 512 frames and push them to
+    // the analysis thread through the wait-free ring in one batch. When the
+    // ring is full the analyzer is behind and the excess is dropped.
     if samples_written > 0 {
-        let take = samples_written.min(1024);
-        for i in (0..take).step_by(channels) {
-            let mut sum = 0.0;
-            for c in 0..channels {
-                if i + c < data.len() {
-                    sum += data[i + c];
-                }
-            }
-            let _ = spectrum_tx.try_send(sum / channels as f64);
+        let mut mono = [0.0f32; 512];
+        let frames = (samples_written / channels).min(mono.len());
+        for (frame, slot) in mono[..frames].iter_mut().enumerate() {
+            let base = frame * channels;
+            let sum: f64 = data[base..base + channels].iter().sum();
+            *slot = (sum / channels as f64) as f32;
         }
+        let _ = spectrum_tx.push_partial_slice(&mono[..frames]);
     }
 }
 
@@ -697,7 +974,8 @@ pub fn audio_callback_lockfree(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossbeam::channel::bounded;
+    use crate::player::track_buffer::{TrackBuffer, CHUNK_FRAMES};
+    use crate::player::state::EVENT_PLAYBACK_ENDED;
 
     fn assert_callback_geometry_is_allocation_free(
         source_sample_rate: u32,
@@ -742,7 +1020,7 @@ mod tests {
                 [phase.sin() * 0.1, phase.cos() * 0.1]
             })
             .collect::<Vec<_>>();
-        shared.audio_buffer.store(Arc::new(source));
+        shared.audio_buffer.store(TrackBuffer::from_samples(source, CHANNELS));
         shared
             .sample_rate
             .store(source_sample_rate as u64, Ordering::Relaxed);
@@ -754,7 +1032,7 @@ mod tests {
 
         let loudness_state =
             Arc::new(AtomicLoudnessState::new(200.0, source_sample_rate).unwrap());
-        let (spectrum_tx, _spectrum_rx) = bounded(1);
+        let (mut spectrum_tx, _spectrum_rx) = rtrb::RingBuffer::new(1);
         let mut process_buffer = Vec::with_capacity(8192 * CHANNELS);
         let mut resampler = if source_sample_rate == output_sample_rate {
             None
@@ -787,7 +1065,7 @@ mod tests {
             &mut pipeline,
             &mut convolver,
             &loudness_state,
-            &spectrum_tx,
+            &mut spectrum_tx,
             CHANNELS,
             &mut process_buffer,
             &mut resampler,
@@ -805,7 +1083,7 @@ mod tests {
                     &mut pipeline,
                     &mut convolver,
                     &loudness_state,
-                    &spectrum_tx,
+                    &mut spectrum_tx,
                     CHANNELS,
                     &mut process_buffer,
                     &mut resampler,
@@ -837,6 +1115,369 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Minimal 44.1 kHz stereo callback harness without a rate boundary.
+    struct StreamingHarness {
+        shared: SharedState,
+        pipeline: VchatDspPipeline,
+        convolver: ConvolverProcessor,
+        loudness_state: Arc<AtomicLoudnessState>,
+        spectrum_tx: Producer<f32>,
+        process_buffer: Vec<f64>,
+        resampler: Option<StreamingResampler>,
+        leftover: Vec<f64>,
+        leftover_pos: usize,
+        resample_output: Vec<f64>,
+    }
+
+    impl StreamingHarness {
+        fn new() -> Self {
+            let (context, pipeline) = LockfreeDspContext::new(
+                2,
+                44_100.0,
+                44_100.0,
+                Arc::new(AtomicEqParams::new()),
+                Arc::new(AtomicSaturationParams::new()),
+                Arc::new(AtomicCrossfeedParams::new()),
+                Arc::new(AtomicPeakLimiterParams::new()),
+                Arc::new(AtomicVolumeParams::new()),
+                Arc::new(AtomicNoiseShaperParams::new()),
+                Arc::new(AtomicDynamicLoudnessParams::new()),
+                Arc::new(AtomicDynamicLoudnessTelemetry::new()),
+            );
+            let mut convolver = ConvolverProcessor::new(context.convolver_control.clone()).unwrap();
+            convolver.set_sample_rate(44_100).unwrap();
+            let shared = SharedState::new();
+            shared.sample_rate.store(44_100, Ordering::Relaxed);
+            shared.channels.store(2, Ordering::Relaxed);
+            shared.state.store(PlayerState::Playing);
+            let (spectrum_tx, _) = rtrb::RingBuffer::new(4096);
+            Self {
+                shared,
+                pipeline,
+                convolver,
+                loudness_state: Arc::new(AtomicLoudnessState::new(200.0, 44_100).unwrap()),
+                spectrum_tx,
+                process_buffer: Vec::with_capacity(8192 * 2),
+                resampler: None,
+                leftover: Vec::new(),
+                leftover_pos: 0,
+                resample_output: Vec::new(),
+            }
+        }
+
+        fn render(&mut self, output: &mut [f64]) {
+            audio_callback_lockfree(
+                output,
+                &self.shared,
+                &mut self.pipeline,
+                &mut self.convolver,
+                &self.loudness_state,
+                &mut self.spectrum_tx,
+                2,
+                &mut self.process_buffer,
+                &mut self.resampler,
+                &mut self.leftover,
+                &mut self.leftover_pos,
+                &mut self.resample_output,
+                true,
+            );
+        }
+
+        fn position(&self) -> u64 {
+            self.shared.position_frames.load(Ordering::Relaxed)
+        }
+    }
+
+    fn tone(frames: usize) -> Vec<f64> {
+        (0..frames)
+            .flat_map(|frame| {
+                let v = (std::f64::consts::TAU * 440.0 * frame as f64 / 44_100.0).sin() * 0.1;
+                [v, v]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn streaming_buffer_waits_for_decoder_instead_of_ending_track() {
+        let mut harness = StreamingHarness::new();
+        let (buffer, mut writer) = TrackBuffer::new(2, Some((CHUNK_FRAMES * 4) as u64));
+        harness.shared.audio_buffer.store(Arc::clone(&buffer));
+        let mut output = vec![0.0; 512 * 2];
+
+        // Nothing decoded yet: silence, no progress, still playing.
+        assert_no_alloc::assert_no_alloc(|| harness.render(&mut output));
+        assert_eq!(harness.position(), 0);
+        assert!(harness.shared.buffering.load(Ordering::Relaxed));
+        assert_eq!(harness.shared.state.load(), PlayerState::Playing);
+        assert_eq!(harness.shared.event_flags.load(Ordering::Relaxed) & EVENT_PLAYBACK_ENDED, 0);
+        assert_eq!(
+            harness.shared.total_frames.load(Ordering::Relaxed),
+            (CHUNK_FRAMES * 4) as u64,
+            "duration reports the container estimate while streaming"
+        );
+
+        // One chunk published: playback advances through it, then starves again.
+        writer.push(&tone(CHUNK_FRAMES)).unwrap();
+        let mut rendered = 0;
+        while harness.position() < CHUNK_FRAMES as u64 && rendered < 1000 {
+            assert_no_alloc::assert_no_alloc(|| harness.render(&mut output));
+            rendered += 1;
+        }
+        assert_eq!(harness.position(), CHUNK_FRAMES as u64);
+        assert!(output.iter().all(|s| s.is_finite()));
+        harness.render(&mut output);
+        assert_eq!(harness.position(), CHUNK_FRAMES as u64);
+        assert!(harness.shared.buffering.load(Ordering::Relaxed));
+        assert_eq!(harness.shared.state.load(), PlayerState::Playing);
+
+        // Decoder finishes shorter than estimated: duration snaps to the real
+        // length and the track ends normally.
+        writer.push(&tone(100)).unwrap();
+        writer.finish();
+        harness.render(&mut output);
+        assert!(!harness.shared.buffering.load(Ordering::Relaxed));
+        assert_eq!(harness.position(), (CHUNK_FRAMES + 100) as u64);
+        assert_eq!(harness.shared.total_frames.load(Ordering::Relaxed), (CHUNK_FRAMES + 100) as u64);
+        harness.render(&mut output);
+        assert_eq!(harness.shared.state.load(), PlayerState::Stopped);
+        assert_ne!(harness.shared.event_flags.load(Ordering::Relaxed) & EVENT_PLAYBACK_ENDED, 0);
+    }
+
+    /// A continuous recording split into two tracks must come out exactly as if it were one:
+    /// no DSP restart at the join (that is what makes live albums dip).
+    fn render_split(split: Option<usize>) -> Vec<f64> {
+        let mut harness = StreamingHarness::new();
+        let all = tone(12_000);
+        match split {
+            None => harness.shared.audio_buffer.store(TrackBuffer::from_samples(all, 2)),
+            Some(at) => {
+                harness.shared.audio_buffer.store(TrackBuffer::from_samples(all[..at * 2].to_vec(), 2));
+                harness.shared.pending_buffer.store(Some(TrackBuffer::from_samples(all[at * 2..].to_vec(), 2)));
+                harness.shared.pending_total_frames.store((12_000 - at) as u64, Ordering::Relaxed);
+                harness.shared.pending_sample_rate.store(44_100, Ordering::Relaxed);
+                harness.shared.pending_channels.store(2, Ordering::Relaxed);
+                harness.shared.pending_ready.store(true, Ordering::Release);
+            }
+        }
+        harness.shared.total_frames.store(split.unwrap_or(12_000) as u64, Ordering::Relaxed);
+        let mut out = Vec::new();
+        let mut block = vec![0.0; 512 * 2];
+        for _ in 0..16 {
+            harness.render(&mut block);
+            out.extend_from_slice(&block);
+        }
+        out
+    }
+
+    fn max_join_error() -> f64 {
+        let one = render_split(None);
+        let two = render_split(Some(3_001));
+        let peak = one.iter().fold(0.0f64, |m, s| m.max(s.abs()));
+        assert!(peak > 0.02, "signal reaches the output (peak {peak})");
+        one.iter().zip(&two).map(|(a, b)| (a - b).abs()).fold(0.0, f64::max)
+    }
+
+    #[test]
+    fn gapless_join_continues_like_one_track() {
+        // Before: the next track restarted from silence (error 0.067 on a 0.1 tone).
+        // What is left is the loudness stage re-applying the (equal) target gain: < -70 dB.
+        let e = max_join_error();
+        assert!(e < 2e-4, "join error {e}");
+    }
+
+    /// Harness whose parameters we keep, with every stage switched off.
+    fn transparent_harness() -> (StreamingHarness, Arc<AtomicEqParams>, Arc<AtomicVolumeParams>) {
+        let eq = Arc::new(AtomicEqParams::new());
+        let vol = Arc::new(AtomicVolumeParams::new());
+        let sat = Arc::new(AtomicSaturationParams::new());
+        let cf = Arc::new(AtomicCrossfeedParams::new());
+        let ns = Arc::new(AtomicNoiseShaperParams::new());
+        let dl = Arc::new(AtomicDynamicLoudnessParams::new());
+        let (context, pipeline) = LockfreeDspContext::new(
+            2, 44_100.0, 44_100.0,
+            Arc::clone(&eq), Arc::clone(&sat), Arc::clone(&cf),
+            Arc::new(AtomicPeakLimiterParams::new()), Arc::clone(&vol), Arc::clone(&ns), Arc::clone(&dl),
+            Arc::new(AtomicDynamicLoudnessTelemetry::new()),
+        );
+        vol.set_volume(1.0);
+        eq.set_enabled(false);
+        sat.set_enabled(false);
+        cf.set_enabled(false);
+        ns.set_enabled(false);
+        dl.set_enabled(false);
+        let mut h = StreamingHarness::new();
+        let mut convolver = ConvolverProcessor::new(context.convolver_control.clone()).unwrap();
+        convolver.set_sample_rate(44_100).unwrap();
+        h.pipeline = pipeline;
+        h.convolver = convolver;
+        h.loudness_state.set_enabled(false);
+        (h, eq, vol)
+    }
+
+    fn pcm16_noise(frames: usize) -> Vec<f64> {
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        (0..frames * 2)
+            .map(|_| {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                ((seed >> 48) as i16) as f64 / 32768.0 * 0.5
+            })
+            .collect()
+    }
+
+    #[test]
+    fn direct_mode_outputs_the_source_bit_for_bit() {
+        // Before: with every effect off the limiter still delayed the output by
+        // ~10 ms and its smoothing touched the samples, so nothing was bit-exact.
+        let (mut h, _, _) = transparent_harness();
+        let src = pcm16_noise(20_000);
+        h.shared.audio_buffer.store(TrackBuffer::from_samples(src.clone(), 2));
+        let mut out = Vec::new();
+        let mut block = vec![0.0; 1000 * 2];
+        for _ in 0..12 { h.render(&mut block); out.extend_from_slice(&block); }
+        assert_eq!(&out[..], &src[..out.len()], "direct mode must be a straight copy");
+    }
+
+    #[test]
+    fn leaving_direct_mode_dips_instead_of_clicking() {
+        let (mut h, eq, _) = transparent_harness();
+        let tone: Vec<f64> = (0..40_000).flat_map(|i| { let v = (i as f64 * 0.05).sin() * 0.3; [v, v] }).collect();
+        h.shared.audio_buffer.store(TrackBuffer::from_samples(tone, 2));
+        let mut out = Vec::new();
+        let mut block = vec![0.0; 512 * 2];
+        for _ in 0..4 { h.render(&mut block); out.extend_from_slice(&block); }
+        let mut gains = [0.0; crate::processor::EQ_BANDS];
+        gains[5] = 3.0;
+        eq.write(&gains, true); // EQ on: the chain is needed again
+        for _ in 0..30 { h.render(&mut block); out.extend_from_slice(&block); }
+        let left: Vec<f64> = out.chunks(2).map(|f| f[0]).collect();
+        let worst = left.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f64::max);
+        // A 0.05 rad/sample tone moves at most ~0.015 per sample at 0.3 amplitude.
+        assert!(worst < 0.03, "step at the switch {worst}");
+        assert!(left[left.len() - 200..].iter().any(|s| s.abs() > 0.15), "audio is back after the switch");
+    }
+
+    #[test]
+    fn entering_direct_mode_dips_instead_of_clicking() {
+        let (mut h, eq, _) = transparent_harness();
+        let mut gains = [0.0; crate::processor::EQ_BANDS];
+        gains[5] = 3.0;
+        eq.write(&gains, true);
+        let tone: Vec<f64> = (0..40_000).flat_map(|i| { let v = (i as f64 * 0.05).sin() * 0.3; [v, v] }).collect();
+        h.shared.audio_buffer.store(TrackBuffer::from_samples(tone, 2));
+        let mut out = Vec::new();
+        let mut block = vec![0.0; 512 * 2];
+        for _ in 0..6 { h.render(&mut block); out.extend_from_slice(&block); }
+        eq.set_enabled(false); // back to nothing-to-do: the limiter look-ahead is dropped
+        for _ in 0..30 { h.render(&mut block); out.extend_from_slice(&block); }
+        let left: Vec<f64> = out.chunks(2).map(|f| f[0]).collect();
+        let worst = left[1500..].windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f64::max);
+        assert!(worst < 0.03, "step at the switch {worst}");
+        assert!(left[left.len() - 200..].iter().any(|s| s.abs() > 0.15), "audio is back after the switch");
+    }
+
+    #[test]
+    fn crossfade_overlaps_the_next_track_and_hands_over_its_position() {
+        const A: usize = 8_000;
+        const B: usize = 9_000;
+        const XF: usize = 1_984; // 45 ms at 44.1 kHz
+        let mut harness = StreamingHarness::new();
+        harness.shared.crossfade_ms.store(45, Ordering::Relaxed);
+        harness.shared.audio_buffer.store(TrackBuffer::from_samples(vec![0.4; A * 2], 2));
+        harness.shared.pending_buffer.store(Some(TrackBuffer::from_samples(vec![-0.4; B * 2], 2)));
+        harness.shared.pending_total_frames.store(B as u64, Ordering::Relaxed);
+        harness.shared.pending_sample_rate.store(44_100, Ordering::Relaxed);
+        harness.shared.pending_channels.store(2, Ordering::Relaxed);
+        harness.shared.pending_ready.store(true, Ordering::Release);
+
+        // Pull frame by frame-ish blocks until the first track is over.
+        let mut source = Vec::new();
+        let mut block = vec![0.0; 500 * 2];
+        while source.len() < (A + 2000) * 2 {
+            harness.render(&mut block);
+            source.extend_from_slice(&block);
+        }
+        // The swap happened at the end of A: the incoming track already played XF frames.
+        assert!(harness.position() >= XF as u64 && harness.position() < (XF + 2500) as u64,
+            "position after swap {}", harness.position());
+        let left: Vec<f64> = source.chunks(2).map(|f| f[0]).collect();
+        // The chain adds a little latency, so look for the crossing rather than a fixed frame:
+        // the level goes from the outgoing (+) to the incoming (-) track inside the window,
+        // not at the end of A as a plain join would.
+        assert!(left[1000] > 0.1, "outgoing before the window");
+        let crossing = (A - XF..A).find(|&i| left[i] < 0.0).expect("incoming takes over inside the window");
+        assert!(crossing < A - XF / 4, "crossing at {crossing}, window {}..{A}", A - XF);
+        assert!(left[A + 1000] < -0.1, "only the next track after the window");
+        // Equal-power curve: no jump between neighbouring samples inside the window.
+        let worst = left[A - XF..A + 50].windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f64::max);
+        assert!(worst < 0.01, "step inside the crossfade {worst}");
+    }
+
+    #[test]
+    fn crossfade_off_keeps_the_plain_gapless_join() {
+        let mut harness = StreamingHarness::new();
+        harness.shared.audio_buffer.store(TrackBuffer::from_samples(vec![0.4; 3_000 * 2], 2));
+        harness.shared.pending_buffer.store(Some(TrackBuffer::from_samples(vec![-0.4; 3_000 * 2], 2)));
+        harness.shared.pending_total_frames.store(3_000, Ordering::Relaxed);
+        harness.shared.pending_sample_rate.store(44_100, Ordering::Relaxed);
+        harness.shared.pending_channels.store(2, Ordering::Relaxed);
+        harness.shared.pending_ready.store(true, Ordering::Release);
+        let mut block = vec![0.0; 1000 * 2];
+        for _ in 0..4 { harness.render(&mut block); }
+        assert_eq!(harness.position(), 1_000, "next track starts from its first frame");
+    }
+
+    #[test]
+    fn gapless_swap_into_a_still_decoding_buffer_retires_the_old_one() {
+        let mut harness = StreamingHarness::new();
+        harness.shared.audio_buffer.store(TrackBuffer::from_samples(tone(256), 2));
+        let (next, mut writer) = TrackBuffer::new(2, None);
+        writer.push(&tone(CHUNK_FRAMES)).unwrap();
+        harness.shared.pending_buffer.store(Some(Arc::clone(&next)));
+        harness.shared.pending_sample_rate.store(44_100, Ordering::Relaxed);
+        harness.shared.pending_channels.store(2, Ordering::Relaxed);
+        harness.shared.pending_ready.store(true, Ordering::Release);
+
+        let mut output = vec![0.0; 2048 * 2];
+        // The 256-frame track ends mid-block; the rest of the same block
+        // comes from the next track, with no silent block in between.
+        harness.render(&mut output);
+        assert!(Arc::ptr_eq(&harness.shared.audio_buffer.load_full(), &next));
+        assert_eq!(harness.shared.retired_buffers_rx.len(), 1, "old buffer freed off the audio thread");
+        assert_eq!(harness.position(), 2048 - 256);
+        assert!(
+            output[1024 * 2..].iter().any(|s| s.abs() > 1e-4),
+            "the rest of the boundary block must carry the next track"
+        );
+        let mut output = vec![0.0; 512 * 2];
+        harness.render(&mut output);
+        assert_eq!(harness.position(), 2048 - 256 + 512);
+        assert_eq!(harness.shared.state.load(), PlayerState::Playing);
+    }
+
+    #[test]
+    fn pause_fades_out_and_resume_fades_in_without_steps() {
+        let mut harness = StreamingHarness::new();
+        harness.shared.audio_buffer.store(TrackBuffer::from_samples(vec![0.5; 44_100 * 2], 2));
+        let mut output = vec![0.0; 512 * 2];
+        for _ in 0..8 {
+            harness.render(&mut output); // settle limiter / smoothing
+        }
+        harness.shared.fade_target.store(0.0f32.to_bits(), Ordering::Release);
+        harness.render(&mut output);
+        let left: Vec<f64> = output.chunks(2).map(|f| f[0]).collect();
+        assert!(left[0].abs() > 0.05, "fade starts from the current level");
+        assert!(left[(FADE_FRAMES as usize) + 1..].iter().all(|s| s.abs() < 1e-9), "silent after the fade");
+        for pair in left.windows(2).take(FADE_FRAMES as usize) {
+            assert!((pair[0] - pair[1]).abs() < 0.01, "no step during the fade");
+        }
+
+        harness.shared.fade_target.store(1.0f32.to_bits(), Ordering::Release);
+        harness.render(&mut output);
+        let left: Vec<f64> = output.chunks(2).map(|f| f[0]).collect();
+        assert!(left[0].abs() < 0.01, "resume starts from silence");
+        assert!(left[511].abs() > 0.05, "and is back at level within the block");
     }
 
     #[test]

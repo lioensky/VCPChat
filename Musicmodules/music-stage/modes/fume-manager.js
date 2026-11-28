@@ -9,16 +9,23 @@
     const { buildGlyphTimeline, resolveSupplementalText, createInterludeVisualizer } = R;
     const value = (v, fallback, min = 0, max = 2) => clamp(Number.isFinite(Number(v)) ? Number(v) : fallback, min, max);
     const ease = v => { const t = clamp(v); return t * t * t * (t * (t * 6 - 15) + 10); };
+    // Assigning text replaces the text node and lays it out again, even when
+    // the text is the same; each frame only writes what changed.
+    const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    const setHidden = (node, hidden) => { if (node.hidden !== hidden) node.hidden = hidden; };
 
     const createManager = (container, services) => {
         const mode = makeModeBase('fume', '浮名', container, services);
         const canvas = createElement('canvas', 'fume-canvas');
         const world = createElement('div', 'fume-article-world');
+        // Screen-space frame so the page can fade out under the top chrome.
+        const frame = createElement('div', 'fume-article-frame');
+        frame.appendChild(world);
         const translation = createElement('div', 'stage-translation fume-article-subtitle');
         const heading = createElement('div', 'fume-article-heading');
         const empty = createElement('div', 'fume-article-empty', '等待音乐');
         const interlude = createInterludeVisualizer({ className: 'stage-interlude-fume' });
-        mode.root.append(canvas, world, heading, translation, empty, interlude.root);
+        mode.root.append(canvas, frame, heading, translation, empty, interlude.root);
         mode.scope.add(() => interlude.destroy());
         const context = canvas.getContext('2d');
         const reduced = global.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -29,17 +36,34 @@
         let cameraY = 0, cameraX = 0, cameraScale = 1;
         let paperWidth = 1, paperHeight = 1;
         let shapes = [];
+        let bgDirty = true;
+        // 同一行播放期间起止镜头焦点与飞跃时长是常量，缓存起来避免每帧多跑 2 次全字形 readingFocus
+        const cameraEdgeCache = { key: '', from: null, entry: null, distance: 0, duration: 0.05 };
+        const still = U.createStillGate();
         const tuning = () => mode.config.modes?.fume || {};
-        const intensity = () => reduced?.matches ? 0 : value(mode.config.animationIntensity, 1);
+        const intensity = () => global.MusicStageRuntime.isReducedMotion(reduced) ? 0 : value(mode.config.animationIntensity, 1);
 
+        // The size is known from the resize observer; reading it every frame
+        // makes the browser lay the page out again before each one.
+        let rootSize = null;
+        if (global.ResizeObserver) {
+            const observer = new global.ResizeObserver(() => { rootSize = null; });
+            observer.observe(mode.root);
+            mode.scope.add(() => observer.disconnect());
+        }
         const resize = () => {
-            const w = Math.max(1, mode.root.clientWidth || global.innerWidth || 1);
-            const h = Math.max(1, mode.root.clientHeight || global.innerHeight || 1);
+            if (!rootSize || !global.ResizeObserver) {
+                rootSize = { w: Math.max(1, mode.root.clientWidth || global.innerWidth || 1),
+                    h: Math.max(1, mode.root.clientHeight || global.innerHeight || 1) };
+            }
+            const { w, h } = rootSize;
             const budget = mode.config.quality === 'energy-saving' ? 1280 * 720 : 1920 * 1080 * 1.5;
             const dpr = Math.min(2, global.devicePixelRatio || 1, Math.sqrt(budget / (w * h)));
             if (w !== width || h !== height) dirty = true;
             if (w === width && h === height && dpr === pixelRatio) return;
             width = w; height = h; pixelRatio = dpr;
+            bgDirty = true;
+            cameraEdgeCache.key = '';
             canvas.width = Math.round(w * dpr);
             canvas.height = Math.round(h * dpr);
             canvas.style.width = `${w}px`;
@@ -50,11 +74,14 @@
         const compile = () => {
             mounted.forEach(entry => entry.element.remove());
             mounted.clear();
+            cameraEdgeCache.key = '';
             const t = tuning();
             const heroScale = value(t.heroScale, 1, 0.82, 1.32);
             const spacing = value(t.articleSpacing, 1, 0.65, 1.6);
             const columns = width < 600 ? 2 : width < 1100 ? 3 : 4;
-            const columnWidth = clamp(width * 0.42, 260, 460);
+            // Columns about a dozen glyphs wide, so the page reads as a dense
+            // article with the neighbouring lines in view, not one line adrift.
+            const columnWidth = clamp(width * 0.24, 260, 320);
             const gap = 18 * spacing;
             paperWidth = columns * columnWidth + (columns - 1) * gap;
             const skyline = Array(columns).fill(0);
@@ -70,8 +97,22 @@
                     order: R.hashString(`${trackKey}:${index}:${line.fullText}`)
                 };
             });
-            // Measure one block at a time using the same DOM and styles as the resident view.
+            // Measure with the same DOM and styles as the resident view. A block's
+            // height and glyph offsets do not depend on where it sits, so every
+            // block is measured in one layout instead of one layout per block.
             // Only numeric geometry survives compilation; detached glyph nodes are not cached.
+            const measured = blocks.map(block => mountBlock(block, true));
+            blocks.forEach((block, index) => {
+                const entry = measured[index];
+                block.height = Math.max(1, entry.element.offsetHeight);
+                // offset coordinates are independent of any ancestor camera transform.
+                block.glyphLayout = entry.glyphs.map(glyph => ({
+                    start: glyph.start, end: glyph.end, char: glyph.char,
+                    x: entry.text.offsetLeft + glyph.span.offsetLeft + glyph.span.offsetWidth * 0.5,
+                    y: entry.text.offsetTop + glyph.span.offsetTop + glyph.span.offsetHeight * 0.5
+                }));
+            });
+            measured.forEach(entry => entry.element.remove());
             const order = [...blocks].sort((a, b) => a.order - b.order || a.index - b.index);
             order.forEach(block => {
                 let column = 0, top = Infinity;
@@ -81,15 +122,6 @@
                 }
                 block.x = column * (columnWidth + gap);
                 block.y = top;
-                const entry = mountBlock(block, true);
-                block.height = Math.max(1, entry.element.offsetHeight);
-                // offset coordinates are independent of any ancestor camera transform.
-                block.glyphLayout = entry.glyphs.map(glyph => ({
-                    start: glyph.start, end: glyph.end, char: glyph.char,
-                    x: entry.text.offsetLeft + glyph.span.offsetLeft + glyph.span.offsetWidth * 0.5,
-                    y: entry.text.offsetTop + glyph.span.offsetTop + glyph.span.offsetHeight * 0.5
-                }));
-                entry.element.remove();
                 for (let c = column; c < column + block.span; c++) skyline[c] = top + block.height + gap;
             });
             paperHeight = Math.max(1, ...skyline);
@@ -98,11 +130,13 @@
 
         const mountBlock = (block, measuring = false) => {
             const element = createElement('article', `fume-article-block${block.hero ? ' is-hero' : ''}`);
-            const number = createElement('div', 'fume-article-number', `${String(block.index + 1).padStart(3, '0')} / ${block.hero ? 'VERSE' : 'TEXT'}`);
+            const number = createElement('div', 'fume-article-number', String(block.index + 1).padStart(3, '0'));
             const text = createElement('div', 'fume-article-text');
             element.style.width = `${block.width}px`;
             text.style.fontSize = `${block.fontSize}px`;
             element.append(number, text);
+            let glyphStartAt = Infinity;
+            let glyphDoneAt = -Infinity;
             const glyphs = buildGlyphTimeline(block.line).map(timing => {
                 const span = createElement('span', 'fume-print-glyph', timing.text);
                 const glyph = {
@@ -113,6 +147,9 @@
                     wordIndex: timing.wordIndex,
                     syllableIndex: timing.syllableIndex
                 };
+                if (timing.startTime < glyphStartAt) glyphStartAt = timing.startTime;
+                const finishAt = Math.max(timing.endTime, timing.startTime + 0.04);
+                if (finishAt > glyphDoneAt) glyphDoneAt = finishAt;
                 text.appendChild(span);
                 return glyph;
             });
@@ -120,7 +157,7 @@
             element.style.top = `${block.y}px`;
             if (measuring) element.style.visibility = 'hidden';
             world.appendChild(element);
-            const entry = { element, text, number, glyphs };
+            const entry = { element, text, number, glyphs, glyphStartAt, glyphDoneAt, _glyphPhase: '' };
             if (!measuring) mounted.set(block.index, entry);
             return entry;
         };
@@ -141,10 +178,38 @@
             wanted.forEach(i => { if (!mounted.has(i)) mountBlock(blocks[i]); });
         };
 
+        // The track card sits in the top-left corner; when it reaches down to the
+        // reading line, lines start to the right of it instead of underneath.
+        const card = U.watchOverlay(mode.root);
+        mode.scope.add(() => card.destroy());
+        const MARGIN = 28;
+        const leftLimit = () => {
+            const box = card.box;
+            if (!box) return MARGIN;
+            const cardBottom = (1 - box.bottom) / 2 * height;
+            if (cardBottom < height * 0.44 - 90) return MARGIN;
+            return Math.max(MARGIN, (box.right + 1) / 2 * width + 24);
+        };
+        // Reading zoom, capped so the whole line block fits across the viewport.
+        const readScale = block => Math.min(
+            clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2),
+            Math.max(0.5, (width - leftLimit() - MARGIN) / block.width)
+        );
+        // Follow the reading head, but never pan so far that the current block
+        // runs off either side of the window (narrow windows cut lines otherwise).
+        const keepBlock = (block, pose) => {
+            const right = (width * 0.5 - MARGIN) / pose.scale;
+            const low = block.x + block.width - right;
+            const high = block.x + (width * 0.5 - leftLimit()) / pose.scale;
+            if (low <= high) pose.x = clamp(pose.x, low, high);
+            else if (low <= block.x + right) pose.x = clamp(pose.x, low, block.x + right);
+            return pose;
+        };
+
         const focusAt = (block, time, stepped = false) => {
             const glyphs = block.glyphLayout;
-            const scale = clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2);
-            if (!glyphs.length) return { x: block.x + block.width / 2, y: block.y + block.height / 2, scale };
+            const scale = readScale(block);
+            if (!glyphs.length) return keepBlock(block, { x: block.x + block.width / 2, y: block.y + block.height / 2, scale });
             // Binary search the actual measured reading head, including whitespace timings.
             let low = 0, high = glyphs.length - 1, index = 0;
             while (low <= high) {
@@ -155,13 +220,14 @@
             const a = glyphs[index], b = glyphs[Math.min(index + 1, glyphs.length - 1)];
             const interval = b.start - a.start;
             const blend = stepped || interval <= 0 ? 0 : clamp((time - a.start) / interval);
-            return { x: block.x + a.x + (b.x - a.x) * blend, y: block.y + a.y + (b.y - a.y) * blend, scale };
+            return keepBlock(block, { x: block.x + a.x + (b.x - a.x) * blend, y: block.y + a.y + (b.y - a.y) * blend, scale });
         };
 
         const readingFocus = (block, time, stepped) => {
             if (stepped || intensity() === 0) return focusAt(block, time, true);
             const glyphs = block.glyphLayout;
             if (!glyphs.length) return focusAt(block, time);
+            const scale = readScale(block);
             // Sum continuous displacement ramps instead of resampling a discontinuous index.
             // Quintic ramps have zero endpoint velocity/acceleration, including duplicate timings.
             // No frame-history state: pause, reverse seek and direct seek evaluate the same curve.
@@ -171,8 +237,7 @@
                 const dx = b.x - a.x, dy = b.y - a.y;
                 const wraps = Math.abs(dy) > block.fontSize * 0.5;
                 const interval = Math.max(0, b.start - a.start);
-                const screenDistance = Math.hypot(dx, dy)
-                    * clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2);
+                const screenDistance = Math.hypot(dx, dy) * scale;
                 // A long-word line return must not finish within a single synthetic glyph.
                 const window = wraps
                     ? clamp(0.65 + screenDistance / 1400, 0.65, 1.25)
@@ -182,8 +247,7 @@
                 x += dx * progress;
                 y += dy * progress;
             }
-            const scale = clamp(Math.min(width, height) * 0.09 / block.fontSize, 0.9, 2);
-            return { x: block.x + x, y: block.y + y, scale };
+            return keepBlock(block, { x: block.x + x, y: block.y + y, scale });
         };
 
         const overview = () => ({
@@ -200,15 +264,25 @@
             const stepped = tuning().cameraMode === 'stepped';
             const target = readingFocus(block, time, stepped);
             if (intensity() === 0) return target;
-            const previous = blocks[Math.max(0, index - 1)];
             const speed = value(tuning().cameraSpeed, 1, 0.55, 1.85);
-            const from = index === 0 ? overview() : readingFocus(previous, block.line.startTime, stepped);
-            const entry = readingFocus(block, block.line.startTime, stepped);
-            const distance = Math.hypot(entry.x - from.x, entry.y - from.y);
-            const duration = Math.min(
-                Math.max(0.05, (block.line.endTime - block.line.startTime) * 0.42),
-                clamp(0.65 + distance / Math.max(width, height) * 0.35, 0.65, 1.8) / speed
-            );
+            const box = card.box;
+            const edgeKey = `${index}|${width}x${height}|${stepped ? 1 : 0}|${speed}|${box ? `${box.right},${box.bottom}` : ''}`;
+            if (cameraEdgeCache.key !== edgeKey) {
+                const previous = blocks[Math.max(0, index - 1)];
+                const from = index === 0 ? overview() : readingFocus(previous, block.line.startTime, stepped);
+                const entry = readingFocus(block, block.line.startTime, stepped);
+                const distance = Math.hypot(entry.x - from.x, entry.y - from.y);
+                const duration = Math.min(
+                    Math.max(0.05, (block.line.endTime - block.line.startTime) * 0.42),
+                    clamp(0.65 + distance / Math.max(width, height) * 0.35, 0.65, 1.8) / speed
+                );
+                cameraEdgeCache.key = edgeKey;
+                cameraEdgeCache.from = from;
+                cameraEdgeCache.entry = entry;
+                cameraEdgeCache.distance = distance;
+                cameraEdgeCache.duration = duration;
+            }
+            const { from, distance, duration } = cameraEdgeCache;
             const p = ease((time - block.line.startTime) / duration);
             const pose = interpolate(from, target, p);
             // A smooth zoom-out bridge reveals the page while crossing distant columns.
@@ -239,17 +313,26 @@
 
         const drawBackground = frame => {
             if (!context) return;
-            context.clearRect(0, 0, width, height);
             const t = tuning();
-            if (t.geometricBackground === false || value(t.backgroundOpacity, 0.5, 0, 1) === 0) return;
+            if (t.geometricBackground === false || value(t.backgroundOpacity, 0.5, 0, 1) === 0) {
+                if (bgDirty) { context.clearRect(0, 0, width, height); bgDirty = false; }
+                return;
+            }
+            context.clearRect(0, 0, width, height);
+            bgDirty = true;
             const strength = intensity();
             const detail = value(t.backgroundDetail, 0.6, 0, 1);
             const breeze = value(t.backgroundMotion, 1) * strength;
             const count = mode.config.quality === 'energy-saving' ? 12 : shapes.length;
+            if (count > 0) {
+                context.strokeStyle = shapes[0].color;
+                context.fillStyle = shapes[0].color;
+            }
+            const minDim = Math.min(width, height);
             for (let index = 0; index < count; index += 1) {
                 const shape = shapes[index];
                 const energy = value(frame.audio?.[shape.band], 0, 0, 1) * strength;
-                const size = shape.size * Math.min(width, height) * (1 + energy * 0.25);
+                const size = shape.size * minDim * (1 + energy * 0.25);
                 const y = ((shape.y * height - cameraY * 0.12) % (height * 1.4) + height * 1.4) % (height * 1.4) - height * 0.2;
                 context.save();
                 const x = ((shape.x * width - cameraX * 0.1) % (width * 1.4) + width * 1.4) % (width * 1.4) - width * 0.2;
@@ -257,7 +340,6 @@
                 context.translate(x, y + drift);
                 context.rotate(shape.phase + frame.playbackTime * shape.speed * breeze);
                 context.globalAlpha = 0.08 + energy * 0.12;
-                context.strokeStyle = shape.color;
                 context.lineWidth = 1;
                 context.beginPath();
                 if (shape.kind === 0) context.arc(0, 0, size, 0, Math.PI * 1.7);
@@ -283,7 +365,6 @@
                     if (shape.kind === 0) {
                         const phase = shape.phase + frame.playbackTime * 0.25 * breeze;
                         context.globalAlpha = (0.2 + energy * 0.25) * detail;
-                        context.fillStyle = shape.color;
                         context.beginPath();
                         context.arc(Math.cos(phase) * size, Math.sin(phase) * size, 1.5 + energy, 0, Math.PI * 2);
                         context.fill();
@@ -293,6 +374,11 @@
             }
         };
 
+        let lastCanvasOp = '';
+        let lastGlowVal = '';
+        let lastHideBg = null;
+        let lastHideSym = null;
+        let lastWorldTx = '';
         mode.updateFrame = frame => {
             if (mode.destroyed || paused) return;
             latestFrame = frame;
@@ -301,25 +387,39 @@
             if (lines !== frame.lines || trackKey !== nextTrackKey) {
                 lines = frame.lines; trackKey = nextTrackKey; dirty = true;
             }
+            // Paused and nothing changed: the page and its background already
+            // show this frame, so neither is written or repainted again.
+            if (!dirty) {
+                if (!frame.isPlaying) {
+                    const accent = resolveAccent(services?.app);
+                    const box = card.box;
+                    const extra = `${width}x${height}@${pixelRatio}|${accent.r},${accent.g},${accent.b}|${intensity()}`
+                        + `|${box ? `${box.left},${box.right},${box.top},${box.bottom}` : ''}`;
+                    if (still.same(frame, extra)) return;
+                } else still.invalidate();
+            } else still.invalidate();
             if (dirty) compile();
             rebuildShapes();
             const t = tuning();
             const time = frame.playbackTime;
             const index = Math.max(0, Math.min(blocks.length - 1, frame.currentLineIndex));
             const block = blocks[index];
-            const previous = blocks[Math.max(0, index - 1)];
             const showInstrumental = Boolean(frame.track && !block);
-            interlude.update(frame, { visible: showInstrumental, intensity: intensity(), label: '纯音乐播放中' });
-            empty.hidden = Boolean(block || showInstrumental);
-            empty.textContent = '等待音乐';
+            const curIntensity = intensity();
+            interlude.update(frame, { visible: showInstrumental, intensity: curIntensity, label: '纯音乐播放中' });
+            setHidden(empty, Boolean(block || showInstrumental));
+            setText(empty, '等待音乐');
             if (block) {
                 const pose = resolveCamera(index, time);
                 cameraX = pose.x; cameraY = pose.y; cameraScale = pose.scale;
                 syncWindow(index, Math.max(0, index - 1));
-                world.style.transform = `translate3d(${width * 0.5 - cameraX * cameraScale}px,${height * 0.44 - cameraY * cameraScale}px,0) scale(${cameraScale})`;
+                const worldTx = `translate3d(${(width * 0.5 - cameraX * cameraScale).toFixed(2)}px,${(height * 0.44 - cameraY * cameraScale).toFixed(2)}px,0) scale(${cameraScale.toFixed(4)})`;
+                if (worldTx !== lastWorldTx) { lastWorldTx = worldTx; world.style.transform = worldTx; }
                 const songDuration = (lines[lines.length - 1]?.endTime || 0) - (lines[0]?.startTime || 0);
                 const holdRatio = value(t.textHoldRatio, 0.35, 0, 1);
                 const hold = holdRatio >= 1 ? Infinity : clamp(songDuration * holdRatio, 2.4, 130);
+                const hideSymbols = t.hidePrintSymbols === true;
+                const numVis = hideSymbols ? 'hidden' : 'visible';
                 mounted.forEach((entry, i) => {
                     const b = blocks[i];
                     const lineEnd = Number(b.line.renderHints?.renderEndTime)
@@ -327,32 +427,48 @@
                     const current = i === index && time >= b.line.startTime;
                     const passed = time >= lineEnd;
                     const dim = passed ? ease((time - lineEnd) / hold) : 0;
-                    entry.element.style.opacity = String(current ? 1 : passed ? 0.58 - dim * 0.45 : 0.13);
-                    entry.element.classList.toggle('is-current', current);
+                    // Upcoming lines read as faint print (block dim only), not just a bare number.
+                    const blockOp = current ? '1' : passed ? (0.58 - dim * 0.45).toFixed(3) : '0.2';
+                    if (entry._op !== blockOp) { entry._op = blockOp; entry.element.style.opacity = blockOp; }
+                    if (entry._cur !== current) { entry._cur = current; entry.element.classList.toggle('is-current', current); }
                     // Keep measured geometry stable when hiding the decorative header.
-                    entry.number.style.visibility = t.hidePrintSymbols === true ? 'hidden' : 'visible';
+                    if (entry._vis !== numVis) { entry._vis = numVis; entry.number.style.visibility = numVis; }
+                    // 已完全印完或尚未开始印的块直接按阶段跳过整段逐字循环，倒播/跳播回区间内时自动恢复逐字刷新
+                    const phase = !entry.glyphs.length ? 'empty'
+                        : time >= entry.glyphDoneAt ? 'done'
+                        : time < entry.glyphStartAt ? (current ? 'current-pre' : 'future')
+                        : 'live';
+                    if (phase !== 'live' && entry._glyphPhase === phase) return;
+                    entry._glyphPhase = phase;
                     entry.glyphs.forEach(glyph => {
                         const progress = clamp((time - glyph.start) / Math.max(0.04, glyph.end - glyph.start));
                         const printed = time >= glyph.start;
                         const active = printed && time < glyph.end;
-                        glyph.span.style.opacity = printed ? '1' : '0.22';
-                        glyph.span.style.setProperty('--print-progress', `${progress * 100}%`);
-                        glyph.span.style.setProperty('--print-pulse', String(active && intensity() > 0 ? Math.sin(progress * Math.PI) : 0));
-                        glyph.span.classList.toggle('is-printing', active);
-                        glyph.span.classList.toggle('is-printed', printed);
+                        const gOp = printed || !current ? '1' : '0.22';
+                        if (glyph._op !== gOp) { glyph._op = gOp; glyph.span.style.opacity = gOp; }
+                        const progStr = `${(progress * 100).toFixed(1)}%`;
+                        if (glyph._prog !== progStr) { glyph._prog = progStr; glyph.span.style.setProperty('--print-progress', progStr); }
+                        const pulseStr = active && curIntensity > 0 ? Math.sin(progress * Math.PI).toFixed(3) : '0';
+                        if (glyph._pulse !== pulseStr) { glyph._pulse = pulseStr; glyph.span.style.setProperty('--print-pulse', pulseStr); }
+                        if (glyph._active !== active) { glyph._active = active; glyph.span.classList.toggle('is-printing', active); }
+                        if (glyph._printed !== printed) { glyph._printed = printed; glyph.span.classList.toggle('is-printed', printed); }
                     });
                 });
-                translation.textContent = resolveSupplementalText(frame.activeLine);
-                heading.textContent = `FUME / ${String(index + 1).padStart(3, '0')} — ${String(blocks.length).padStart(3, '0')}`;
+                setText(translation, resolveSupplementalText(frame.activeLine));
+                setText(heading, `浮名 · ${U.lineCounter(frame, 3)}`);
             } else {
-                translation.textContent = '';
-                heading.textContent = 'FUME / INSTRUMENTAL';
+                setText(translation, '');
+                setText(heading, `浮名 · ${blocks.length && frame.currentLineIndex >= 0 ? '间奏' : U.lineCounter(frame, 3)}`);
                 cameraX = cameraY = 0;
             }
-            canvas.style.opacity = String(value(t.backgroundOpacity, 0.5, 0, 1));
-            mode.root.style.setProperty('--fume-glow-intensity', String(value(t.glow, 1)));
-            mode.root.classList.toggle('stage-hide-fume-background', t.geometricBackground === false);
-            mode.root.classList.toggle('fume-hide-print-symbols', t.hidePrintSymbols === true);
+            const nextCanvasOp = String(value(t.backgroundOpacity, 0.5, 0, 1));
+            if (nextCanvasOp !== lastCanvasOp) { lastCanvasOp = nextCanvasOp; canvas.style.opacity = nextCanvasOp; }
+            const nextGlow = String(value(t.glow, 1));
+            if (nextGlow !== lastGlowVal) { lastGlowVal = nextGlow; mode.root.style.setProperty('--fume-glow-intensity', nextGlow); }
+            const hideBg = t.geometricBackground === false;
+            if (hideBg !== lastHideBg) { lastHideBg = hideBg; mode.root.classList.toggle('stage-hide-fume-background', hideBg); }
+            const hideSym = t.hidePrintSymbols === true;
+            if (hideSym !== lastHideSym) { lastHideSym = hideSym; mode.root.classList.toggle('fume-hide-print-symbols', hideSym); }
             drawBackground(frame);
         };
 
@@ -362,18 +478,24 @@
             const after = config.modes?.fume || {};
             if (['heroScale', 'articleSpacing'].some(key => before[key] !== after[key])) dirty = true;
             updateConfig(config);
+            still.invalidate();
             if (latestFrame) mode.updateFrame(latestFrame);
         };
         mode.resize = () => { resize(); if (latestFrame) mode.updateFrame(latestFrame); };
         mode.suspend = () => { paused = true; };
-        mode.resume = () => { paused = false; if (latestFrame) mode.updateFrame(latestFrame); };
-        mode.updateTheme = () => { shapeKey = ''; dirty = true; };
+        mode.resume = () => { paused = false; still.invalidate(); if (latestFrame) mode.updateFrame(latestFrame); };
+        mode.updateTheme = () => { shapeKey = ''; dirty = true; still.invalidate(); };
         mode.scope.listen(document.fonts, 'loadingdone', () => {
             dirty = true;
             if (latestFrame) mode.updateFrame(latestFrame);
         });
+        mode.scope.listen(global, 'music-motion-change', () => {
+            still.invalidate();
+            if (latestFrame) mode.updateFrame(latestFrame);
+        });
         mode.scope.add(() => {
             mounted.clear(); blocks = []; shapes = []; lines = null; latestFrame = null;
+            cameraEdgeCache.key = ''; cameraEdgeCache.from = cameraEdgeCache.entry = null;
             canvas.width = canvas.height = 1;
         });
         resize();

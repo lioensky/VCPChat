@@ -32,14 +32,27 @@
     // the sky. The sun is drawn further into the frame than the light strictly
     // allows, so bodies keep a lit face while it stays in the picture.
     const unit = (v) => { const length = Math.hypot(...v); return v.map((n) => n / length); };
+    const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
     const KEY_LIGHT = unit([-0.78, 0.44, 0.26]);
     const SUN_AT = unit([-0.5, 0.26, -0.83]);
+    const SUN_ACROSS = unit(cross3([0, 1, 0], SUN_AT));
+    const SUN_UP = cross3(SUN_AT, SUN_ACROSS);
     // What a body is made as: the surface kinds a planet can be given.
     const WORLD = { gas: 0, moon: 1, ice: 2, volcanic: 3, home: 4, desert: 5, iceGiant: 6, asteroid: 7 };
     // The galaxy's plane, tilted across the upper part of the view, and its bright middle.
     const GALAXY_POLE = unit([0.18, 0.93, 0.33]);
     const GALAXY_CORE = unit([0.75, 0.21, -1]);
     const COMET_AT = unit([0.52, -0.2, -0.83]);
+    const COMET_SUN_DOT = COMET_AT[0] * SUN_AT[0] + COMET_AT[1] * SUN_AT[1] + COMET_AT[2] * SUN_AT[2];
+    const COMET_AWAY = unit([
+        COMET_AT[0] * COMET_SUN_DOT - SUN_AT[0],
+        COMET_AT[1] * COMET_SUN_DOT - SUN_AT[1],
+        COMET_AT[2] * COMET_SUN_DOT - SUN_AT[2]
+    ]);
+    const COMET_SIDE = cross3(COMET_AT, COMET_AWAY);
+    const SUN_RAY_AXES = [0, 1, 2].map((i) => { const t = 0.35 + i * 1.0472; return [Math.cos(t), Math.sin(t)]; });
+    const COMET_JET_AIMS = [0, 1, 2].map((i) => { const t = 2.55 + i * 0.48; return [Math.cos(t), Math.sin(t)]; });
+    const glslVec2 = (v) => `vec2(${v.map((n) => n.toFixed(6)).join(', ')})`;
     const glslVec3 = (v) => `vec3(${v.map((n) => n.toFixed(4)).join(', ')})`;
     // Surface maps sit beside the modes, wherever the page that hosts them lives.
     const ASSETS = (() => {
@@ -762,9 +775,12 @@
                         float core = exp(-r2 * 8.5);
                         float halo = exp(-r2 * 2.2) * 0.34 * vTwinkle;
                         // 十字星芒微刺 (Subtle Airy Cross)
-                        float cross = exp(-abs(p.x) * 18.0) * exp(-abs(p.y) * 4.5)
-                                    + exp(-abs(p.y) * 18.0) * exp(-abs(p.x) * 4.5);
-                        float airy = vLayer > 0.5 ? cross * 0.16 * (1.0 - r2) : 0.0;
+                        float airy = 0.0;
+                        if (vLayer > 0.5) {
+                            float cross = exp(-abs(p.x) * 18.0) * exp(-abs(p.y) * 4.5)
+                                        + exp(-abs(p.y) * 18.0) * exp(-abs(p.x) * 4.5);
+                            airy = cross * 0.16 * (1.0 - r2);
+                        }
                         // Stars have temperatures: a few cool orange ones, many
                         // warm and white, some hot and blue. The halo keeps the
                         // tint; the core burns towards white.
@@ -793,8 +809,10 @@
         });
         const skyBakeMat = new T.ShaderMaterial({
             depthTest: false, depthWrite: false, blending: T.NoBlending,
+            uniforms: { uOctaves: { value: 7 } },
             vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
             fragmentShader: `
+                uniform int uOctaves;
                 varying vec2 vUv;
                 float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
                 float noise(vec3 p) {
@@ -806,12 +824,13 @@
                 }
                 float fbm(vec3 p) {
                     float sum = 0.0, gain = 0.5;
-                    for (int i = 0; i < 7; i++) { sum += gain * noise(p); p = p * 2.03 + vec3(7.1, 3.3, 5.7); gain *= 0.5; }
+                    for (int i = 0; i < 7; i++) { if (i >= uOctaves) break; sum += gain * noise(p); p = p * 2.03 + vec3(7.1, 3.3, 5.7); gain *= 0.5; }
                     return sum;
                 }
                 float ridge(vec3 p) {
                     float sum = 0.0, gain = 0.5;
                     for (int i = 0; i < 7; i++) {
+                        if (i >= uOctaves) break;
                         sum += gain * (1.0 - abs(noise(p) * 2.0 - 1.0));
                         p = p * 2.07 + vec3(1.7, 9.2, 4.4); gain *= 0.5;
                     }
@@ -938,52 +957,61 @@
                     // Leaving home the sun shrinks towards a bright star and its glow draws in.
                     float far = uJourney * uJourney;
                     float reach = mix(1.0, 0.32, far);
-                    float angle = acos(clamp(dot(d, ${glslVec3(SUN_AT)}), -1.0, 1.0)) / reach;
+                    vec3 sunward = ${glslVec3(SUN_AT)};
+                    float sunDot = dot(d, sunward);
+                    float angle = acos(clamp(sunDot, -1.0, 1.0)) / reach;
                     float disc = smoothstep(0.024, 0.008, angle);
                     float corona = (exp(-angle * 24.0) * 0.8 + exp(-angle * 6.5) * 0.14 + exp(-angle * 2.2) * 0.03)
                         * mix(1.0, 0.55, far);
                     // Six thin rays, as a lens draws a point of light.
-                    vec3 sunward = ${glslVec3(SUN_AT)};
-                    vec3 across = normalize(cross(vec3(0.0, 1.0, 0.0), sunward)), up = cross(sunward, across);
-                    vec2 offset = vec2(dot(d, across), dot(d, up));
-                    float rays = 0.0;
-                    for (int i = 0; i < 3; i++) {
-                        float turn = 0.35 + float(i) * 1.0472;
-                        vec2 axis = vec2(cos(turn), sin(turn));
-                        rays += exp(-abs(dot(offset, vec2(-axis.y, axis.x))) * 420.0) * exp(-abs(dot(offset, axis)) * 15.0);
+                    if (sunDot > 0.8) {
+                        vec2 offset = vec2(dot(d, ${glslVec3(SUN_ACROSS)}), dot(d, ${glslVec3(SUN_UP)}));
+                        vec2 r0 = ${glslVec2(SUN_RAY_AXES[0])};
+                        vec2 r1 = ${glslVec2(SUN_RAY_AXES[1])};
+                        vec2 r2 = ${glslVec2(SUN_RAY_AXES[2])};
+                        float rays = exp(-abs(dot(offset, vec2(-r0.y, r0.x))) * 420.0) * exp(-abs(dot(offset, r0)) * 15.0)
+                            + exp(-abs(dot(offset, vec2(-r1.y, r1.x))) * 420.0) * exp(-abs(dot(offset, r1)) * 15.0)
+                            + exp(-abs(dot(offset, vec2(-r2.y, r2.x))) * 420.0) * exp(-abs(dot(offset, r2)) * 15.0);
+                        corona += rays * 0.17;
                     }
-                    corona += rays * 0.17 * step(0.0, dot(d, sunward));
 
                     // A comet low on the far side: a small bright coma, a broad dust
                     // tail curving away from the sun and a thin straight one of gas.
                     vec3 comet = ${glslVec3(COMET_AT)};
-                    vec3 away = normalize(comet * dot(comet, sunward) - sunward), side = cross(comet, away);
-                    vec3 from = d - comet;
-                    float along = dot(from, away), off = dot(from, side), gone = max(along, 0.0);
-                    // Passing close, it grows: the coma swells, both tails stretch
-                    // across the sky, the dust tail shows striations, and jets of
-                    // gas fan out sunward from the nucleus.
-                    float grow = 1.0 + 3.0 * uComet;
-                    float coma = exp(-length(from) * 190.0 / grow) * 0.9 + exp(-length(from) * 46.0 / grow) * 0.1 * (1.0 + uComet);
-                    float bend = off - gone * gone * 0.55 / grow;
-                    float striae = 1.0 - 0.35 * uComet * smoothstep(0.3, 0.8, bandNoise(bend * 900.0 / grow + gone * 40.0));
-                    float dustTail = exp(-bend * bend / ((0.00006 + gone * 0.008) * grow)) * exp(-gone * 6.5 / grow)
-                        * step(0.0, along) * 0.2 * (1.0 + 0.8 * uComet) * striae;
-                    float gasTail = exp(-off * off / ((0.00001 + gone * 0.0005) * grow)) * exp(-gone * 4.2 / grow)
-                        * step(0.0, along) * 0.16 * (1.0 + uComet);
-                    float jets = 0.0;
-                    if (uComet > 0.001) {
-                        for (int i = 0; i < 3; i++) {
-                            float turn = 2.55 + float(i) * 0.48;
-                            vec2 aim = vec2(cos(turn), sin(turn));
-                            vec2 at = vec2(along, off);
-                            float reachOut = dot(at, aim), across = dot(at, vec2(-aim.y, aim.x));
-                            jets += exp(-across * across / (0.0000003 + reachOut * reachOut * 0.015)) * step(0.0, reachOut)
-                                * exp(-reachOut * 110.0 / grow);
+                    float cometDot = dot(d, comet);
+                    float coma = 0.0, dustTail = 0.0, gasTail = 0.0, jets = 0.0;
+                    float cometSide = step(0.0, cometDot);
+                    if (cometDot > 0.0) {
+                        vec3 from = d - comet;
+                        float along = dot(from, ${glslVec3(COMET_AWAY)}), off = dot(from, ${glslVec3(COMET_SIDE)});
+                        // Passing close, it grows: the coma swells, both tails stretch
+                        // across the sky, the dust tail shows striations, and jets of
+                        // gas fan out sunward from the nucleus.
+                        float grow = 1.0 + 3.0 * uComet;
+                        float fromLen = length(from);
+                        coma = exp(-fromLen * 190.0 / grow) * 0.9 + exp(-fromLen * 46.0 / grow) * 0.1 * (1.0 + uComet);
+                        if (along > 0.0) {
+                            float bend = off - along * along * 0.55 / grow;
+                            float striae = 1.0 - 0.35 * uComet * smoothstep(0.3, 0.8, bandNoise(bend * 900.0 / grow + along * 40.0));
+                            dustTail = exp(-bend * bend / ((0.00006 + along * 0.008) * grow)) * exp(-along * 6.5 / grow)
+                                * 0.2 * (1.0 + 0.8 * uComet) * striae;
+                            gasTail = exp(-off * off / ((0.00001 + along * 0.0005) * grow)) * exp(-along * 4.2 / grow)
+                                * 0.16 * (1.0 + uComet);
                         }
-                        jets *= uComet * 0.35;
+                        if (uComet > 0.001) {
+                            vec2 at = vec2(along, off);
+                            vec2 j0 = ${glslVec2(COMET_JET_AIMS[0])};
+                            vec2 j1 = ${glslVec2(COMET_JET_AIMS[1])};
+                            vec2 j2 = ${glslVec2(COMET_JET_AIMS[2])};
+                            float ro0 = dot(at, j0), ac0 = dot(at, vec2(-j0.y, j0.x));
+                            float ro1 = dot(at, j1), ac1 = dot(at, vec2(-j1.y, j1.x));
+                            float ro2 = dot(at, j2), ac2 = dot(at, vec2(-j2.y, j2.x));
+                            jets = (exp(-ac0 * ac0 / (0.0000003 + ro0 * ro0 * 0.015)) * step(0.0, ro0) * exp(-ro0 * 110.0 / grow)
+                                + exp(-ac1 * ac1 / (0.0000003 + ro1 * ro1 * 0.015)) * step(0.0, ro1) * exp(-ro1 * 110.0 / grow)
+                                + exp(-ac2 * ac2 / (0.0000003 + ro2 * ro2 * 0.015)) * step(0.0, ro2) * exp(-ro2 * 110.0 / grow))
+                                * uComet * 0.35;
+                        }
                     }
-                    float cometSide = step(0.0, dot(d, comet));
 
                     // Out at the end of the voyage the nearer clouds of gas fall back
                     // a little; the galaxy shows through them in its stars.
@@ -1030,13 +1058,40 @@
         skyDome.renderOrder = -10;
         root.add(skyDome);
         // The cloud map is drawn once the renderer exists, and again after a lost context.
-        const prepare = (renderer) => {
+        const beginPrepare = () => {
             const quad = new T.Mesh(new T.PlaneGeometry(2, 2), skyBakeMat);
-            const previous = renderer.getRenderTarget();
-            renderer.setRenderTarget(skyMasks);
-            renderer.render(quad, new T.Camera());
-            renderer.setRenderTarget(previous);
-            quad.geometry.dispose();
+            const cam = new T.Camera();
+            let disposed = false;
+            const dispose = () => {
+                if (disposed) return;
+                disposed = true;
+                quad.geometry.dispose();
+            };
+            return {
+                pass: { target: skyMasks, scene: quad, camera: cam },
+                bake(renderer) {
+                    if (disposed || renderer.getContext?.()?.isContextLost?.()) return;
+                    const previous = renderer.getRenderTarget();
+                    try {
+                        renderer.setRenderTarget(skyMasks);
+                        renderer.render(quad, cam);
+                    } finally {
+                        try { renderer.setRenderTarget(previous); } catch (_) {}
+                        dispose();
+                    }
+                },
+                dispose
+            };
+        };
+        const prepare = async (renderer, alive = () => true) => {
+            const job = beginPrepare();
+            try {
+                await global.MusicStageModeUtils?.compilePasses?.(renderer, [job.pass], alive);
+                if (!alive() || renderer.getContext?.()?.isContextLost?.()) return;
+                job.bake(renderer);
+            } finally {
+                job.dispose();
+            }
         };
 
         /* ------------------------------------------------------------------------
@@ -2097,6 +2152,7 @@
                     vec3 base = floor(p - 0.5);
                     vec2 sum = vec2(0.0);
                     for (int i = 0; i < 8; i++) {
+                        if (uPresence < -1.0) break;
                         vec3 cell = base + vec3(mod(float(i), 2.0), mod(floor(float(i) * 0.5), 2.0), floor(float(i) * 0.25));
                         if (hash(cell + salt) > keep) continue;
                         vec3 at = cell + 0.5 + (vec3(hash(cell + 1.3 + salt), hash(cell + 2.7), hash(cell + 5.1)) - 0.5) * 0.5;
@@ -2344,13 +2400,42 @@
                             vec3 sea = mix(uColorPrimary, uColorInk, 0.1) * (0.05 + coast * 0.05);
                             vec3 plains = mix(mix(uColorPrimary, uColorInk, 0.6) * 0.13, mix(uColorInk, uColorEmber, 0.18) * 0.26,
                                 smoothstep(0.35, 0.7, relief));
+                            // Close to, the land carries ridges and fine grain; each scale
+                            // fades out before it is smaller than a pixel, so nothing shimmers.
+                            float span = length(fwidth(p));
+                            if (uDetail > 0.5) {
+                                float fineA = 1.0 - smoothstep(0.4, 1.0, span * 60.0);
+                                float fineB = 1.0 - smoothstep(0.4, 1.0, span * 160.0);
+                                // Ranges as bright crests with a shaded side, and patches of
+                                // darker and lighter ground between them.
+                                float ridge = pow(1.0 - abs(noise(q * 18.0) * 2.0 - 1.0), 6.0);
+                                float patches = smoothstep(0.35, 0.65, noise(q * 60.0 + 7.0));
+                                float grain = (patches - 0.5) * 0.4 * fineA + (noise(q * 160.0) - 0.5) * 0.16 * fineB;
+                                plains = mix(plains, plains * mix(vec3(1.0), uColorEmber / max(max(uColorEmber.r, uColorEmber.g), max(uColorEmber.b, 0.01)), 0.18),
+                                    patches * fineA);
+                                plains *= 1.0 + grain + ridge * 0.5;
+                                sea *= 1.0 + (noise(q * 40.0 + uTime * 0.02) - 0.5) * 0.3 * fineA;
+                            }
                             ground = mix(sea, plains, land);
                             ground = mix(ground, uColorInk * 0.92, cap);
                             vec3 w = vec3(p.x * 9.0, p.y * 16.0, p.z * 9.0) + vec3(uTime * 0.01, 0.0, 0.0) + s + 40.0;
-                            float swirl = fbm(w + vec3(fbm(w * 1.7), 0.0, fbm(w * 1.7 + 6.0)) * 1.2);
-                            // Big systems of cloud, broken into cells and streets close to.
+                            vec3 curl = vec3(fbm(w * 1.7), 0.0, fbm(w * 1.7 + 6.0)) * 1.2;
+                            float swirl = fbm(w + curl);
+                            // Big systems of cloud, broken into cells and streets close to,
+                            // with ragged, sharp edges rather than a soft blur.
                             float cells = uDetail > 0.5 ? noise(p * 70.0 + s) * 0.6 + noise(p * 170.0 + s) * 0.4 : 0.5;
-                            cover = smoothstep(0.52, 0.66, swirl + (cells - 0.5) * 0.16) * (0.7 + 0.3 * cells);
+                            float tatter = uDetail > 0.5
+                                ? (noise(p * 380.0 + curl * 4.0 + s) - 0.5) * 0.6 * (1.0 - smoothstep(0.4, 1.0, span * 380.0))
+                                    + (noise(p * 900.0 + s) - 0.5) * 0.4 * (1.0 - smoothstep(0.4, 1.0, span * 900.0)) : 0.0;
+                            float body = swirl + (cells - 0.5) * 0.16 + tatter * 0.07;
+                            cover = smoothstep(0.54, 0.6, body) * (0.62 + 0.38 * smoothstep(0.58, 0.72, body + cells * 0.08));
+                            // Each cloud throws its shadow on the ground a little away from the sun.
+                            if (uDetail > 0.5) {
+                                vec3 ps = normalize(p - normalize(uLightLocal) * 0.006);
+                                vec3 ws = vec3(ps.x * 9.0, ps.y * 16.0, ps.z * 9.0) + vec3(uTime * 0.01, 0.0, 0.0) + s + 40.0;
+                                float shade = smoothstep(0.54, 0.6, fbm(ws + curl) + (cells - 0.5) * 0.16);
+                                ground *= 1.0 - shade * (1.0 - cover) * 0.55;
+                            }
                             // Towns are points of light, gathered where the land is settled.
                             vec3 g = p * 420.0, cell = floor(g);
                             vec3 spot = cell + 0.5 + (vec3(hash(cell + 1.7), hash(cell + 4.1), hash(cell + 8.3)) - 0.5) * 0.6;
@@ -3168,12 +3253,13 @@
                 sungMain: { value: new T.Color() },
                 sub: { value: new T.Color() },
                 ink: { value: new T.Color() },
-                outline: { value: new T.Color() }
+                outline: { value: new T.Color() },
+                hop: { value: 0 }, hopStart: { value: -1 }, hopHeight: { value: 0 }
             },
             vertexShader: `
                 attribute vec2 aCenter, aLocal, aTiming;
                 attribute float aKind;
-                uniform float time, motion;
+                uniform float time, motion, hop, hopStart, hopHeight;
                 varying vec2 vUv, vLocal, vTiming;
                 varying float vActive, vKind;
                 void main() {
@@ -3188,6 +3274,8 @@
                     pos.xy *= 1.0 + pulse * 0.025;
                     pos.y += pulse * 0.12;
                     pos.z += pulse * 0.18;
+                    // The word being sung when the music hits hops and settles.
+                    pos.y += hop * motion * hopHeight * (1.0 - aKind) * step(abs(aTiming.x - hopStart), 0.001);
                     pos.xy += aCenter;
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
                 }
@@ -3223,6 +3311,30 @@
             `
         });
         const fadingGlyphMaterial = glyphMaterial.clone();
+        // Words are drawn over whatever the flight passes, and a pale planet
+        // or ring going by behind a line eats its contrast. A soft shade of
+        // the page colour sits behind the line: on empty sky it disappears,
+        // over a lit body it keeps the words standing off it.
+        const glyphScrim = new T.Mesh(new T.PlaneGeometry(1, 1), new T.ShaderMaterial({
+            transparent: true, depthTest: false, depthWrite: false,
+            uniforms: { color: { value: new T.Color() }, alpha: { value: 0 }, aspect: { value: 4 } },
+            vertexShader: `varying vec2 vUv; void main() { vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+            fragmentShader: `uniform vec3 color; uniform float alpha, aspect; varying vec2 vUv;
+                void main() {
+                    vec2 p = abs(vUv - 0.5) * 2.0;
+                    float edge = 1.0 / aspect;
+                    float d = length(max(vec2(p.x - (1.0 - edge * 1.6), p.y - 0.45), 0.0)
+                        / vec2(edge * 1.6, 0.55));
+                    float shade = 1.0 - smoothstep(0.0, 1.0, d);
+                    gl_FragColor = vec4(color, alpha * shade);
+                    #include <colorspace_fragment>
+                }`
+        }));
+        glyphScrim.renderOrder = 29;
+        glyphScrim.frustumCulled = false;
+        glyphScrim.visible = false;
+        glyphStage.add(glyphScrim);
         // A hidden stand-in carries the glyph material from the start, so it is
         // compiled with the rest of the scene and not at the first lyric.
         const glyphWarmup = new T.Mesh(new T.PlaneGeometry(1, 1), glyphMaterial);
@@ -3232,6 +3344,7 @@
         const glyphColorUniforms = ['waitMain', 'sungMain', 'sub', 'ink', 'outline'];
         let glyphCanvas = document.createElement('canvas');
         let glyphMesh = null;
+        let glyphStarts = [], glyphEnd = -Infinity, glyphOnsets = 0;
         let glyphTexture = null;
         let glyphLine = null;
         let glyphTop = 0;
@@ -3252,6 +3365,7 @@
             glyphColorUniforms.forEach(key => uniforms[key].value.copy(glyphMaterial.uniforms[key].value));
             uniforms.map.value = glyphTexture;
             uniforms.motion.value = 0;
+            uniforms.hop.value = 0;
             glyphMesh.material = fadingGlyphMaterial;
             lyricAnchorGroup.add(glyphMesh);
             fadingGlyph = { mesh: glyphMesh, texture: glyphTexture, bottom: glyphBottom,
@@ -3262,6 +3376,8 @@
         };
 
         const clearGlyphStage = () => {
+            glyphStarts = []; glyphEnd = -Infinity;
+            glyphScrim.visible = false;
             if (glyphMesh) {
                 glyphStage.remove(glyphMesh);
                 glyphMesh.geometry.dispose();
@@ -3296,14 +3412,15 @@
                 colors.accentHex,
                 colors.secondaryHex,
                 scale.toFixed(2),
-                res
+                res,
+                settings?.lyricFont
             ]);
 
             if (cacheKey === glyphCacheKey) return;
             clearGlyphStage();
             glyphCacheKey = cacheKey;
 
-            const fontFamily = '"Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif';
+            const fontFamily = U.lyricFont(settings?.lyricFont);
             const mainFont = `600 80px ${fontFamily}`;
             const subFont = `500 35px ${fontFamily}`;
             measureCtx.font = mainFont;
@@ -3474,10 +3591,18 @@
                     geometry.setAttribute('aTiming', new T.Float32BufferAttribute(timings, 2));
                     geometry.setAttribute('aKind', new T.Float32BufferAttribute(kinds, 1));
                     geometry.setIndex(indices);
+                    const mainCells = cells.filter(cell => !cell.isSub);
+                    glyphStarts = mainCells.map(cell => cell.start).filter(Number.isFinite).sort((a, b) => a - b);
+                    glyphEnd = Math.max(-Infinity, ...mainCells.map(cell => cell.end).filter(Number.isFinite));
+                    glyphMaterial.uniforms.hopHeight.value = mainCells.length ? mainCells[0].h * unit * 0.16 : 0;
+                    glyphMaterial.uniforms.hopStart.value = -1;
 
                     glyphTexture = new T.CanvasTexture(glyphCanvas);
-                    glyphTexture.generateMipmaps = false;
-                    glyphTexture.minFilter = T.LinearFilter;
+                    // The atlas is drawn large and shown small and slanted; without
+                    // mipmaps the strokes sparkle and break up (worst in ink on paper).
+                    glyphTexture.generateMipmaps = true;
+                    glyphTexture.minFilter = T.LinearMipmapLinearFilter;
+                    glyphTexture.anisotropy = 4;
                     glyphTexture.magFilter = T.LinearFilter;
                     const uniforms = glyphMaterial.uniforms;
                     uniforms.map.value = glyphTexture;
@@ -3485,9 +3610,12 @@
                         // On paper the line is written in ink: pale and waiting,
                         // then full and deep as it is sung; the translation in a
                         // quiet grey beneath. No colour, so nothing reads as dirt.
-                        uniforms.waitMain.value.copy(colors.ink).lerp(colors.background, 0.22);
+                        // Shown small and thin over a pale sky, these need more weight
+                        // than on a page of print: waiting text and the translation
+                        // were both under 2:1 against the sky.
+                        uniforms.waitMain.value.copy(colors.ink).lerp(colors.background, 0.12);
                         uniforms.sungMain.value.copy(colors.ink).multiplyScalar(0.8);
-                        uniforms.sub.value.copy(colors.muted).lerp(colors.ink, 0.15);
+                        uniforms.sub.value.copy(colors.muted).lerp(colors.ink, 0.55);
                     } else {
                         uniforms.waitMain.value.copy(colors.ink).lerp(colors.background, 0.15);
                         uniforms.sungMain.value.copy(colors.accent).lerp(colors.ink, 0.28);
@@ -3500,6 +3628,18 @@
                     glyphMesh.frustumCulled = false;
                     glyphMesh.renderOrder = 30;
                     glyphStage.add(glyphMesh);
+                    let left = Infinity, right = -Infinity;
+                    cells.forEach(cell => {
+                        const half = cell.w * unit * cell.fit * 0.5;
+                        left = Math.min(left, cell.cx - half); right = Math.max(right, cell.cx + half);
+                    });
+                    const padX = (glyphTop - glyphBottom) * 0.55, padY = (glyphTop - glyphBottom) * 0.45;
+                    const scrimW = right - left + padX * 2, scrimH = glyphTop - glyphBottom + padY * 2;
+                    glyphScrim.scale.set(scrimW, scrimH, 1);
+                    glyphScrim.position.set((left + right) / 2, (glyphTop + glyphBottom) / 2, -0.01);
+                    glyphScrim.material.uniforms.aspect.value = Math.max(1, scrimW / scrimH);
+                    glyphScrim.material.uniforms.color.value.copy(colors.background);
+                    glyphScrim.visible = true;
 
                     // 一次性采样整张图集的 Alpha 通道供结项粒子使用（兼容无 getImageData 的测试桩）
                     const pixelW = glyphCanvas.width;
@@ -3574,6 +3714,22 @@
         /* ------------------------------------------------------------------------
          * 主题调色板同步
          * ------------------------------------------------------------------------ */
+        // The cover's colour leans the nebula's hues; planets, lyrics and
+        // lightness stay the theme's.
+        const cover = U.createCoverTint(T);
+        let coverBase = null;
+        const applyCover = () => {
+            if (!coverBase) return;
+            const w = cover.weight * (coverBase.paper ? 0.5 : 1);
+            const lean = (target, base, amount, floor) => cover.towardHue(target.copy(base), w * amount, floor);
+            // The cool nebula wears the cover's hue outright from the default
+            // amount up; the warm side only leans to it.
+            lean(skyMat.uniforms.uColorA.value, coverBase.skyA, 2, 0.8);
+            lean(skyMat.uniforms.uColorB.value, coverBase.skyB, 0.3, 0.6);
+            lean(fieldMat.uniforms.uNebulaA.value, coverBase.nebulaA, 2, 0.8);
+            lean(fieldMat.uniforms.uNebulaB.value, coverBase.nebulaB, 0.3, 0.6);
+            lean(filamentMat.uniforms.uColorA.value, coverBase.filamentA, 1.4, 0.6);
+        };
         const setPalette = (palette) => {
             stagePalette = palette || {};
             const colors = parsePalette();
@@ -3612,6 +3768,13 @@
             filamentMat.uniforms.uColorA.value.copy(colors.secondary);
             filamentMat.uniforms.uColorB.value.copy(colors.accent);
             filamentMat.uniforms.uColorC.value.copy(colors.muted);
+            coverBase = {
+                paper,
+                skyA: sky.uColorA.value.clone(), skyB: sky.uColorB.value.clone(),
+                nebulaA: fieldMat.uniforms.uNebulaA.value.clone(), nebulaB: fieldMat.uniforms.uNebulaB.value.clone(),
+                filamentA: filamentMat.uniforms.uColorA.value.clone()
+            };
+            applyCover();
 
             streakMat.uniforms.uColorA.value.copy(colors.ink);
             streakMat.uniforms.uColorB.value.copy(colors.secondary);
@@ -3646,6 +3809,10 @@
             }));
 
             lyricParticleMat.uniforms.uTint.value.copy(paper ? colors.accent.clone().lerp(new T.Color('#ffffff'), 0.5) : colors.accent);
+            // Added light is invisible on a white page except over the inked
+            // glyphs, where it punched pale holes into the sung words. On paper
+            // the points are laid on like ink instead.
+            lyricParticleMat.blending = paper ? T.NormalBlending : T.AdditiveBlending;
             frameArcMats.forEach((m, idx) => m.color.copy(idx === 0 ? colors.secondary : colors.accent));
             ripples.forEach((r, idx) => r.mat.color.copy(idx % 2 === 0 ? colors.secondary : colors.accent));
             glyphCacheKey = ''; // 触发当前句按新主题重绘
@@ -3707,7 +3874,8 @@
 
             // 1. 采样导演状态与确定性航道弧长
             const actState = timeline.sampleState(time);
-            const activeLine = frame?.activeLine || null;
+            // Marker lines ("●●●", "//") time a break; they are not shown.
+            const activeLine = frame?.activeLine && R.readableText(frame.activeLine.fullText) ? frame.activeLine : null;
             const lineIdx = activeLine?.index ?? -1;
             const shot = (lineIdx >= 0 && timeline.lineShots[lineIdx]) ? timeline.lineShots[lineIdx] : null;
 
@@ -3806,7 +3974,8 @@
                 const glyphAlpha = alive ? solidIn * solidOut : 0;
 
                 lyricAnchorGroup.position.set(stageX, stageY, stageZ);
-                const aspectScale = Math.min(1, Math.max(0.42, viewportAspect * 0.68));
+                // Narrow windows shrink the text less than the frame, so lines stay readable.
+                const aspectScale = Math.min(1, Math.max(0.6, viewportAspect * 0.92));
                 lyricAnchorGroup.scale.setScalar(aspectScale);
 
                 // 歌词平面面向相机并保留微幅电影级欧拉倾角
@@ -3822,6 +3991,16 @@
                 glyphMaterial.uniforms.time.value = time;
                 glyphMaterial.uniforms.alpha.value = glyphAlpha;
                 glyphMaterial.uniforms.motion.value = motionAmount;
+                glyphScrim.material.uniforms.alpha.value = glyphAlpha * (stagePalette.light ? 0.4 : 0.6);
+                // A hit in the music picks the word being sung (or the last one
+                // begun, between words) and keeps it through the fall.
+                if (audioState.onsets !== glyphOnsets) {
+                    glyphOnsets = audioState.onsets;
+                    let picked = -1;
+                    if (time < glyphEnd) for (const start of glyphStarts) if (start <= time) picked = start;
+                    glyphMaterial.uniforms.hopStart.value = picked;
+                }
+                glyphMaterial.uniforms.hop.value = clamp(audioState.impact || 0) * clamp(settingVal('lyricHop', 1), 0, 2);
                 if (glyphMesh) glyphMesh.position.y = 0;
                 if (fadingGlyph && glyphMesh) {
                     // Keep the ink of the two full blocks apart, including translations.
@@ -3831,6 +4010,7 @@
                     fadingGlyphMaterial.uniforms.time.value = time;
                     fadingGlyphMaterial.uniforms.alpha.value = fadingGlyph.alpha * (1 - handoffProgress);
                 }
+                if (glyphMesh) glyphScrim.position.y = (glyphTop + glyphBottom) / 2 + glyphMesh.position.y;
                 const releaseIn = smooth(exitPhase / 0.22);
                 const releaseOut = 1 - smooth((exitPhase - 0.58) / 0.42);
                 // Hand over from particles to type at entry and leave room for the line to fade before release.
@@ -3873,6 +4053,8 @@
             const showStarfield = settings.starfield !== false;
             fieldPoints.visible = showStarfield;
             skyDome.visible = showStarfield;
+            cover.settle(settingVal('coverTint', 0.5), performance.now());
+            applyCover();
             const sky = skyMat.uniforms;
             sky.uTime.value = settings.reducedMotion ? 0 : time;
             sky.uJourney.value = clamp(time / Math.max(1, timeline.duration));
@@ -4184,7 +4366,11 @@
             get currentSpeed() { return cruiseSpeed; },
             reset,
             setPalette,
+            setCoverColour: hex => cover.set(hex),
+            redrawLyric: () => { glyphCacheKey = ''; },
+            coverSettling: () => cover.settling(),
             prepare,
+            beginPrepare,
             update,
             resize(w, h, ratio) {
                 const oldGlyphResolution = glyphResolution();
@@ -4207,10 +4393,12 @@
                 clearFadingGlyph();
                 clearGlyphStage();
                 scene.remove(root);
-                [fieldGeo, skyGeo, filamentGeo, streakGeo, lyricGeo, rippleGeo, glyphWarmup.geometry, ...frameArcGeos].forEach((g) => g?.dispose?.());
-                [fieldMat, skyMat, skyBakeMat, filamentMat, streakMat, lyricParticleMat, glyphMaterial, fadingGlyphMaterial,
+                [fieldGeo, skyGeo, filamentGeo, streakGeo, lyricGeo, rippleGeo, glyphWarmup.geometry, glyphScrim.geometry, ...frameArcGeos].forEach((g) => g?.dispose?.());
+                [fieldMat, skyMat, skyBakeMat, filamentMat, streakMat, lyricParticleMat, glyphMaterial, fadingGlyphMaterial, glyphScrim.material,
                     ...frameArcMats].forEach((m) => m?.dispose?.());
                 skyMasks.dispose();
+                glyphCanvas.width = glyphCanvas.height = 0;
+                measureCanvas.width = measureCanvas.height = 0;
                 entityNodes.forEach((node) => {
                     node.geo?.dispose?.();
                     node.mat?.dispose?.();
@@ -4257,23 +4445,35 @@
         let height = 1;
         let lastTime = null;
         let paletteKey = '';
+        let lastPaletteRef = null;
+        let lastPaletteJson = '';
+        // themeHold: one more picture in the old colours, kept for the dissolve.
+        let themeHold = false, revealMs = 1000, lastJumpAt = -Infinity, drawnAt = 0;
         // Something other than the clock changed since the last drawn frame.
         let dirty = true;
         let canvasSmoothing = null;
         let builtQuality = null;
         const cap = U.createFrameCap();
+        // Song handover (host: songHandover): the flight goes on with the old
+        // song's words put away while the host waits for the new lyrics; the
+        // new song then starts under the last of that picture, dissolving.
+        const veil = U.createHandoverVeil(mode.root);
+        const onset = R.createAudioOnset();
+        let leaving = null, revealPending = false;
         const wantsCanvasSmoothing = () => !(global.MusicStageDioramaOptics?.active(mode.config, {}) ?? false);
+        // The settings as drawn: the chosen tier, less what the frame rate made it drop.
+        const drawn = () => renderScale.config(mode.config);
         const applyQuality = () => {
-            if (!world || builtQuality === mode.config.quality) return;
-            builtQuality = mode.config.quality;
+            if (!world || builtQuality === drawn().quality) return;
+            builtQuality = drawn().quality;
             world.setQuality?.(builtQuality);
         };
 
         const tuning = () => ({
             ...(mode.config.modes?.tunnel || {}),
             animationIntensity: mode.config.animationIntensity ?? 1,
-            reducedMotion: Boolean(reduced?.matches),
-            quality: mode.config.quality
+            reducedMotion: global.MusicStageRuntime.isReducedMotion(reduced),
+            quality: drawn().quality
         });
 
         const renderFallback = (frame) => {
@@ -4291,6 +4491,7 @@
         };
 
         const renderScale = U.createRenderScale();
+        let lenslessWarm = false;
         const resize = () => {
             width = Math.max(1, mode.root.clientWidth || global.innerWidth || 1);
             height = Math.max(1, mode.root.clientHeight || global.innerHeight || 1);
@@ -4304,15 +4505,18 @@
         };
 
         const disposeGraphics = () => {
+            lenslessWarm = false;
             world?.destroy?.();
             world = null;
             optics?.destroy();
             optics = null;
             if (renderer) {
-                renderer.dispose?.();
-                renderer.forceContextLoss?.();
-                renderer.domElement?.remove?.();
+                const oldRenderer = renderer;
                 renderer = null;
+                oldRenderer.dispose?.();
+                if (R.releaseWebGLContext) R.releaseWebGLContext(oldRenderer);
+                else oldRenderer.forceContextLoss?.();
+                oldRenderer.domElement?.remove?.();
             }
             camera = null;
             scene = null;
@@ -4354,13 +4558,18 @@
             const nextIdentity = frame.track?.path || frame.track?.title || 'tunnel-track';
             // The track length often arrives a moment after the track itself; the
             // journey has to be compiled for the whole song, not just its lyrics.
-            const nextDuration = Math.round(finiteNumber(frame.duration, 0));
+            // Nothing chosen yet: plan an ordinary journey, so the waiting
+            // picture is its opening rather than the end of a zero-length one.
+            const knownDuration = Math.round(finiteNumber(frame.duration, 0));
+            const nextDuration = knownDuration > 0 || frame.lines?.length ? knownDuration : 240;
             const songChanged = source !== frame.lines || identity !== nextIdentity || nextDuration !== compiledDuration;
             // Paused with nothing changed: the last picture is still right, so
             // the GPU can rest. Playing: no more often than the tier's rate.
+            world?.setCoverColour?.(services?.app?.stageCoverColour);
+            // A paused stage still finishes easing into a new cover's colour.
             const still = !frame.isPlaying && lastTime !== null
-                && finiteNumber(frame.playbackTime, 0) === lastTime;
-            if (!force && !dirty && !songChanged && (still || !cap.take(performance.now(), mode.config.quality))) return;
+                && finiteNumber(frame.playbackTime, 0) === lastTime && !world?.coverSettling?.();
+            if (!force && !dirty && !songChanged && (still || !cap.take(performance.now(), drawn().quality))) return;
             dirty = false;
             applyQuality();
 
@@ -4369,13 +4578,18 @@
                 identity = nextIdentity;
                 compiledDuration = nextDuration;
                 lastTime = null;
+                if (leaving) { leaving = null; revealPending = true; }
                 world?.reset?.(frame.lines || [], identity, nextDuration);
             }
 
             const settings = tuning();
             const stagePal = services?.app?.stagePalette || {};
-            const nextPalette = JSON.stringify(stagePal);
-            if (nextPalette !== paletteKey) {
+            if (stagePal !== lastPaletteRef) {
+                lastPaletteRef = stagePal;
+                lastPaletteJson = JSON.stringify(stagePal);
+            }
+            const nextPalette = lastPaletteJson;
+            if (nextPalette !== paletteKey && !themeHold) {
                 paletteKey = nextPalette;
                 world?.setPalette?.(stagePal);
             }
@@ -4385,6 +4599,7 @@
             const seeking = lastTime === null || dt < -0.1 || dt > 0.5;
             const live = Boolean(frame.isPlaying) && dt > 0 && !settings.reducedMotion;
             const reactivity = clamp(settings.audioReactivity ?? 1, 0, 2);
+            const hit = onset.update(frame);
 
             const audio = live
                 ? {
@@ -4398,19 +4613,26 @@
             world.update(time, frame, settings, {
                 seek: seeking,
                 playing: live,
+                impact: live ? hit.impact * reactivity : 0,
+                onsets: hit.onsets,
                 dt: seeking ? 0 : Math.max(0, Math.min(0.08, dt)),
                 ...audio
             }, camera);
 
             fallback.hidden = true;
-            if (frame.isPlaying && renderScale.tick(performance.now(), cap.aim(mode.config.quality))) resize();
+            if (frame.isPlaying && renderScale.tick(performance.now(), cap.aim(drawn().quality))) { resize(); applyQuality(); }
+            if (!lenslessWarm) lenslessWarm = U.warmLensless(T, renderer, scene, camera, renderScale, drawn().quality);
             renderer.info.reset();
             // The same lens as the diorama: the sun, the lamps and the lyric glow through it.
             if (optics) {
-                optics.render(renderer, scene, camera, settings.reducedMotion ? 0 : time, mode.config,
+                optics.render(renderer, scene, camera, settings.reducedMotion ? 0 : time, drawn(),
                     { glow: clamp(settings.glow ?? 1, 0, 2) * 0.6, threshold: 1.05, grain: 0.05, vignette: 0.3 });
             } else renderer.render(scene, camera);
+            // Read back now: once this task ends the drawing buffer is gone.
+            if (leaving || themeHold) veil.capture(renderer.domElement, { every: themeHold ? 0 : 100 });
+            else if (revealPending) { revealPending = false; veil.reveal(revealMs); revealMs = 1000; }
             lastTime = time;
+            drawnAt = performance.now();
         };
 
         const initialize = () => {
@@ -4451,12 +4673,33 @@
 
                 renderer.info.autoReset = false;
                 optics = global.MusicStageDioramaOptics?.create(T) || null;
+                // Built a step a frame, so the way in keeps moving meanwhile.
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
                 world = createTunnelWorld(T, scene, services?.app);
-                world.prepare(renderer);
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
                 applyQuality();
                 resize();
                 world.setPalette(services?.app?.stagePalette || {});
-                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: !canvasSmoothing });
+                const alive = () => !mode.destroyed && !!renderer;
+                const skyJob = world.beginPrepare();
+                try {
+                    await U.precompile(T, renderer, scene, camera, {
+                        canvas: canvasSmoothing, offscreen: !canvasSmoothing, report: false,
+                        extraPasses: [skyJob.pass], alive
+                    });
+                    if (!alive()) return;
+                    skyJob.bake(renderer);
+                } finally {
+                    skyJob.dispose();
+                }
+                if (!alive()) return;
+                if (!canvasSmoothing) await optics?.precompile?.(renderer, alive);
+                if (!alive()) return;
+                await U.settlePrograms(renderer, alive);
+                if (mode.destroyed || !renderer) return;
+                await U.breathe();
                 if (mode.destroyed || !renderer) return;
                 initialized = true;
                 dirty = true;
@@ -4472,10 +4715,31 @@
             return initializing;
         };
 
-        mode.updateFrame = (frame) => update(frame);
+        mode.updateFrame = (frame) => {
+            // The host went back to the song on screen (skipped back): just carry on.
+            if (leaving && frame?.lines === source
+                && (frame.track?.path || frame.track?.title || 'tunnel-track') === identity) leaving = null;
+            // A jump within the song dissolves from where the flight was instead of cutting.
+            const at = finiteNumber(frame?.playbackTime, 0);
+            if (initialized && latest && lastTime !== null && !leaving && !themeHold && frame?.lines === source
+                && Math.abs(at - lastTime - (frame?.isPlaying ? (performance.now() - drawnAt) / 1000 : 0)) > 2 && !tuning().reducedMotion && performance.now() - lastJumpAt > 600) {
+                lastJumpAt = performance.now();
+                themeHold = true;
+                try { update({ ...latest, playbackTime: lastTime }, true); } finally { themeHold = false; }
+                if (veil.captured) { revealPending = true; revealMs = 450; }
+            }
+            update(frame);
+        };
         mode.resize = () => { resize(); if (latest && initialized) update(latest, true); };
         const baseConfig = mode.updateConfig;
         mode.updateConfig = (config) => {
+            // A tier picked by hand starts the automatic stepping down afresh.
+            if (config?.quality !== mode.config.quality) renderScale.reset();
+            // The sung line is only rebuilt when the line changes; a new size,
+            // face or translation choice must redraw the one on screen now.
+            const before = mode.config.modes?.tunnel || {};
+            const after = config?.modes?.tunnel || {};
+            if (['fontScale', 'lyricFont', 'showTranslation'].some(key => before[key] !== after[key])) world?.redrawLyric?.();
             baseConfig(config);
             // The canvas is antialiased only when the lens is off; that is fixed
             // when the context is made, so a change of tier rebuilds it.
@@ -4489,13 +4753,41 @@
             resize();
             if (latest && initialized) update(latest, true);
         };
-        mode.updateTheme = () => { if (latest && initialized) update(latest, true); };
+        // A new palette dissolves in from the old picture instead of cutting.
+        mode.updateTheme = () => {
+            if (!latest || !initialized) return;
+            if (!leaving && !tuning().reducedMotion
+                && JSON.stringify(services?.app?.stagePalette || {}) !== paletteKey) {
+                themeHold = true;
+                try { update(latest, true); } finally { themeHold = false; }
+                if (veil.captured) { revealPending = true; revealMs = 700; }
+            }
+            update(latest, true);
+        };
         const resume = mode.resume;
         mode.resume = () => { resume(); lastTime = null; cap.reset(); if (latest) update(latest, true); };
+        mode.scope.listen(global, 'music-motion-change', () => {
+            dirty = true;
+            if (latest && initialized) update(latest, true);
+        });
+        // For the settings: how far below the chosen tier it is drawing (cheap, polled).
+        mode.getDegrade = () => ({ steps: renderScale.steps, quality: drawn().quality });
+        mode.beginSongHandover = () => {
+            if (!initialized || !latest || lastTime === null) return false;
+            if (!leaving) leaving = { since: performance.now(), frame: latest, time: lastTime };
+            return true;
+        };
+        mode.holdFrame = (frame) => {
+            if (!leaving || !initialized) return;
+            const elapsed = (performance.now() - leaving.since) / 1000;
+            update({ ...leaving.frame, activeLine: null, wordStates: [], audio: frame.audio,
+                isPlaying: true, playbackTime: leaving.time + elapsed });
+        };
         mode.getDebugSnapshot = () => ({
             initialized,
             fallbackMode,
             pixelRatio: renderer?.getPixelRatio(), renderScale: renderScale.factor,
+            degradeSteps: renderScale.steps, drawnQuality: drawn().quality,
             drawCalls: renderer?.info.render.calls,
             triangles: renderer?.info.render.triangles,
             programs: renderer?.info.programs?.length,
@@ -4505,7 +4797,7 @@
             cameraPos: camera?.position?.toArray() || null,
             activeLine: latest?.activeLine?.fullText || null
         });
-        mode.scope.add(() => { global.clearTimeout(contextTimer); disposeGraphics(); latest = source = null; });
+        mode.scope.add(() => { veil.destroy(); global.clearTimeout(contextTimer); disposeGraphics(); latest = source = null; });
 
         resize();
         void initialize();

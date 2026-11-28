@@ -21,6 +21,7 @@ rubato = { version = "4.0", optional = true }
 # --- Parallelism ---
 rayon = "1.10"
 crossbeam = "0.8"
+rtrb = "0.3"              # Wait-free SPSC ring buffer (callback -> spectrum thread)
 parking_lot = "0.12"
 
 # --- HTTP/WebSocket Server ---

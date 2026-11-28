@@ -123,11 +123,16 @@
             return false;
         };
         const plans = fragments.slice().sort((a, b) => (b === hero?.p ? 1 : 0) - (a === hero?.p ? 1 : 0));
+        // Air around each fragment. A long line has too many fragments for the
+        // full margin: they would spill into overflow rows and the whole line
+        // would be shrunk to fit, down to an unreadable cluster. It closes up
+        // towards its wrapped rows instead.
+        const air = clamp(1 - (fragments.length - 10) / 14, 0, 1);
         plans.forEach(p => {
             const emphasized = p === hero?.p && tuning.heroEmphasis !== false && line.fullText !== '......';
             p.scale = emphasized ? 1.46 * (1 + clamp(hero.score - 0.48, 0, 0.52)) : 1.01;
-            const collisionWidth = p.width * p.scale * 1.48 + 18;
-            const collisionHeight = p.height * p.scale * 1.4 + 14;
+            const collisionWidth = p.width * p.scale * (1.08 + 0.4 * air) + 4 + 14 * air;
+            const collisionHeight = p.height * p.scale * (1.08 + 0.32 * air) + 4 + 10 * air;
             const preferredX = emphasized ? -p.width / 2 : p.x;
             const preferredY = emphasized ? -p.height / 2 : p.y;
             let found = false;

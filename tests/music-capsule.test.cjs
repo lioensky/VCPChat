@@ -68,6 +68,7 @@ test('late initial snapshot cannot overwrite live push', async () => {
 test('player snapshot deduplicates state and gapless path publishes', () => {
     const context = { console, setInterval, clearInterval };
     vm.createContext(context);
+    vm.runInContext(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'), context);
     vm.runInContext(fs.readFileSync('Musicmodules/music-player.js', 'utf8'), context);
     const sent = [];
     const app = {
@@ -83,8 +84,12 @@ test('player snapshot deduplicates state and gapless path publishes', () => {
     app.publishCapsuleState();
     assert.equal(sent.length, 2);
     assert.equal(sent[1].playing, false);
+    // 引擎切进了曲库里没有的歌：不发布它，交给「下一首」接上
+    let advanced = 0;
+    app.nextTrack = () => { advanced++; };
     app.syncTrackIndexByPath('missing');
     assert.equal(sent.length, 2);
+    assert.equal(advanced, 1);
 });
 test('sidebar mode toast removed and capsule IPC validates publishers and commands', () => {
     assert.doesNotMatch(fs.readFileSync('modules/event-listeners.js', 'utf8'), /侧栏已切换|侧栏已恢复/);
@@ -92,4 +97,204 @@ test('sidebar mode toast removed and capsule IPC validates publishers and comman
     assert.match(handlers, /event.sender !== musicWindow.webContents/);
     assert.match(handlers, /event.sender !== mainWindow.webContents/);
     assert.match(handlers, /\['previous', 'next', 'play', 'pause'\]\.includes\(command\)/);
+});
+
+test('ResizeObserver watches capsule parent instead of root itself', () => {
+    const source = new JSDOM(html);
+    const markup = source.window.document.querySelector('.music-capsule').outerHTML;
+    source.window.close();
+    const dom = new JSDOM(`<div id="slot">${markup}</div>`, { runScripts: 'outside-only' });
+    const observed = [];
+    dom.window.ResizeObserver = class {
+        observe(el) { observed.push(el); }
+        disconnect() {}
+    };
+    dom.window.electronAPI = {
+        onMusicCapsuleState: () => () => {},
+        getMusicCapsuleState: () => Promise.resolve({ open: false }),
+        sendMusicCapsuleCommand: () => {}
+    };
+    dom.window.eval(script);
+    dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+    const root = dom.window.document.querySelector('.music-capsule');
+    assert.equal(observed.length, 1);
+    assert.notEqual(observed[0], root, 'must not observe root itself during width transitions');
+    assert.equal(observed[0], dom.window.document.getElementById('slot'));
+    dom.window.close();
+});
+
+test('capsule ignores Escape while IME is composing', () => {
+    const f = fixture();
+    f.push({ open: true, title: 'Song', trackKey: 'k1', playing: true });
+    assert.equal(f.root.classList.contains('is-expanded'), true);
+    f.root.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true }));
+    assert.equal(f.root.classList.contains('is-expanded'), true, 'composing Escape must not collapse capsule');
+    f.root.dispatchEvent(new f.dom.window.KeyboardEvent('keydown', { key: 'Escape', isComposing: false, bubbles: true }));
+    assert.equal(f.root.classList.contains('is-expanded'), false);
+    f.dom.window.close();
+});
+
+test('capsule deduplicates unchanged playing/injection/expansion DOM updates on repeated pushes', () => {
+    const f = fixture();
+    f.push({ open: true, title: 'Same', trackKey: 's1', playing: true, musicInfoInjectionEnabled: true });
+    const trigger = f.root.querySelector('.music-capsule-trigger');
+    const toggle = f.root.querySelector('[data-music-command="toggle"]');
+    let triggerAttrs = 0;
+    let toggleAttrs = 0;
+    const origTrig = trigger.setAttribute.bind(trigger);
+    const origTog = toggle.setAttribute.bind(toggle);
+    trigger.setAttribute = (...a) => { triggerAttrs += 1; return origTrig(...a); };
+    toggle.setAttribute = (...a) => { toggleAttrs += 1; return origTog(...a); };
+
+    f.push({ open: true, title: 'Same', trackKey: 's1', playing: true, musicInfoInjectionEnabled: true });
+    assert.equal(triggerAttrs, 0, 'identical push skips redundant trigger attribute writes');
+    assert.equal(toggleAttrs, 0, 'identical push skips redundant toggle attribute writes');
+
+    f.push({ open: true, title: 'Same', trackKey: 's1', playing: false, musicInfoInjectionEnabled: false });
+    assert.ok(triggerAttrs > 0, 'changed injection updates trigger attributes');
+    assert.ok(toggleAttrs > 0, 'changed playing state updates toggle attributes');
+    f.dom.window.close();
+});
+
+test('Batch 61: parent ResizeObserver keeps chrome metrics cached while window resize invalidates them and beforeunload detaches resize', () => {
+    const source = new JSDOM(html);
+    const markup = source.window.document.querySelector('.music-capsule').outerHTML;
+    source.window.close();
+    const dom = new JSDOM(`<div id="slot">${markup}</div>`, { runScripts: 'outside-only' });
+    let roCallback = null;
+    let push = null;
+    const rafs = [];
+    dom.window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+    dom.window.cancelAnimationFrame = () => {};
+    dom.window.ResizeObserver = class {
+        constructor(cb) { roCallback = cb; }
+        observe() {}
+        disconnect() {}
+    };
+    dom.window.electronAPI = {
+        onMusicCapsuleState: (cb) => { push = cb; return () => {}; },
+        getMusicCapsuleState: () => new Promise(() => {}),
+        sendMusicCapsuleCommand: () => {}
+    };
+    dom.window.eval(script);
+    dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+    const root = dom.window.document.querySelector('.music-capsule');
+    const titleEl = root.querySelector('.music-capsule-title');
+    for (const b of root.querySelectorAll('button')) {
+        b.getBoundingClientRect = () => ({ width: 24, height: 24, left: 0, top: 0, right: 24, bottom: 24 });
+    }
+    let titleStyleReads = 0;
+    const origGetCS = dom.window.getComputedStyle.bind(dom.window);
+    dom.window.getComputedStyle = (el, ...rest) => {
+        if (el === titleEl) titleStyleReads += 1;
+        return origGetCS(el, ...rest);
+    };
+
+    push({ open: true, title: 'Song A', trackKey: 'a', playing: true });
+    assert.equal(titleStyleReads, 1, 'initial open measures chrome width once');
+
+    // Parent ResizeObserver should re-measure title only, not chrome computed styles
+    roCallback();
+    rafs.splice(0).forEach((fn) => fn());
+    assert.equal(titleStyleReads, 1, 'parent ResizeObserver does not dirty cached chrome metrics');
+
+    // Window resize invalidates chrome metrics once
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    rafs.splice(0).forEach((fn) => fn());
+    assert.equal(titleStyleReads, 2, 'window resize re-measures chrome metrics');
+
+    // beforeunload detaches window resize listener
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    rafs.splice(0).forEach((fn) => fn());
+    assert.equal(titleStyleReads, 2, 'beforeunload detaches window resize handler');
+    dom.window.close();
+});
+
+test('Batch 82: music-capsule skips unchanged hidden/title writes, publishCapsuleState skips repeated stripAudioExtension, and stage CSS honors reduce-motion', () => {
+    const f = fixture();
+    try {
+        f.push({ open: true, title: 'Steady', trackKey: 'k1', playing: true, musicInfoInjectionEnabled: true });
+        const titleEl = f.root.querySelector('.music-capsule-title');
+        let hiddenWrites = 0;
+        const hiddenDesc = Object.getOwnPropertyDescriptor(f.dom.window.HTMLElement.prototype, 'hidden');
+        Object.defineProperty(f.root, 'hidden', {
+            configurable: true,
+            get() { return hiddenDesc.get.call(this); },
+            set(v) { hiddenWrites += 1; return hiddenDesc.set.call(this, v); }
+        });
+        let titleWrites = 0;
+        const textDesc = Object.getOwnPropertyDescriptor(f.dom.window.Node.prototype, 'textContent');
+        Object.defineProperty(titleEl, 'textContent', {
+            configurable: true,
+            get() { return textDesc.get.call(this); },
+            set(v) { titleWrites += 1; return textDesc.set.call(this, v); }
+        });
+        f.push({ open: true, title: 'Steady', trackKey: 'k1', playing: false, musicInfoInjectionEnabled: true });
+        f.push({ open: true, title: 'Steady', trackKey: 'k1', playing: true, musicInfoInjectionEnabled: true });
+        assert.equal(hiddenWrites, 0, 'steady open state skips redundant root.hidden writes');
+        assert.equal(titleWrites, 0, 'steady title skips redundant title.textContent writes');
+
+        // music-player publishCapsuleState skips stripAudioExtension & IPC on identical polls
+        const hooksSrc = fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8');
+        const playerSrc = fs.readFileSync('Musicmodules/music-player.js', 'utf8');
+        const ctx = vm.createContext({ console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Math, Number, String, Boolean, Array, Object, Promise, RegExp });
+        vm.runInContext(hooksSrc, ctx);
+        vm.runInContext(playerSrc, ctx);
+        let stripCalls = 0;
+        const published = [];
+        const pApp = {
+            playlist: [{ path: 'C:/a.flac', title: 'Alpha.flac', artist: 'A', album: 'Alb' }],
+            currentTrackIndex: 0,
+            isPlaying: true,
+            stripAudioExtension: (s) => { stripCalls += 1; return String(s || '').replace(/\.flac$/i, ''); },
+            api: { publishMusicCapsuleState: (st) => published.push(st) }
+        };
+        ctx.setupPlayer(pApp);
+        pApp.publishCapsuleState();
+        pApp.publishCapsuleState();
+        pApp.publishCapsuleState();
+        assert.equal(published.length, 1, 'identical polls publish capsule state once');
+        assert.equal(stripCalls, 1, 'identical polls skip stripAudioExtension via primitive field fast-path');
+        pApp.isPlaying = false;
+        pApp.publishCapsuleState();
+        assert.equal(published.length, 2, 'play state change publishes immediately');
+
+        // Stage CSS stops edge-flow orbit & title enter animation under reduce-motion
+        const pixi3dCss = fs.readFileSync('Musicmodules/music-stage/music-stage-pixi-3d.css', 'utf8');
+        const stageCss = fs.readFileSync('Musicmodules/music-stage/music-stage.css', 'utf8');
+        assert.match(pixi3dCss, /body\.music-reduce-motion \.music-stage-edge-flow-light\s*\{[^}]*animation:\s*none/);
+        assert.match(pixi3dCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.music-stage-edge-flow-light\s*\{[^}]*animation:\s*none/);
+        assert.match(stageCss, /body\.music-reduce-motion \.music-stage-track-title\.is-changing\s*\{[^}]*animation:\s*none/);
+    } finally {
+        f.dom.window.close();
+    }
+});
+
+test('Batch 124: music-capsule tolerates non-Node focusout relatedTarget and missing getMusicCapsuleState', () => {
+    const f = fixture();
+    try {
+        f.push({ open: true, title: 'Focus Test', trackKey: 'k2', playing: true });
+        f.root.dispatchEvent(new f.dom.window.FocusEvent('focusin', { bubbles: true }));
+        assert.equal(f.root.classList.contains('is-expanded'), true);
+        const ev = new f.dom.window.Event('focusout', { bubbles: true });
+        Object.defineProperty(ev, 'relatedTarget', { value: { nonNode: true } });
+        assert.doesNotThrow(() => f.root.dispatchEvent(ev), 'non-Node focusout relatedTarget does not throw');
+    } finally {
+        f.dom.window.close();
+    }
+
+    const dom = new JSDOM('<!doctype html><body><div class="chat-header-controls"><button id="open-music-btn"></button></div></body>', { runScripts: 'outside-only' });
+    try {
+        dom.window.electronAPI = {
+            onMusicCapsuleState: () => () => {},
+            sendMusicCapsuleCommand: () => {}
+        };
+        assert.doesNotThrow(() => {
+            dom.window.eval(script);
+            dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+        }, 'install tolerates omitted getMusicCapsuleState');
+    } finally {
+        dom.window.close();
+    }
 });

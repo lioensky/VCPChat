@@ -45,6 +45,45 @@ function setupVisualizer(app) {
         ];
     }
 
+    const VOCAL_START_BIN = Math.floor(300 / 21.5);
+    const VOCAL_END_BIN = Math.floor(3400 / 21.5);
+    let vocalFadeWidth = 0;
+    let vocalFade = null;
+    let vocalSizeDirty = true;
+    let vocalObsWidth = -1;
+    let vocalObsHeight = -1;
+    let vocalResizeObserver = null;
+    let vocalR = -1, vocalG = -1, vocalB = -1;
+    let vocalStrokeStyles = null;
+    let gradH = -1, gradR = -1, gradG = -1, gradB = -1;
+    let particleR = -1, particleG = -1, particleB = -1;
+    let particleStrokeStyle = '';
+    let lastCoverScaleQ = -1;
+
+    const markVocalSizeDirty = () => {
+        vocalSizeDirty = true;
+        vocalObsWidth = -1;
+        vocalObsHeight = -1;
+    };
+    if (app.vocalCanvas && typeof ResizeObserver === 'function') {
+        try {
+            vocalResizeObserver = new ResizeObserver((entries) => {
+                const rect = entries?.[entries.length - 1]?.contentRect;
+                if (rect && rect.width >= 0 && rect.height >= 0) {
+                    vocalObsWidth = Math.round(rect.width);
+                    vocalObsHeight = Math.round(rect.height);
+                } else {
+                    vocalObsWidth = -1;
+                    vocalObsHeight = -1;
+                }
+                vocalSizeDirty = true;
+            });
+            vocalResizeObserver.observe(app.vocalCanvas);
+        } catch (e) {
+            vocalResizeObserver = null;
+        }
+    }
+
     app.drawVocalVisualizer = () => {
         if (!app.vocalCanvas || !app.vocalCtx || app.currentVisualizerData.length === 0) return;
 
@@ -52,57 +91,109 @@ function setupVisualizer(app) {
         const canvas = app.vocalCanvas;
         const data = app.currentVisualizerData;
 
-        // Resize canvas if needed
-        if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
+        // 仅在尺寸标记脏时同步画布像素：优先使用 ResizeObserver 提供的 contentRect，避免帧循环触发同步布局读取
+        if (vocalSizeDirty) {
+            const cw = vocalObsWidth >= 0 ? vocalObsWidth : canvas.clientWidth;
+            const ch = vocalObsHeight >= 0 ? vocalObsHeight : canvas.clientHeight;
+            if (cw > 0 && ch > 0) {
+                if (canvas.width !== cw || canvas.height !== ch) {
+                    canvas.width = cw;
+                    canvas.height = ch;
+                }
+                vocalSizeDirty = false;
+            } else if (canvas.width !== cw || canvas.height !== ch) {
+                canvas.width = cw;
+                canvas.height = ch;
+            }
         }
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const w = canvas.width;
+        const h = canvas.height;
+        if (!w || !h) return;
+
+        ctx.clearRect(0, 0, w, h);
 
         // 提取人声范围能量 (约 300Hz - 3400Hz)
-        const startBin = Math.floor(300 / 21.5);
-        const endBin = Math.floor(3400 / 21.5);
         let vocalEnergy = 0;
-        const actualEnd = Math.min(endBin, data.length);
-        for (let i = startBin; i < actualEnd; i++) {
+        const actualEnd = Math.min(VOCAL_END_BIN, data.length);
+        for (let i = VOCAL_START_BIN; i < actualEnd; i++) {
             vocalEnergy += data[i];
         }
-        vocalEnergy = (vocalEnergy / (actualEnd - startBin)) || 0;
+        vocalEnergy = (vocalEnergy / (actualEnd - VOCAL_START_BIN)) || 0;
 
         // 缓动处理人声能量
         if (app.smoothedVocalEnergy === undefined) app.smoothedVocalEnergy = 0;
         app.smoothedVocalEnergy += (vocalEnergy - app.smoothedVocalEnergy) * 0.15;
 
-        const centerY = canvas.height / 2;
+        if (vocalFadeWidth !== w) {
+            vocalFadeWidth = w;
+            const steps = (w >> 1) + 1;
+            vocalFade = new Float32Array(steps);
+            const invW = Math.PI / w;
+            for (let idx = 0; idx < steps; idx++) {
+                const s = Math.sin(idx * 2 * invW);
+                vocalFade[idx] = s * s;
+            }
+        }
+
+        const centerY = h * 0.5;
         const time = Date.now();
         const { r, g, b } = app.visualizerColor;
+        if (vocalR !== r || vocalG !== g || vocalB !== b || !vocalStrokeStyles) {
+            vocalR = r; vocalG = g; vocalB = b;
+            const wLen = app.vocalWaves.length;
+            vocalStrokeStyles = new Array(wLen);
+            for (let i = 0; i < wLen; i += 1) {
+                vocalStrokeStyles[i] = `rgba(${r}, ${g}, ${b}, ${app.vocalWaves[i].alpha})`;
+            }
+        }
+        const energyBoost = app.smoothedVocalEnergy * 35;
+        ctx.lineWidth = 1.5;
 
-        app.vocalWaves.forEach((wave, i) => {
+        for (let wIdx = 0; wIdx < app.vocalWaves.length; wIdx++) {
+            const wave = app.vocalWaves[wIdx];
+            const amp = wave.amplitude + energyBoost;
+            if (wave._stepFreq !== wave.frequency) {
+                const step = wave.frequency * 2;
+                wave._stepFreq = wave.frequency;
+                wave._sd = Math.sin(step);
+                wave._cd = Math.cos(step);
+            }
+            const phaseOffset = time * wave.speed * 0.01 + wave.phase;
+            // 和角递推替代每帧 ~2000 次 Math.sin 调用，波形精度一致
+            let s = Math.sin(phaseOffset);
+            let c = Math.cos(phaseOffset);
+            const sd = wave._sd;
+            const cd = wave._cd;
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${wave.alpha})`;
-            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = vocalStrokeStyles[wIdx];
 
-            for (let x = 0; x <= canvas.width; x += 2) {
-                const edgeFade = Math.pow(Math.sin((x / canvas.width) * Math.PI), 2);
-                const y = centerY + Math.sin(x * wave.frequency + time * wave.speed * 0.01 + wave.phase) 
-                          * (wave.amplitude + app.smoothedVocalEnergy * 35) 
-                          * edgeFade;
-
-
+            for (let x = 0, idx = 0; x <= w; x += 2, idx++) {
+                const y = centerY + s * amp * vocalFade[idx];
                 if (x === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
+                const ns = s * cd + c * sd;
+                c = c * cd - s * sd;
+                s = ns;
             }
             ctx.stroke();
-        });
+        }
     };
 
     // --- WebSocket for Visualization ---
     app.visualizerDestroyed = false;
     app.visualizerReconnectTimer = null;
+    app._visualizerReconnectOnVisible = null;
+    const clearReconnectOnVisible = () => {
+        if (app._visualizerReconnectOnVisible) {
+            document.removeEventListener('visibilitychange', app._visualizerReconnectOnVisible);
+            app._visualizerReconnectOnVisible = null;
+        }
+    };
 
     app.connectWebSocket = () => {
         if (app.visualizerDestroyed) return;
+        clearReconnectOnVisible();
         if (app.visualizerReconnectTimer) {
             clearTimeout(app.visualizerReconnectTimer);
             app.visualizerReconnectTimer = null;
@@ -112,8 +203,10 @@ function setupVisualizer(app) {
             || app.ws.readyState === WebSocket.CONNECTING
         )) return;
 
-        const socket = new WebSocket("ws://127.0.0.1:63789/ws");
+        // 端口由主进程启动引擎时探测决定，地址经 getAudioEngineEndpoint 下发；拿不到时退回默认端口。
+        const socket = new WebSocket(app.audioEngineWsUrl || "ws://127.0.0.1:63789/ws");
         app.ws = socket;
+        socket.binaryType = 'arraybuffer';
 
         socket.onopen = () => {
             if (app.visualizerDestroyed || app.ws !== socket) {
@@ -121,6 +214,7 @@ function setupVisualizer(app) {
                 return;
             }
             console.log('[Music.js] Connected to Rust Audio Engine via WebSocket.');
+            app.visualizerReconnectAttempts = 0;
             if (!app.animationFrameId) {
                 app.startVisualizerAnimation();
             }
@@ -129,12 +223,25 @@ function setupVisualizer(app) {
         socket.onmessage = (event) => {
             if (app.visualizerDestroyed || app.ws !== socket) return;
             try {
-                const message = JSON.parse(event.data);
-                if (message.type === 'spectrum_data') {
-                    // 停着的时候只通知一次“没在播”，不再把每一帧频谱都经主进程转发出去。
+                const message = typeof event.data === 'string'
+                    ? JSON.parse(event.data)
+                    : app.decodeEngineBinaryFrame(event.data);
+                if (!message) return;
+                if (message.type === 'hello') {
+                    // 新引擎：频谱改收二进制帧，播放状态改收推送。
+                    if (Array.isArray(message.features) && message.features.includes('spectrum_binary')) {
+                        socket.send(JSON.stringify({ type: 'subscribe', spectrum: 'binary' }));
+                    }
+                    app.handleEngineHello?.(message);
+                } else if (message.type === 'playback_state') {
+                    app.handleEnginePlaybackState?.(message);
+                } else if (message.type === 'spectrum_data') {
+                    // 停着的时候只通知一次“没在播”，播放时按 40ms 节流（与主进程 musicGrooveBus 节流窗口对齐），避免 60Hz 冗余 IPC 序列化。
                     const grooving = app.isPlaying === true && !app.isTrackLoading;
-                    if (grooving || app._lastGroovePlaying !== false) {
+                    const nowMs = performance.now();
+                    if ((grooving && nowMs - (app._lastGrooveSentAt || 0) >= 40) || (!grooving && app._lastGroovePlaying !== false)) {
                         app._lastGroovePlaying = grooving;
+                        app._lastGrooveSentAt = nowMs;
                         app.api?.publishMusicGroove?.(grooving ? {
                             playing: true,
                             trackKey: app.playlist?.[app.currentTrackIndex]?.path || '',
@@ -142,6 +249,7 @@ function setupVisualizer(app) {
                         } : { playing: false });
                     }
                     if (app.isPlaying) {
+                        if (!app.animationFrameId) app.wakeVisualizer();
                         app._visualizerIdle = false;
                         app.targetVisualizerData = message.data;
                         if (app.currentVisualizerData.length === 0) {
@@ -168,16 +276,19 @@ function setupVisualizer(app) {
                         app._gaplessJustSwitched = false;
                         return;
                     }
-                    console.log('[Music.js] Playback ended, moving to next track');
-                    // 停止轮询，防止 pollState 中的状态更新与 nextTrack 冲突
-                    app.stopStatePolling();
-                    app.isPlaying = false;
-                    app.playPauseBtn.classList.remove('is-playing');
-                    app.nextTrack();
+                    // 停止轮询，防止 pollState 中的状态更新与 nextTrack 冲突（在 handlePlaybackEnded 里）
+                    if (app.handlePlaybackEnded) app.handlePlaybackEnded('push');
+                    else {
+                        app.stopStatePolling();
+                        app.isPlaying = false;
+                        app.playPauseBtn.classList.remove('is-playing');
+                        app.nextTrack();
+                    }
                 } else if (message.type === 'track_changed') {
                     console.log('[Music.js] Gapless track changed:', message.file_path);
                     // 设置 gapless 切歌标志，抑制紧随其后的 playback_ended 事件
                     app._gaplessJustSwitched = true;
+                    app.endedHandledForLoad = null; // 无缝切过去的这首放完时也要能往下切
                     // 安全兜底：如果 playback_ended 没有紧跟着来，在一定时间后清除标志
                     clearTimeout(app._gaplessSwitchTimer);
                     app._gaplessSwitchTimer = setTimeout(() => {
@@ -195,32 +306,87 @@ function setupVisualizer(app) {
         socket.onclose = () => {
             if (app.ws === socket) {
                 app.ws = null;
-                app.api?.publishMusicGroove?.({ playing: false });
+                if (app._lastGroovePlaying) {
+                    app._lastGroovePlaying = false;
+                    app.api?.publishMusicGroove?.({ playing: false });
+                }
+                app.handleEngineDisconnected?.();
             }
-            if (app.visualizerDestroyed || app.visualizerReconnectTimer) return;
+            if (app.visualizerDestroyed || app.visualizerReconnectTimer || app._visualizerReconnectOnVisible) return;
+            // 切歌、播完这些事件都走这条连接（引擎会攒着，连上再发），断开期间一首歌放完就会静音到重连为止。
+            // 所以先快后慢：0.5、1、2、4 秒，之后每 5 秒一次；连上就归零。窗口隐藏且未在播时暂缓重连，重新可见再连。
+            const attempt = app.visualizerReconnectAttempts || 0;
+            app.visualizerReconnectAttempts = attempt + 1;
             app.visualizerReconnectTimer = setTimeout(() => {
                 app.visualizerReconnectTimer = null;
+                if (app.visualizerDestroyed) return;
+                if (document.hidden && !app.isPlaying) {
+                    app._visualizerReconnectOnVisible = () => {
+                        if (document.hidden || app.visualizerDestroyed) return;
+                        clearReconnectOnVisible();
+                        app.connectWebSocket();
+                    };
+                    document.addEventListener('visibilitychange', app._visualizerReconnectOnVisible);
+                    return;
+                }
                 app.connectWebSocket();
-            }, 5000);
+            }, Math.min(5000, 500 * 2 ** attempt));
         };
 
         socket.onerror = (err) => {
-            if (!app.visualizerDestroyed) console.error('[Music.js] WebSocket error:', err);
+            const attempt = app.visualizerReconnectAttempts || 0;
+            if (!app.visualizerDestroyed && (attempt === 0 || attempt % 12 === 0)) {
+                console.error('[Music.js] WebSocket error:', err);
+            }
             socket.close();
         };
     };
 
+    // 引擎的二进制帧：[类型 u8][版本 u8][段数 u16 小端][段数 × f32 小端]，类型 1 是频谱。
+    // 复用解码数组，避免 60Hz 频谱帧每秒新建 60 个数组（闭包自包含，兼容单测片段执行）。
+    app.decodeEngineBinaryFrame = (() => {
+        let buf = [];
+        return (buffer) => {
+            if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 4) return null;
+            const view = new DataView(buffer);
+            const kind = view.getUint8(0);
+            const version = view.getUint8(1);
+            const count = view.getUint16(2, true);
+            if (kind !== 1 || version !== 1 || buffer.byteLength < 4 + count * 4) return null;
+            if (buf.length !== count) buf = new Array(count);
+            for (let i = 0; i < count; i++) buf[i] = view.getFloat32(4 + i * 4, true);
+            return { type: 'spectrum_data', data: buf };
+        };
+    })();
+
     app.destroyVisualizer = () => {
         if (app.visualizerDestroyed) return;
         app.visualizerDestroyed = true;
-        app.api?.publishMusicGroove?.({ playing: false });
+        if (app._lastGroovePlaying) {
+            app._lastGroovePlaying = false;
+            app.api?.publishMusicGroove?.({ playing: false });
+        }
+        clearReconnectOnVisible();
         if (app.visualizerReconnectTimer) {
             clearTimeout(app.visualizerReconnectTimer);
             app.visualizerReconnectTimer = null;
         }
+        if (app._gaplessSwitchTimer) {
+            clearTimeout(app._gaplessSwitchTimer);
+            app._gaplessSwitchTimer = null;
+        }
         if (app.animationFrameId) {
             cancelAnimationFrame(app.animationFrameId);
             app.animationFrameId = null;
+        }
+        app._visualizerWakeObserver?.disconnect();
+        app._visualizerWakeObserver = null;
+        vocalResizeObserver?.disconnect();
+        vocalResizeObserver = null;
+        if (app._visualizerWakeOnVisible) {
+            document.removeEventListener('visibilitychange', app._visualizerWakeOnVisible);
+            window.removeEventListener('resize', app._visualizerWakeOnVisible);
+            app._visualizerWakeOnVisible = null;
         }
         const socket = app.ws;
         app.ws = null;
@@ -234,67 +400,118 @@ function setupVisualizer(app) {
         app.targetVisualizerData.length = 0;
         app.currentVisualizerData.length = 0;
         app.particles.length = 0;
-        app.visualizerCanvas.width = app.visualizerCanvas.height = 1;
+        vocalFadeWidth = 0;
+        vocalFade = null;
+        gradH = -1;
+        app._visualizerGradient = null;
+        if (app.visualizerCanvas) app.visualizerCanvas.width = app.visualizerCanvas.height = 1;
         if (app.vocalCanvas) app.vocalCanvas.width = app.vocalCanvas.height = 1;
     };
 
     app.drawVisualizer = (data) => {
-        app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+        const canvas = app.visualizerCanvas;
+        const ctx = app.visualizerCtx;
+        if (!canvas || !ctx) return;
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
 
         const bufferLength = data.length;
-        if (bufferLength === 0) return;
+        if (bufferLength < 2 || !w || !h) return;
 
-        // 渐变只和画布高度、主题色有关，不必每帧新建。
+        // 渐变只和画布高度、主题色有关，不必每帧新建（整数比较避免 60fps 模板串分配）。
         const { r, g, b } = app.visualizerColor;
-        const gradientKey = `${app.visualizerCanvas.height}|${r},${g},${b}`;
-        if (app._visualizerGradientKey !== gradientKey) {
-            const created = app.visualizerCtx.createLinearGradient(0, 0, 0, app.visualizerCanvas.height);
+        if (gradH !== h || gradR !== r || gradG !== g || gradB !== b || !app._visualizerGradient) {
+            const created = ctx.createLinearGradient(0, 0, 0, h);
             created.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
             created.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.4)`);
             created.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
             app._visualizerGradient = created;
-            app._visualizerGradientKey = gradientKey;
+            gradH = h; gradR = r; gradG = g; gradB = b;
         }
         const gradient = app._visualizerGradient;
 
-        app.visualizerCtx.fillStyle = gradient;
-        app.visualizerCtx.strokeStyle = gradient;
-        app.visualizerCtx.lineWidth = 2;
+        ctx.fillStyle = gradient;
 
-        app.visualizerCtx.beginPath();
-        app.visualizerCtx.moveTo(0, app.visualizerCanvas.height);
+        ctx.beginPath();
+        ctx.moveTo(0, h);
 
-        const sliceWidth = app.visualizerCanvas.width / (bufferLength - 1);
+        const sliceWidth = w / (bufferLength - 1);
+        const scaleY = h * 1.2;
+        const t6 = 0.5 / 6;
+        const dxStep = sliceWidth * t6;
+        const dxSpan = dxStep * 2;
+        const lastIdx = bufferLength - 1;
 
-        const getPoint = (index) => {
-            const value = data[index] || 0;
-            const x = index * sliceWidth;
-            const y = app.visualizerCanvas.height - (value * app.visualizerCanvas.height * 1.2);
-            return [x, y];
-        };
+        let y0 = h - (data[0] || 0) * scaleY;
+        let y1 = y0;
+        let y2 = h - (data[1] || 0) * scaleY;
+        ctx.lineTo(0, y1);
 
-        for (let i = 0; i < bufferLength - 1; i++) {
-            const [x1, y1] = getPoint(i);
-            const [x2, y2] = getPoint(i + 1);
-            const [prev_x, prev_y] = i > 0 ? getPoint(i - 1) : [x1, y1];
-            const [next_x, next_y] = i < bufferLength - 2 ? getPoint(i + 2) : [x2, y2];
+        for (let i = 0; i < lastIdx; i++) {
+            const x1 = i * sliceWidth;
+            const x2 = (i + 1) * sliceWidth;
+            const y3 = i < lastIdx - 1 ? h - (data[i + 2] || 0) * scaleY : y2;
+            const cp1x = x1 + (i > 0 ? dxSpan : dxStep);
+            const cp1y = y1 + (y2 - y0) * t6;
+            const cp2x = x2 - (i < lastIdx - 1 ? dxSpan : dxStep);
+            const cp2y = y2 - (y3 - y1) * t6;
 
-            const tension = 0.5;
-            const cp1_x = x1 + (x2 - prev_x) / 6 * tension;
-            const cp1_y = y1 + (y2 - prev_y) / 6 * tension;
-            const cp2_x = x2 - (next_x - x1) / 6 * tension;
-            const cp2_y = y2 - (next_y - y1) / 6 * tension;
-
-            if (i === 0) {
-                app.visualizerCtx.lineTo(x1, y1);
-            }
-            app.visualizerCtx.bezierCurveTo(cp1_x, cp1_y, cp2_x, cp2_y, x2, y2);
+            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
+            y0 = y1;
+            y1 = y2;
+            y2 = y3;
         }
 
-        app.visualizerCtx.lineTo(app.visualizerCanvas.width, app.visualizerCanvas.height);
-        app.visualizerCtx.closePath();
-        app.visualizerCtx.fill();
+        ctx.lineTo(w, h);
+        ctx.closePath();
+        ctx.fill();
     };
+
+    // 这条循环该不该跑：
+    // - 窗口不可见：不跑。
+    // - 歌词舞台开着：舞台每一帧都是从这里驱动的（stageHost.updateFrame），要跑。
+    // - 经典视图被档案页盖住：不跑。
+    // - 正在播放：跑。暂停后只跑到频谱和封面落回静止为止。
+    app.visualizerShouldRun = () => {
+        if (app.visualizerDestroyed || document.hidden) return false;
+        if (app.isStageActive && app.stageHost?.active) return true;
+        if (document.body.classList.contains('music-archive-on')) return false;
+        if (app.isPlaying) return true;
+        if (performance.now() < (app._visualizerKeepUntil || 0)) return true; // 刚被叫醒：让背景把新状态画出来
+        const settling = app.targetVisualizerData.length > 0 && !app._visualizerIdle;
+        return settling || (Number.isFinite(app.bassScale) && app.bassScale !== 1.0);
+    };
+    // keepMs：暂停着也先画这么久（刚打开、换主题、改窗口大小后，背景要重画几帧才对）。
+    app.wakeVisualizer = (keepMs = 0) => {
+        if (keepMs > 0) app._visualizerKeepUntil = Math.max(app._visualizerKeepUntil || 0, performance.now() + keepMs);
+        if (!app.animationFrameId && app.visualizerShouldRun()) app.startVisualizerAnimation();
+    };
+    app._visualizerKeepUntil = performance.now() + 2500;
+    // 播放/暂停、进出舞台、档案页和经典视图互换以及主题/画质切换会改 body 的 class；忽略无关类名，避免暂停时空转 1.2 秒。
+    if (!app._visualizerWakeObserver && typeof MutationObserver === 'function') {
+        const wakeClassSig = () => {
+            const cl = document.body.classList;
+            return (cl.contains('music-archive-on') ? 1 : 0)
+                | (cl.contains('music-stage-active') ? 2 : 0)
+                | (cl.contains('music-playing') ? 4 : 0)
+                | (cl.contains('light-theme') ? 8 : 0)
+                | (cl.contains('music-reduce-motion') ? 16 : 0)
+                | (cl.contains('music-fl-low') ? 32 : 0);
+        };
+        let lastWakeSig = wakeClassSig();
+        app._visualizerWakeObserver = new MutationObserver(() => {
+            const sig = wakeClassSig();
+            if (sig === lastWakeSig) return;
+            lastWakeSig = sig;
+            markVocalSizeDirty();
+            app.wakeVisualizer(1200);
+        });
+        app._visualizerWakeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        app._visualizerWakeOnVisible = () => { markVocalSizeDirty(); app.wakeVisualizer(400); };
+        document.addEventListener('visibilitychange', app._visualizerWakeOnVisible);
+        window.addEventListener('resize', app._visualizerWakeOnVisible);
+    }
 
     app.startVisualizerAnimation = () => {
         if (app.visualizerDestroyed || app.animationFrameId) return;
@@ -303,6 +520,16 @@ function setupVisualizer(app) {
                 app.animationFrameId = null;
                 return;
             }
+            // Pixi 的全局 system ticker（纹理回收、指针事件）自己会一直按满帧空转：
+            // 停掉它的自驱动，改成跟着这里的真实帧走，页面静止时它也静止。
+            const pixiTicker = window.PIXI?.Ticker?.system;
+            if (pixiTicker?.started) { pixiTicker.autoStart = false; pixiTicker.stop(); }
+            // 没有东西要画就整个停下，不再空排帧；wakeVisualizer 在状态变化时再把循环叫起来。
+            if (!app.visualizerShouldRun()) {
+                app.animationFrameId = null;
+                return;
+            }
+            pixiTicker?.update(timestamp);
             const isStageActive = Boolean(app.isStageActive && app.stageHost?.active);
 
             if (app.isPlaying && !isStageActive) {
@@ -310,8 +537,12 @@ function setupVisualizer(app) {
             }
 
             // --- Cover Pulse Animation Logic ---
-            // 沉浸舞台拥有自己的封面与音频响应，普通封面在舞台期间停止写入 transform。
-            if (!isStageActive && app.isPlaying && app.currentVisualizerData.length > 0 && app.albumArtWrapper) {
+            // 沉浸舞台拥有自己的封面与音频响应，普通封面在舞台期间或降低动态时停止写入跳动缩放。
+            const canPulse = !isStageActive && app.isPlaying && app.currentVisualizerData.length > 0 && app.albumArtWrapper;
+            const reduceMotion = canPulse
+                ? (window.MusicMotion ? Boolean(window.MusicMotion.reduced?.()) : Boolean(document.body?.classList?.contains('music-reduce-motion')))
+                : false;
+            if (canPulse && !reduceMotion) {
                 const startBin = Math.max(0, Math.floor(app.currentVisualizerData.length * app.COVER_MID_START_RATIO));
                 const endBin = Math.min(
                     app.currentVisualizerData.length,
@@ -333,12 +564,20 @@ function setupVisualizer(app) {
                 app.coverPulseEnergy += (shapedEnergy - app.coverPulseEnergy) * app.COVER_PULSE_SMOOTHING;
 
                 app.bassScale = 1 + Math.min(app.coverPulseEnergy, 1) * app.COVER_PULSE_INTENSITY;
-                app.albumArtWrapper.style.transform = `scale(${app.bassScale})`;
+                const scaleQ = Math.round(app.bassScale * 10000);
+                if (scaleQ !== lastCoverScaleQ) {
+                    lastCoverScaleQ = scaleQ;
+                    app.albumArtWrapper.style.transform = `scale(${(scaleQ / 10000).toFixed(4)})`;
+                }
             } else if (app.albumArtWrapper && app.bassScale !== 1.0) {
                 app.coverPulseEnergy = 0;
                 app.bassScale += (1.0 - app.bassScale) * 0.18;
                 if (Math.abs(app.bassScale - 1.0) < 0.001) app.bassScale = 1.0;
-                app.albumArtWrapper.style.transform = `scale(${app.bassScale})`;
+                const scaleQ = app.bassScale === 1.0 ? 10000 : Math.round(app.bassScale * 10000);
+                if (scaleQ !== lastCoverScaleQ) {
+                    lastCoverScaleQ = scaleQ;
+                    app.albumArtWrapper.style.transform = scaleQ === 10000 ? 'scale(1)' : `scale(${(scaleQ / 10000).toFixed(4)})`;
+                }
             }
 
             if (app.targetVisualizerData.length === 0) {
@@ -382,59 +621,74 @@ function setupVisualizer(app) {
 
             if (isStageActive) {
                 app.stageHost.updateFrame(timestamp);
-                app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                if (!app._visualizerClearedForStage) {
+                    app._visualizerClearedForStage = true;
+                    app.visualizerCtx.clearRect(0, 0, app.visualizerCanvas.width, app.visualizerCanvas.height);
+                }
                 app.animationFrameId = requestAnimationFrame(draw);
                 return;
             }
+            app._visualizerClearedForStage = false;
 
             app.updateAmbientPixi?.(0.016);
             app.drawVisualizer(app.currentVisualizerData);
             app.drawVocalVisualizer();
 
             // 更新粒子
-            app.particles.forEach(p => {
-                const positionRatio = p.x / app.visualizerCanvas.width;
-                const dataIndexFloat = positionRatio * (app.currentVisualizerData.length - 1);
-                const index1 = Math.floor(dataIndexFloat);
-                const index2 = Math.min(index1 + 1, app.currentVisualizerData.length - 1);
+            const particles = app.particles;
+            const pCount = particles.length;
+            const visW = app.visualizerCanvas.width;
+            const visH = app.visualizerCanvas.height;
+            const curData = app.currentVisualizerData;
+            const dataLast = curData.length - 1;
+            if (pCount > 0 && visW > 0 && dataLast >= 0) {
+                const invVisW = dataLast / visW;
+                const scaleVisH = visH * 1.2;
+                for (let i = 0; i < pCount; i++) {
+                    const p = particles[i];
+                    const dataIndexFloat = p.x * invVisW;
+                    const index1 = Math.floor(dataIndexFloat);
+                    const index2 = index1 < dataLast ? index1 + 1 : dataLast;
 
-                const value1 = app.currentVisualizerData[index1] || 0;
-                const value2 = app.currentVisualizerData[index2] || 0;
-                const fraction = dataIndexFloat - index1;
-                const interpolatedValue = value1 + (value2 - value1) * fraction;
+                    const value1 = curData[index1] || 0;
+                    const value2 = curData[index2] || 0;
+                    const interpolatedValue = value1 + (value2 - value1) * (dataIndexFloat - index1);
 
-                const spectrumY = app.visualizerCanvas.height - (interpolatedValue * app.visualizerCanvas.height * 1.2);
-                p.targetY = spectrumY - 6;
-                p.update();
-            });
+                    p.targetY = visH - (interpolatedValue * scaleVisH) - 6;
+                    p.update();
+                }
+            }
 
             // 绘制粒子曲线
-            if (app.particles.length > 1) {
-                app.visualizerCtx.beginPath();
-                app.visualizerCtx.moveTo(app.particles[0].x, app.particles[0].y);
+            if (pCount > 1) {
+                const vctx = app.visualizerCtx;
+                vctx.beginPath();
+                vctx.moveTo(particles[0].x, particles[0].y);
 
-                for (let i = 0; i < app.particles.length - 2; i++) {
-                    const p1 = app.particles[i];
-                    const p2 = app.particles[i + 1];
-                    const xc = (p1.x + p2.x) / 2;
-                    const yc = (p1.y + p2.y) / 2;
-                    app.visualizerCtx.quadraticCurveTo(p1.x, p1.y, xc, yc);
+                for (let i = 0; i < pCount - 2; i++) {
+                    const p1 = particles[i];
+                    const p2 = particles[i + 1];
+                    vctx.quadraticCurveTo(p1.x, p1.y, (p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.5);
                 }
 
-                const secondLast = app.particles[app.particles.length - 2];
-                const last = app.particles[app.particles.length - 1];
-                app.visualizerCtx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y);
+                const secondLast = particles[pCount - 2];
+                const last = particles[pCount - 1];
+                vctx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y);
 
                 const { r, g, b } = app.visualizerColor;
-                app.visualizerCtx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
-                app.visualizerCtx.lineWidth = 1.5;
-                app.visualizerCtx.lineJoin = 'round';
-                app.visualizerCtx.lineCap = 'round';
-                app.visualizerCtx.stroke();
+                if (particleR !== r || particleG !== g || particleB !== b) {
+                    particleR = r; particleG = g; particleB = b;
+                    particleStrokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
+                }
+                vctx.strokeStyle = particleStrokeStyle;
+                vctx.lineWidth = 1.5;
+                vctx.lineJoin = 'round';
+                vctx.lineCap = 'round';
+                vctx.stroke();
             }
 
             app.animationFrameId = requestAnimationFrame(draw);
         };
-        draw();
+        draw(performance.now());
     };
 }

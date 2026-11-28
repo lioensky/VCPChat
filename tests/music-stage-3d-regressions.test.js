@@ -120,6 +120,65 @@ test('mode settings keep their own ranges', () => {
     dom.window.close();
 });
 
+test('the sung-word hop and the lyric face are settings of the two 3D stages only', () => {
+    const dom = createDom();
+    const { MusicStageConfig: Config } = loadStage(dom);
+    assert.equal(Config.get().modes.diorama.lyricHop, 1);
+    assert.equal(Config.get().modes.tunnel.lyricHop, 1);
+    Config.setModePatch('diorama', { lyricHop: 5 });
+    assert.equal(Config.get().modes.diorama.lyricHop, 2);
+    Config.setModePatch('tunnel', { lyricHop: 0 });
+    assert.equal(Config.get().modes.tunnel.lyricHop, 0);
+    assert.equal(Config.get().modes.luminous.lyricHop, undefined);
+    assert.equal(Config.get().modes.diorama.lyricFont, 'sans');
+    Config.setModePatch('diorama', { lyricFont: 'serif' });
+    assert.equal(Config.get().modes.diorama.lyricFont, 'serif');
+    Config.setModePatch('tunnel', { lyricFont: 'comic' });
+    assert.equal(Config.get().modes.tunnel.lyricFont, 'sans');
+    assert.equal(Config.get().modes.luminous.lyricFont, undefined);
+    dom.window.close();
+});
+
+test('the 3D stages take the cover\'s most vivid hue into their sky, and a grey cover gives none', () => {
+    const dom = createDom();
+    const { MusicStageConfig: Config, MusicStageModeUtils: U } = loadStage(dom);
+    assert.equal(Config.get().modes.diorama.coverTint, 0.5);
+    Config.setModePatch('diorama', { coverTint: 3 });
+    assert.equal(Config.get().modes.diorama.coverTint, 1);
+    assert.equal(Config.get().modes.tunnel.coverTint, 0.5);
+    assert.equal(Config.get().modes.luminous.coverTint, undefined);
+    const pixels = (list) => Uint8ClampedArray.from(list.flatMap(([r, g, b]) => [r, g, b, 255]));
+    // A red square on black: black has no hue, so red is the colour.
+    const red = pixels([...Array(30).fill([200, 40, 60]), ...Array(70).fill([0, 0, 0])]);
+    assert.equal(U.dominantHue(red), '#c8283c');
+    // Mostly sky blue with a sand strip: the larger vivid area wins.
+    const sky = pixels([...Array(60).fill([90, 160, 230]), ...Array(40).fill([232, 216, 176])]);
+    assert.equal(U.dominantHue(sky), '#5aa0e6');
+    // Greys, black and white only.
+    const grey = pixels(Array.from({ length: 100 }, (_, i) => [i * 2.5, i * 2.5, i * 2.5]));
+    assert.equal(U.dominantHue(grey), null);
+    dom.window.close();
+});
+
+test('marker lines and placeholder translations never reach a 3D stage', () => {
+    const dom = createDom();
+    const { MusicStageRuntime: R, MusicStageDioramaDirector: Director } = loadStage(dom, 'Musicmodules/music-stage/modes/diorama-director.js');
+    assert.equal(R.readableText('●●●'), false);
+    assert.equal(R.readableText(' // '), false);
+    assert.equal(R.readableText('——'), false);
+    assert.equal(R.readableText('海'), true);
+    assert.equal(R.readableText('Love 2'), true);
+    assert.equal(R.resolveSupplementalText({ translation: '//' }), '');
+    assert.equal(R.resolveSupplementalText({ translation: ' Sea ' }), 'Sea');
+    const lines = R.normalizeLines([
+        { time: 10, original: '清晨的站台' }, { time: 14, original: '●●●' },
+        { time: 30, original: '//' }, { time: 34, original: '列车带走昨夜的梦' }
+    ]);
+    const timeline = Director.compile({ lines, trackId: 't', duration: 60 });
+    assert.deepEqual(timeline.lines.map(line => line.fullText), ['清晨的站台', '列车带走昨夜的梦']);
+    dom.window.close();
+});
+
 test('diorama rain is off unless chosen, and only takes its three settings', () => {
     const dom = createDom();
     const { MusicStageConfig: Config } = loadStage(dom);
@@ -171,7 +230,7 @@ test('3D modes draw to a pixel budget and step down while frames are slow', () =
     scale.tick(now);
     assert.equal(run(16.7, 600), 0, 'a held frame rate changes nothing');
     assert.equal(run(4000, 3), 0, 'a hidden window is not a slow renderer');
-    assert.ok(run(33.3, 200) >= 1, 'thirty frames a second steps down');
+    assert.ok(run(33.3, 100) >= 1, 'thirty frames a second steps down');
     assert.ok(scale.factor < 1 && scale.factor >= 0.55);
     assert.ok(scale.ratio('standard', 2560, 1440) < large);
     const low = scale.factor;
@@ -194,4 +253,399 @@ test('a wobbling duration does not rebuild the diorama song', () => {
     assert.match(manager, /U\.durationChanged\(compiledDuration, nextDuration\)/);
     assert.doesNotMatch(manager, /compiledDuration !== nextDuration/);
     dom.window.close();
+});
+
+test('3D stages step down pixels, then a tier, and only get pixels back on their own', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const scale = U.createRenderScale();
+    const config = { quality: 'standard', modes: {} };
+    let now = 1000;
+    // Feed frames at a steady interval until the ladder moves (or give up).
+    const run = (interval, aim, limit = 400) => {
+        for (let i = 0; i < limit; i++) {
+            now += interval;
+            if (scale.tick(now, aim)) return true;
+        }
+        return false;
+    };
+    assert.equal(scale.config(config), config, 'nothing dropped: the same settings object');
+    // 30 fps against a 60 fps cap: fewer pixels first, twice, before any effect goes.
+    assert.ok(run(33, 16.7)); assert.ok(run(33, 16.7));
+    assert.equal(scale.steps, 2);
+    assert.equal(scale.quality('standard'), 'standard');
+    assert.ok(scale.factor < 0.75);
+    // One slow judgement more is not enough to give up an effect tier: a song
+    // change or another busy app can do that for a second.
+    for (let i = 0; i < 50; i++) { now += 33; assert.equal(scale.tick(now, 16.7), false); }
+    assert.equal(scale.quality('standard'), 'standard');
+    // Still slow: the tier below (no lens, 30 fps cap).
+    assert.ok(run(33, 16.7));
+    assert.equal(scale.quality('standard'), 'energy-saving');
+    assert.equal(scale.config(config).quality, 'energy-saving');
+    assert.equal(scale.config(config), scale.config(config), 'derived settings are stable between frames');
+    // Holding 30 fps under the 30 fps cap is fine: no further drop, and the tier is not retried.
+    assert.equal(run(33, 33.3, 3000), false);
+    assert.equal(scale.steps, 3);
+    // Picking a tier again starts from the top.
+    scale.reset();
+    assert.equal(scale.steps, 0);
+    assert.equal(scale.quality('ultimate'), 'ultimate');
+});
+
+test('the canvas shaders for a lens-less tier are compiled in the background before the drop', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const compiled = [];
+    const renderer = (parallel) => ({
+        extensions: { has: (name) => parallel && name === 'KHR_parallel_shader_compile' },
+        getRenderTarget: () => null,
+        setRenderTarget(target) { this.target = target; },
+        compileAsync() { throw new Error('the renderer\'s own wait is not used'); },
+        compile(scene) { compiled.push([scene, this.target]); return new Set([{}]); },
+        properties: { get: () => ({ currentProgram: { isReady: () => true } }) },
+        getContext: () => null,
+        info: { programs: [] }
+    });
+    const T = { WebGLRenderTarget: class { dispose() {} }, HalfFloatType: 1 };
+    const scene = {}, camera = {};
+    // Not on the way down yet: nothing to do.
+    assert.equal(U.warmLensless(T, renderer(true), scene, camera, { steps: 0 }, 'standard'), false);
+    // Standard keeps its lens until the drop to the saving tier, which draws to the canvas.
+    assert.equal(U.warmLensless(T, renderer(true), scene, camera, { steps: 1 }, 'standard'), true);
+    assert.deepEqual(compiled, [[scene, null]]);
+    // The top tier drops to standard, which still has its lens: wait for the next rung.
+    assert.equal(U.warmLensless(T, renderer(true), scene, camera, { steps: 1 }, 'ultimate'), false);
+    // Without background compiling it would only move the stall, so it is skipped (and marked done).
+    assert.equal(U.warmLensless(T, renderer(false), scene, camera, { steps: 1 }, 'standard'), true);
+    assert.equal(compiled.length, 1);
+});
+
+
+test('the track card box is handed to 3D modes in picture units, and only when it is shown', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const doc = dom.window.document;
+    const stage = doc.createElement('div'); stage.className = 'music-stage';
+    const root = doc.createElement('section');
+    const card = doc.createElement('aside'); card.className = 'music-stage-id3';
+    stage.append(root, card); doc.body.append(stage);
+    root.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 500 });
+    card.getBoundingClientRect = () => ({ left: 16, right: 216, top: 50, bottom: 175, width: 200, height: 125 });
+    let observed = 0;
+    dom.window.ResizeObserver = class { constructor(fn) { this.fn = fn; } observe() { observed += 1; } disconnect() {} };
+    const overlay = U.watchOverlay(root);
+    assert.equal(observed, 2, 'card and stage are watched, nothing is read per frame');
+    assert.equal(overlay.box, null);
+    overlay.measure();
+    const box = overlay.box;
+    assert.ok(Math.abs(box.left - -0.96) < 1e-9 && Math.abs(box.right - -0.46) < 1e-9);
+    assert.ok(Math.abs(box.top - 0.8) < 1e-9 && Math.abs(box.bottom - 0.3) < 1e-9);
+    card.style.display = 'none';
+    overlay.measure();
+    assert.equal(overlay.box, null, 'a hidden card is not avoided');
+    overlay.destroy();
+    assert.equal(U.watchOverlay(doc.createElement('div')).box, null, 'a mode outside the stage has no card');
+});
+
+test('the handover veil reads the 3D picture back at most four times a second while waiting', () => {
+    const dom = createDom();
+    const { MusicStageModeUtils: U } = loadStage(dom);
+    const root = dom.window.document.createElement('div');
+    const veil = U.createHandoverVeil(root);
+    const canvas = root.querySelector('canvas');
+    let reads = 0;
+    canvas.getContext = () => ({ drawImage() { reads += 1; } });
+    let now = 1000;
+    dom.window.performance.now = () => now;
+    const source = { width: 640, height: 360 };
+    for (let i = 0; i < 60; i++) { veil.capture(source); now += 16.7; }
+    assert.ok(veil.captured);
+    assert.equal(reads, 4, 'one second at 60 fps: four reads');
+    // A theme switch needs exactly the picture on screen now.
+    veil.capture(source, { every: 0 });
+    assert.equal(reads, 5);
+    // A new size is read at once.
+    veil.capture({ width: 800, height: 450 });
+    assert.equal(reads, 6);
+    veil.destroy();
+});
+
+test('diorama-optics skips all 7 bloom passes when glow is 0 and runs full pyramid when glow > 0', () => {
+    const dom = createDom();
+    const win = loadStage(dom, 'Musicmodules/music-stage/modes/diorama-optics.js');
+    const createdTargets = [];
+    const createdMaterials = [];
+    class Vector2 { constructor(x = 0, y = 0) { this.x = x; this.y = y; } set(x, y) { this.x = x; this.y = y; return this; } }
+    class WebGLRenderTarget {
+        constructor(w, h, opts = {}) { this.width = w; this.height = h; this.samples = opts.samples || 0; this.texture = {}; this.disposed = 0; createdTargets.push(this); }
+        setSize(w, h) { this.width = w; this.height = h; }
+        dispose() { this.disposed += 1; }
+    }
+    class ShaderMaterial {
+        constructor(opts) { Object.assign(this, opts); this.disposed = 0; createdMaterials.push(this); }
+        dispose() { this.disposed += 1; }
+    }
+    const T = {
+        HalfFloatType: 1, LinearFilter: 2, AdditiveBlending: 3, Vector2, WebGLRenderTarget, ShaderMaterial,
+        Scene: class { add() {} },
+        OrthographicCamera: class {},
+        PlaneGeometry: class { dispose() {} },
+        Mesh: class { constructor(g, m) { this.geometry = g; this.material = m; } }
+    };
+    const optics = win.MusicStageDioramaOptics.create(T);
+    let renderCalls = 0;
+    let currentTarget = null;
+    const renderer = {
+        autoClear: true,
+        getDrawingBufferSize: (v) => v.set(640, 360),
+        getRenderTarget: () => currentTarget,
+        setRenderTarget: (t) => { currentTarget = t; },
+        clear() {},
+        render() { renderCalls += 1; }
+    };
+    optics.render(renderer, {}, {}, 1.0, { quality: 'standard' }, { glow: 0 });
+    assert.equal(renderCalls, 2, 'glow=0 renders only world target + final composite (skips 7 bloom passes)');
+
+    renderCalls = 0;
+    optics.render(renderer, {}, {}, 1.0, { quality: 'standard' }, { glow: 1 });
+    assert.equal(renderCalls, 9, 'glow>0 runs world + prefilter + 3 down + 3 up + final composite');
+
+    const composite = createdMaterials.find((m) => m.uniforms?.glowMap);
+    assert.match(composite.fragmentShader, /if\(bloom>0\.0\)/);
+    assert.match(composite.fragmentShader, /if\(cabin>0\.001\)/);
+
+    optics.destroy();
+    assert.ok(createdTargets.every((t) => t.disposed >= 1), 'all render targets disposed');
+    assert.ok(createdMaterials.every((m) => m.disposed >= 1), 'all shader materials disposed');
+    dom.window.close();
+});
+
+test('kowloon manager exposes getDegrade, debug scale fields and precompiles optics', () => {
+    const dom = createDom();
+    const win = loadStage(dom, 'Musicmodules/music-stage/modes/kowloon-manager.js');
+    const host = dom.window.document.createElement('div');
+    dom.window.document.body.appendChild(host);
+    const mode = win.MusicStageKowloonManager.create(host, { app: { stagePalette: {} } });
+    assert.equal(typeof mode.getDegrade, 'function');
+    assert.deepEqual({ ...mode.getDegrade() }, { steps: 0, quality: 'standard' });
+
+    mode.updateConfig({ quality: 'energy-saving' });
+    assert.deepEqual({ ...mode.getDegrade() }, { steps: 0, quality: 'energy-saving' });
+
+    const snap = mode.getDebugSnapshot();
+    assert.equal(snap.degradeSteps, 0);
+    assert.equal(snap.drawnQuality, 'energy-saving');
+    assert.equal(typeof snap.canvasSmoothing, 'boolean');
+
+    const src = read('Musicmodules/music-stage/modes/kowloon-manager.js');
+    assert.match(src, /optics\?\.precompile\?\.\(renderer\)/);
+    assert.match(src, /U\.settlePrograms\(/);
+    mode.destroy();
+    dom.window.close();
+});
+
+test('diorama-lyrics uses per-vertex glyphSpan without 64-step fragment loop and tunnel disposes glyphScrim', () => {
+    const lyricsSrc = read('Musicmodules/music-stage/modes/diorama-lyrics.js');
+    assert.match(lyricsSrc, /attribute vec2 glyphSpan;/);
+    assert.doesNotMatch(lyricsSrc, /for\(int i=0;i<64;i\+\+\)/);
+
+    const tunnelSrc = read('Musicmodules/music-stage/modes/tunnel-manager.js');
+    assert.match(tunnelSrc, /glyphScrim\.geometry/);
+    assert.match(tunnelSrc, /glyphScrim\.material/);
+});
+
+test('Batch 131: releaseWebGLContext defers loseContext until GPU fence signals and flushes on beforeunload', () => {
+    const dom = createDom();
+    const win = loadStage(dom);
+    const timers = [];
+    win.setTimeout = (fn) => { timers.push({ fn, cleared: false }); return timers.length; };
+    win.clearTimeout = (id) => { if (timers[id - 1]) timers[id - 1].cleared = true; };
+
+    let signaled = false;
+    let flushed = 0;
+    let deletedSync = 0;
+    let lost = 0;
+    const canvas = { width: 1440, height: 900, isConnected: false };
+    const syncToken = { id: 1 };
+    const gl = {
+        SYNC_GPU_COMMANDS_COMPLETE: 0x9117,
+        SYNC_STATUS: 0x9114,
+        SIGNALED: 0x9119,
+        UNSIGNALED: 0x9118,
+        canvas,
+        isContextLost: () => lost > 0,
+        fenceSync: () => syncToken,
+        flush: () => { flushed += 1; },
+        getSyncParameter: () => (signaled ? 0x9119 : 0x9118),
+        deleteSync: (s) => { if (s === syncToken) deletedSync += 1; },
+        getExtension: (name) => (name === 'WEBGL_lose_context' ? { loseContext: () => { lost += 1; } } : null)
+    };
+    const renderer = { getContext: () => gl, forceContextLoss: () => { lost += 100; } };
+
+    assert.equal(win.MusicStageRuntime.releaseWebGLContext(renderer), true);
+    assert.equal(flushed, 1, 'fenceSync immediately flushes GPU command queue');
+    assert.equal(lost, 0, 'loseContext is deferred while GPU fence is unsignaled');
+    assert.equal(timers.length, 1);
+
+    // First poll: still unsignaled -> reschedules without stalling
+    timers[0].fn();
+    assert.equal(lost, 0);
+    assert.equal(timers.length, 2);
+
+    // Second poll: fence signaled -> deletes sync, shrinks detached canvas, loses context
+    signaled = true;
+    timers[1].fn();
+    assert.equal(deletedSync, 1);
+    assert.equal(canvas.width, 1);
+    assert.equal(canvas.height, 1);
+    assert.equal(lost, 1);
+
+    // Pending release flushes synchronously on beforeunload
+    signaled = false;
+    let unloadLost = 0;
+    const gl2 = {
+        ...gl,
+        isContextLost: () => unloadLost > 0,
+        getExtension: (name) => (name === 'WEBGL_lose_context' ? { loseContext: () => { unloadLost += 1; } } : null)
+    };
+    win.MusicStageRuntime.releaseWebGLContext({ getContext: () => gl2 });
+    assert.equal(unloadLost, 0);
+    win.dispatchEvent(new win.Event('beforeunload'));
+    assert.equal(unloadLost, 1, 'beforeunload flushes pending WebGL context release');
+
+    // Immediate flag falls back to synchronous forceContextLoss
+    let syncForced = 0;
+    win.MusicStageRuntime.releaseWebGLContext({ forceContextLoss: () => { syncForced += 1; } }, { immediate: true });
+    assert.equal(syncForced, 1);
+
+    // Verify 3D stages wire releaseWebGLContext and Kowloon prepares haze before precompile
+    const kowloonSrc = read('Musicmodules/music-stage/modes/kowloon-manager.js');
+    const prepareIdx = kowloonSrc.indexOf('alley?.prepareHaze?.()');
+    const precompileIdx = kowloonSrc.indexOf('await U.precompile(');
+    assert.ok(prepareIdx > 0 && precompileIdx > prepareIdx, 'kowloon patches layered haze before shader precompile');
+    assert.match(kowloonSrc, /R\.releaseWebGLContext/);
+    assert.match(read('Musicmodules/music-stage/modes/diorama-manager.js'), /R\.releaseWebGLContext/);
+    const tunnelSrc = read('Musicmodules/music-stage/modes/tunnel-manager.js');
+    assert.match(tunnelSrc, /R\.releaseWebGLContext/);
+    assert.match(tunnelSrc, /await U\.settlePrograms\(renderer/);
+    const signsSrc = read('Musicmodules/music-stage/modes/kowloon-signs.js');
+    assert.match(signsSrc, /willReadFrequently:\s*true/);
+    assert.doesNotMatch(signsSrc, /shadowBlur/);
+
+    dom.window.close();
+});
+
+test('Batch 135: compilePasses queues parallel passes together, settlePrograms defers unready programs, and 3D stages wire async warm-up & atlas cache', async () => {
+    const dom = createDom();
+    const win = loadStage(dom);
+    const U = win.MusicStageModeUtils;
+    const R = win.MusicStageRuntime;
+
+    // 1. Parallel compilePasses queues every pass before polling isReady()
+    const events = [];
+    let readyCount = 0;
+    const matA = { id: 'A' };
+    const matB = { id: 'B' };
+    const targets = [];
+    const prevTarget = { id: 'prev' };
+    let curTarget = prevTarget;
+    const parallelRenderer = {
+        extensions: { has: (name) => name === 'KHR_parallel_shader_compile' },
+        getRenderTarget: () => curTarget,
+        setRenderTarget: (t) => { curTarget = t; targets.push(t); },
+        compileAsync: () => {},
+        compile: (sc) => {
+            events.push(`compile:${sc.id}`);
+            return new Set([sc.mat]);
+        },
+        properties: {
+            get: (mat) => ({
+                currentProgram: {
+                    isReady: () => {
+                        events.push(`ready:${mat.id}`);
+                        readyCount += 1;
+                        return readyCount > 2;
+                    }
+                }
+            })
+        },
+        getContext: () => ({ isContextLost: () => false })
+    };
+    await U.compilePasses(parallelRenderer, [
+        { target: { id: 't1' }, scene: { id: 's1', mat: matA }, camera: {}, before: () => events.push('before:1') },
+        { target: { id: 't2' }, scene: { id: 's2', mat: matB }, camera: {}, before: () => events.push('before:2') }
+    ]);
+    assert.equal(curTarget, prevTarget, 'previous render target restored');
+    assert.ok(events.indexOf('compile:s2') < events.indexOf('ready:A'), 'all passes queued before polling readiness');
+    assert.ok(events.includes('before:1') && events.includes('before:2'));
+
+    // 2. settlePrograms checks COMPLETION_STATUS_KHR before LINK_STATUS
+    const STATUS_KHR = 0x91B1;
+    const LINK_STATUS = 0x8B82;
+    let complete = false;
+    let linkReads = 0;
+    let uniformsRead = 0;
+    let attrsRead = 0;
+    const prog = { id: 'p1' };
+    const gl = {
+        LINK_STATUS,
+        isContextLost: () => false,
+        getExtension: (n) => (n === 'KHR_parallel_shader_compile' ? { COMPLETION_STATUS_KHR: STATUS_KHR } : null),
+        getProgramParameter: (p, pname) => {
+            if (pname === STATUS_KHR) {
+                const was = complete;
+                complete = true;
+                return was;
+            }
+            if (pname === LINK_STATUS) { linkReads += 1; return true; }
+            return true;
+        }
+    };
+    await R.settlePrograms({
+        getContext: () => gl,
+        info: {
+            programs: [{
+                program: prog,
+                getUniforms: () => { uniformsRead += 1; },
+                getAttributes: () => { attrsRead += 1; }
+            }]
+        }
+    });
+    assert.equal(complete, true);
+    assert.equal(linkReads, 1, 'LINK_STATUS queried once after COMPLETION_STATUS_KHR turns true');
+    assert.equal(uniformsRead, 1);
+    assert.equal(attrsRead, 1);
+
+    // 3. Structural wiring checks for Tunnel, Diorama, Kowloon, and Tempera
+    const tunnelSrc = read('Musicmodules/music-stage/modes/tunnel-manager.js');
+    assert.match(tunnelSrc, /uniform int uOctaves;/);
+    assert.match(tunnelSrc, /world\.beginPrepare\(\)/);
+    assert.match(tunnelSrc, /extraPasses:\s*\[skyJob\.pass\]/);
+
+    const dioramaWorldSrc = read('Musicmodules/music-stage/modes/diorama-world.js');
+    const dioramaMgrSrc = read('Musicmodules/music-stage/modes/diorama-manager.js');
+    assert.match(dioramaWorldSrc, /prepareEnvironmentAsync/);
+    assert.match(dioramaMgrSrc, /world\.prepareEnvironmentAsync/);
+
+    const kowloonMgrSrc = read('Musicmodules/music-stage/modes/kowloon-manager.js');
+    const kowloonSignsSrc = read('Musicmodules/music-stage/modes/kowloon-signs.js');
+    assert.match(kowloonMgrSrc, /ctx\.asyncPaint\s*=\s*true/);
+    assert.match(kowloonMgrSrc, /await signs\.paintAsync/);
+    assert.equal((kowloonSignsSrc.match(/addMesh\(hw,\s*hardwareMat/g) || []).length, 1, 'hardware mesh built once');
+    assert.match(kowloonSignsSrc, /clearParkedAtlas/);
+
+    const temperaSrc = read('Musicmodules/music-stage/modes/tempera-pixi-core.js');
+    assert.match(temperaSrc, /warmPrograms\?\.\(this\.app\.renderer\.gl,\s*\[this\.postProcess\.glProgram\]/);
+
+    dom.window.close();
+});
+
+test('r136: diorama endMaterial hitBox avoids mixed int/float vec3 ternaries that fail D3D11 FXC', () => {
+    const src = read('Musicmodules/music-stage/modes/diorama-world.js');
+    assert.match(src, /void hitBox\(vec3 o,vec3 inv,vec3 sgn,vec3 lo,vec3 hi,float id,inout float best,inout vec3 n,inout float what\)/);
+    assert.match(src, /d\.z=abs\(d\.z\)<0\.0001\?0\.0001:d\.z;/);
+    assert.doesNotMatch(src, /vec3\(-sign\(d\.x\),0,0\)/, 'no mixed int/float vec3 literal in cab hitBox/room normals');
+    assert.doesNotMatch(src, /vec3\(0,-sign\(d\.y\),0\)/);
+    assert.doesNotMatch(src, /vec3\(0,0,-sign\(d\.z\)\)/);
 });

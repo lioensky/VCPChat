@@ -39,6 +39,6 @@ module.exports = {
             } catch {
                 return '';
             }
-        }).roles('chat'),
+        }).roles('chat', 'utility'),
     },
 };

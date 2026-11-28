@@ -43,7 +43,11 @@ test('Markdown 保留多语言正文，忽略计时数据，明确提示无歌�
     assert.ok(text.includes('\\# 歌曲'));
     assert.ok(formatCurrentLyrics({
         track: { title: '<script>' }, lines: []
-    }).includes('<script>'));
+    }).includes('&lt;script&gt;'));
+    const angle = formatCurrentLyrics({ track: { title: 'x' }, lines: [{ original: '<img src=x onerror=alert(1)> & <3' }] });
+    assert.ok(!angle.includes('<img') && angle.includes('&lt;img') && angle.includes('&amp; &lt;3'));
+    assert.match(formatCurrentLyrics({ track: { title: '歌曲' }, lines: [], loading: true }), /歌词还在加载/);
+    assert.match(formatCurrentLyrics({ track: { title: '歌曲' }, lines: [{ original: '有词' }], loading: true }), /有词/);
 });
 
 function rendererHarness() {
@@ -82,6 +86,34 @@ test('渲染端按当前路径读取，暂停可读，不泄露音源路径及�
     harness.app.pendingTrackPath = null;
     harness.query();
     assert.equal(harness.sent[2].snapshot.track, null);
+});
+
+test('找词期间报告「还在加载」，找完、被新请求或手选取代后不再报告', async () => {
+    const harness = rendererHarness();
+    let finish;
+    const li = { innerHTML: '' };
+    Object.assign(harness.app, {
+        lyricsList: Object.assign(li, { style: {} }),
+        renderLyrics() {},
+        parseLrc: () => [{ original: '找到了', translation: '', romanization: '' }]
+    });
+    harness.app.api.getMusicLyrics = () => new Promise((resolve) => { finish = resolve; });
+    const loading = () => { harness.query(); return harness.sent.at(-1).snapshot.loading; };
+    const pending = harness.app.fetchAndDisplayLyrics('歌手', '当前歌曲');
+    assert.equal(loading(), true);
+    finish('[00:01]找到了');
+    await pending;
+    assert.equal(loading(), false);
+    assert.equal(harness.sent.at(-1).snapshot.lines[0].original, '找到了');
+
+    // 手选歌词会作废自动请求：之后不能一直报告在加载
+    const again = harness.app.fetchAndDisplayLyrics('歌手', '当前歌曲');
+    assert.equal(loading(), true);
+    harness.app.lyricsRequestToken++;
+    assert.equal(loading(), false);
+    finish(null);
+    await again;
+    assert.equal(loading(), false);
 });
 
 function mainHarness() {
@@ -159,4 +191,77 @@ test('分布式服务透传歌词标准 content，不替换为执行成功提示
     }, { requestId: 'test', toolName: 'MusicController', toolArgs: {} });
     assert.equal(response.data.status, 'success');
     assert.equal(response.data.result, lyrics);
+});
+test('AI 点歌能进入播放器里的每一个演出模式', () => {
+    const ids = new Set();
+    for (const file of ['Musicmodules/music-stage/music-stage-modes.js', 'Musicmodules/music-stage/music-stage-advanced-modes.js']) {
+        for (const m of read(file).matchAll(/\{\s*id:\s*'([a-z]+)',\s*label:\s*'([^']+)'/g)) ids.add(`${m[1]}:${m[2]}`);
+    }
+    ids.add('starborn:星诞');
+    assert.ok(ids.size >= 9, [...ids].join(','));
+    const handlers = read('modules/ipc/musicHandlers.js');
+    const accepted = handlers.slice(handlers.indexOf('supportedStageModes'), handlers.indexOf(']);', handlers.indexOf('supportedStageModes')));
+    const controller = read('VCPDistributedServer/Plugin/MusicController/music-controller.js');
+    const manifest = read('VCPDistributedServer/Plugin/MusicController/plugin-manifest.json');
+    for (const entry of ids) {
+        const [id, label] = entry.split(':');
+        assert.ok(accepted.includes(`'${id}'`), `musicHandlers 不接受 ${id}`);
+        assert.ok(controller.includes(`${id}: '${id}'`) && controller.includes(`'${label}': '${id}'`), `插件不认 ${id}/${label}`);
+        assert.ok(manifest.includes(`${id}（${label}）`), `插件说明里没写 ${id}（${label}）`);
+    }
+});
+
+test('stageMode 拒绝 Object.prototype 继承属性名', () => {
+    for (const bad of ['constructor', '__proto__', 'toString']) {
+        const result = spawnSync(process.execPath, [
+            path.join(root, 'VCPDistributedServer/Plugin/MusicController/music-controller.js')
+        ], { input: JSON.stringify({ songname: '歌曲', stageMode: bad }), encoding: 'utf8' });
+        assert.notEqual(result.status, 0, `${bad} must be rejected`);
+        assert.match(result.stderr, /Unknown stage mode/);
+    }
+});
+
+test('Batch 114: single-pass escapeMarkdown & parallel sidecar .ttml/.lrc priority', async () => {
+    const os = require('node:os');
+    const { registerMusicLyricsHandlers } = require('../modules/ipc/musicLyricsHandlers');
+
+    // 1. Single-pass Markdown/HTML/newline escaping
+    const md = formatCurrentLyrics({
+        track: { title: 'A & B <C> *bold* [1]', artist: 'Line1\r\nLine2\nLine3', album: 'a_b`c~d|e' },
+        lines: [{ original: '1+2-3! (x) {y} #z\\', romanization: 'r1\rr2', translation: 't>1' }]
+    });
+    assert.ok(md.includes('A &amp; B &lt;C&gt; \\*bold\\* \\[1\\]'));
+    assert.ok(md.includes('Line1 Line2 Line3'));
+    assert.ok(md.includes('a\\_b\\`c\\~d\\|e'));
+    assert.ok(md.includes('1\\+2\\-3\\! \\(x\\) \\{y\\} \\#z\\\\'));
+    assert.ok(md.includes('r1 r2'));
+    assert.ok(md.includes('t&gt;1'));
+
+    // 2. Parallel sidecar stat preserves .ttml priority over .lrc and falls back to .lrc when .ttml is empty/invalid
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vmusic-sidecar-'));
+    const cacheDir = path.join(tmp, 'cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    try {
+        const handlers = new Map();
+        registerMusicLyricsHandlers({
+            ipcMain: { handle: (ch, fn) => handlers.set(ch, fn) },
+            lyricFetcher: {},
+            getLyricDir: () => cacheDir
+        });
+        const getLyrics = handlers.get('music-get-lyrics');
+        const trackA = path.join(tmp, 'both.flac');
+        fs.writeFileSync(path.join(tmp, 'both.ttml'), '<tt><body><p begin="00:01.000" end="00:03.000">TTML Line</p></body></tt>');
+        fs.writeFileSync(path.join(tmp, 'both.lrc'), '[00:01.00]LRC Line');
+        const resA = await getLyrics({}, { title: 'both', artist: 'A', path: trackA });
+        assert.equal(resA?.source, 'sidecar');
+        assert.equal(resA?.lines?.[0]?.fullText, 'TTML Line');
+
+        const trackB = path.join(tmp, 'fallback.flac');
+        fs.writeFileSync(path.join(tmp, 'fallback.ttml'), '<tt><body></body></tt>');
+        fs.writeFileSync(path.join(tmp, 'fallback.lrc'), '[00:02.00]Fallback LRC');
+        const resB = await getLyrics({}, { title: 'fallback', artist: 'B', path: trackB });
+        assert.equal(resB, '[00:02.00]Fallback LRC');
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
 });

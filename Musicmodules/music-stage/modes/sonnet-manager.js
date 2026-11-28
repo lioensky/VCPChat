@@ -15,26 +15,30 @@
         stageContainer.style.overflow = 'hidden';
         mode.root.append(stageContainer);
 
-        const eyebrow = createElement('div', 'sonnet-eyebrow', 'SONNET / PIXI MOTION GRAPHICS');
+        const eyebrow = createElement('div', 'sonnet-eyebrow', '商籁');
         const translation = createElement('div', 'stage-translation sonnet-translation');
         const hud = createElement('div', 'sonnet-hud');
         mode.root.append(eyebrow, translation, hud);
 
         let renderedKey = '';
         let paused = false;
+        const still = Utils.createStillGate();
 
         let latestFrame = null;
+        let lastPalRef = undefined, lastPalJson = 'null';
         const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)');
         const getTuning = () => ({
             ...mode.config.modes?.sonnet,
             palette: services?.app?.stagePalette,
             animationIntensity: mode.config.animationIntensity ?? 1,
             quality: mode.config.quality,
-            reducedMotion: Boolean(reducedMotion?.matches)
+            reducedMotion: global.MusicStageRuntime.isReducedMotion(reducedMotion)
         });
 
         // 实例化 Pixi.js 商籁高级图形导演
-        const director = global.SonnetPixiDirector ? new global.SonnetPixiDirector(stageContainer) : null;
+        const director = global.SonnetPixiDirector ? new global.SonnetPixiDirector(stageContainer, {
+            canvasAntialias: !global.MusicStagePixiEffects.lensOn(mode.config, 'sonnet')
+        }) : null;
         if (director) {
             director.init().then(() => {
                 if (!mode.destroyed && latestFrame) mode.updateFrame(latestFrame);
@@ -67,10 +71,15 @@
             if (key !== renderedKey || changed) buildScene(currentFrame);
 
             const tuning = getTuning();
+            const caption = Utils.lineCounter(currentFrame);
+            if (hud.textContent !== caption) hud.textContent = caption;
+            // Paused and nothing changed: the canvas already shows this frame.
+            if (!currentFrame.isPlaying) {
+                const pal = tuning.palette ?? null;
+                if (pal !== lastPalRef) { lastPalRef = pal; lastPalJson = JSON.stringify(pal); }
+                if (still.same(currentFrame, `${Boolean(director?.initialized)}|${director?.width}x${director?.height}|${lastPalJson}|${tuning.reducedMotion}`)) return;
+            } else still.invalidate();
             director?.update(currentFrame, tuning);
-
-            const power = Number(currentFrame.audio?.power) || 0;
-            hud.textContent = `FRAME ${String(Math.max(0, currentFrame.currentLineIndex + 1)).padStart(2, '0')}  /  AUDIO ${Math.round(power * 100)}%`;
         };
 
         const updateConfig = mode.updateConfig;
@@ -80,6 +89,7 @@
             const rebuild = ['fontScale', 'shotFlow', 'lyricLayout', 'phraseLength'].some(key => before[key] !== after[key]);
             updateConfig(config);
             if (rebuild) renderedKey = '';
+            still.invalidate();
             if (latestFrame) mode.updateFrame(latestFrame);
         };
         mode.getDebugSnapshot = () => director?.getDebugSnapshot() || { initialized: false };
@@ -90,12 +100,19 @@
         };
         mode.resume = () => {
             paused = false;
+            still.invalidate();
             mode.root.classList.remove('is-suspended');
         };
         mode.updateTheme = () => {
             renderedKey = '';
+            still.invalidate();
         };
+        mode.scope.listen(global, 'music-motion-change', () => {
+            still.invalidate();
+            if (latestFrame) mode.updateFrame(latestFrame);
+        });
         mode.scope.add(() => {
+            latestFrame = null;
             director?.destroy();
         });
 

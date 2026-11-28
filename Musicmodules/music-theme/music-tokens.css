@@ -1,0 +1,301 @@
+/*
+ * 音乐窗口共享设计令牌（档案阵列 + 底栏控件 + 面板）。
+ * 默认是深色；浅色跟随 VCPChat 的 body.light-theme。
+ * 只放变量，不放选择器样式。三处界面都只读这里的变量，别各自定义主色。
+ *
+ * 前缀约定：
+ *   --ar-*  档案阵列页（3D 曲目卡阵列和浮在上面的文字）
+ *   --md-*  底栏胶囊、快捷行、把手、统一面板、正在播放卡片
+ *   --mt-*  两边共用的字体、动效、层级
+ *   --ar-*  也用于列表视图（侧栏、档案卡、声学处理、歌词栏），和档案页同一套纸面与墨色
+ *   --ms-*  舞台页上浮着的界面（顶部页签、舞台档案卡、舞台设置），
+ *           舞台背景深浅不定，所以单独一组，并在 body.music-stage-active 下生效
+ *
+ * 进出舞台时会切换的那几组变量不挂在 body 上，只挂在读它们的几块界面上：舞台、底栏、
+ * 标题栏、提示条。经典视图和档案页不读这些变量，可曲库有上万行，变量一挂在 body 上，
+ * 进舞台那一下就得把整棵曲库树重新算一遍样式。这里要列出具体节点，不能写 :not(...)：
+ * :not() 会让浏览器把 body 下所有节点都标成要重算。新增读 --ms-* / --md-* 的
+ * body 直接子节点时，要把它加进下面的列表。
+ */
+body {
+  /* 共用 */
+  --mt-font-archive: "MiSans", "Mi Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mt-font-ui: ui-sans-serif, system-ui, "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --mt-font-label: "MiSans", "Mi Sans", "Bahnschrift", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
+  --mt-font-mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", Consolas, ui-monospace, monospace;
+  --mt-dur-1: 120ms;       /* 悬停、按下 */
+  --mt-dur-2: 180ms;       /* 页签下划线、分段控件 */
+  --mt-dur-3: 280ms;       /* 抽屉展开 */
+  --mt-dur-4: 460ms;       /* 编号、曲名滚动替换 */
+  --mt-ease: cubic-bezier(.22, 1, .36, 1);
+  --mt-ease-std: cubic-bezier(.4, 0, .2, 1);
+  --mt-z-archive: 1;       /* 3D 画布 */
+  --mt-z-archive-hud: 5;   /* 浮在阵列上的文字 */
+  /* 下面三个只在底栏整层（--mt-z-dock-layer）内部比较：整层在舞台 800 之上、弹窗 1000 之下 */
+  --mt-z-dock: 60;         /* 底栏胶囊、把手 */
+  --mt-z-panel: 59;        /* 统一面板 */
+  --mt-z-popover: 70;      /* 面板弹层、音效设置 */
+  --mt-z-dock-layer: 850;  /* 底栏整层，舞台是 800 */
+
+  /* 档案阵列（深色） */
+  --ar-paper: #11181b;
+  --ar-paper-rgb: 17, 24, 27;
+  --ar-ink: #e0e3dc;
+  --ar-muted: #a6b0b1;
+  --ar-line: #536166;
+  --ar-tick: #7f8c90;    /* 底部位置条的刻度：压在深色卡片上，比 --ar-line 亮一档才看得见 */
+  --ar-accent: #c5a16b;
+  --ar-accent-text: var(--ar-accent);  /* 强调色当文字用时取这个：浅色下原色对纸面不够 4.5:1 */
+  --ar-rule: #536166;
+  --ar-square: #e0e3dc;
+  --ar-hover: #2a363b;
+  --ar-key: #536166;
+  /* 3D 场景颜色（JS 读 getComputedStyle 取用） */
+  --ar-card: #3b4448;
+  --ar-floor: #192125;
+  --ar-badge: #5d676b;
+  --ar-groove: #4a5559;
+  /* 档案页次级文字 */
+  --ar-sel: #e0e3dc;
+  --ar-summary: #a6b0b1;
+  --ar-hint: #a6b0b1;
+  --ar-foot: #a6b0b1;
+  --ar-count: #a6b0b1;
+  --ar-slash: #a6b0b1;
+  --ar-light: #e0e3dc;
+
+  /* 列表视图（深色）：纸面分层，发丝线分栏 */
+  --ar-panel: #151d21;
+  --ar-field: #1d282d;
+  --ar-ink-2: #c3cbc9;
+  --ar-hairline: #2b383d;
+  --ar-danger: #e2604c;
+  --ar-live: #4fc2bc;
+  --ar-on-ink: #11181b;
+  --ar-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+
+  /* 舞台页浮层（深色） */
+  --ms-ink: #f2f3ef;
+  --ms-muted: rgba(242, 243, 239, .74);
+  --ms-faint: rgba(242, 243, 239, .42);
+  --ms-line: rgba(242, 243, 239, .22);
+  --ms-glass: rgba(16, 18, 20, .56);
+  --ms-glass-strong: rgba(22, 24, 27, .93);
+  --ms-glass-edge: rgba(255, 255, 255, .08);
+  --ms-text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 0 18px rgba(0, 0, 0, .35);
+  --ms-panel-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+
+  /* 底栏控件与面板（深色） */
+  --md-tp: rgb(244, 244, 245);
+  --md-tp-rgb: 244, 244, 245;
+  --md-on-tp: rgb(9, 9, 11);
+  --md-accent: #f4f4f5;
+  --md-on-accent: #18181b;
+  --md-raise: rgba(255, 255, 255, .18);
+  --md-knob: #ececee;
+  --md-menu: #2b2b30;
+  --md-glass: rgba(28, 28, 31, .8);
+  --md-dr-glass: rgba(40, 40, 45, .88);
+  --md-panel-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .09);
+  --md-like: #f2607a;
+  --md-edge: rgba(255, 255, 255, .09);
+  --md-capsule-bg: rgba(0, 0, 0, .2);
+  --md-capsule-bg-open: rgba(0, 0, 0, .4);
+  --md-pill-bg: rgba(0, 0, 0, .35);
+  --md-handle-bg: rgba(0, 0, 0, .4);
+  /* 底栏细分色 */
+  --md-time: rgb(113, 113, 122);
+  --md-track: rgba(255, 255, 255, .1);
+  --md-hover: rgba(255, 255, 255, .15);
+  --md-slot-hover: rgba(255, 255, 255, .1);
+  --md-slot-on-bg: rgba(255, 255, 255, .2);
+  --md-slot-on-fg: inherit;
+  --md-capsule-border: rgba(255, 255, 255, .05);
+  --md-capsule-bg-hover: rgba(0, 0, 0, .3);
+  --md-capsule-shadow: 0 25px 50px -12px rgba(0, 0, 0, .25);
+  --md-capsule-shadow-open: 0 25px 50px -12px rgba(0, 0, 0, .25);
+  --md-quick-bg: rgba(0, 0, 0, .4);
+  --md-pill-fg: #fff;
+  --md-pill-border: rgba(255, 255, 255, .1);
+  --md-pill-bg-hover: rgba(0, 0, 0, .55);
+  --md-pill-kicker: rgba(255, 255, 255, .45);
+  --md-pill-sub: rgba(255, 255, 255, .5);
+  --md-pill-cover: #27272a;
+  --md-handle-fg: #fff;
+  --md-handle-open-bg: #fff;
+  --md-handle-open-fg: #000;
+}
+
+body.light-theme {
+  --ar-paper: #eae5e1;
+  --ar-paper-rgb: 234, 229, 225;
+  --ar-ink: #080a08;
+  --ar-muted: #625f58;  /* 在 --ar-field 上 4.75:1，小字过 AA */
+  --ar-line: #aaa59a;
+  --ar-accent: #9b7247;
+  --ar-accent-text: #7f5b34;
+  --ar-rule: #504b41;
+  --ar-square: #282a24;
+  --ar-hover: #e4d5c1;
+  --ar-key: #a6a49c;
+  --ar-card: #efe1cf;
+  --ar-floor: #d8c9b9;
+  --ar-badge: #8e8981;
+  --ar-groove: #b9ab9a;
+  --ar-sel: #24261f;
+  --ar-summary: #666257;
+  --ar-hint: #67635b;
+  --ar-foot: #626159;
+  --ar-count: #65625a;
+  --ar-slash: #8f8a80;
+  --ar-light: #777b60;
+
+  --ar-panel: #f5f2ec;
+  --ar-field: #e3ded5;
+  --ar-ink-2: #3f403c;
+  --ar-hairline: #cdc7bc;
+  --ar-danger: #c8402f;
+  --ar-live: #2c8c88;
+  --ar-on-ink: #f5f2ec;
+  --ar-shadow: 0 12px 32px rgba(0, 0, 0, .14);
+
+  --ms-ink: #141517;
+  --ms-muted: rgba(20, 21, 23, .72);
+  --ms-faint: rgba(20, 21, 23, .46);
+  --ms-line: rgba(20, 21, 23, .2);
+  --ms-glass: rgba(246, 244, 240, .78);
+  --ms-glass-strong: rgba(246, 244, 240, .95);
+  --ms-glass-edge: rgba(0, 0, 0, .06);
+  --ms-text-shadow: 0 0 1px rgba(255, 255, 255, .6), 0 0 16px rgba(255, 255, 255, .45);
+  --ms-panel-shadow: 0 30px 80px rgba(0, 0, 0, .22);
+
+  --md-tp: rgb(28, 25, 23);
+  --md-tp-rgb: 28, 25, 23;
+  --md-on-tp: rgb(245, 245, 244);
+  --md-accent: #ea580c;
+  --md-on-accent: #fff;
+  --md-raise: #ffffff;
+  --md-knob: #ffffff;
+  --md-menu: #ffffff;
+  --md-glass: rgba(244, 244, 245, .8);
+  --md-dr-glass: rgba(252, 252, 253, .92);
+  --md-panel-shadow: 0 30px 80px rgba(0, 0, 0, .24), 0 0 0 1px rgba(0, 0, 0, .06);
+  --md-like: #e0354f;
+  --md-edge: rgba(0, 0, 0, .06);
+  --md-capsule-bg: rgba(255, 255, 255, .4);
+  --md-capsule-bg-open: rgba(255, 255, 255, .6);
+  --md-pill-bg: rgba(255, 255, 255, .35);
+  --md-handle-bg: rgba(255, 255, 255, .7);
+  --md-time: rgb(68, 64, 60);
+  --md-track: rgba(0, 0, 0, .05);
+  --md-hover: rgba(0, 0, 0, .1);
+  --md-slot-hover: rgba(0, 0, 0, .05);
+  --md-slot-on-bg: rgba(0, 0, 0, .1);
+  --md-slot-on-fg: #000;
+  --md-capsule-border: rgba(255, 255, 255, .2);
+  --md-capsule-bg-hover: rgba(255, 255, 255, .5);
+  --md-capsule-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -4px rgba(0, 0, 0, .1);
+  --md-capsule-shadow-open: 0 20px 25px -5px rgba(0, 0, 0, .1), 0 8px 10px -6px rgba(0, 0, 0, .1);
+  --md-quick-bg: rgba(255, 255, 255, .6);
+  --md-pill-fg: #18181b;
+  --md-pill-border: rgba(0, 0, 0, .1);
+  --md-pill-bg-hover: rgba(255, 255, 255, .55);
+  --md-pill-kicker: rgba(0, 0, 0, .45);
+  --md-pill-sub: rgba(0, 0, 0, .55);
+  --md-pill-cover: #e4e4e7;
+  --md-handle-fg: #18181b;
+  --md-handle-open-bg: #fff;
+  --md-handle-open-fg: #000;
+}
+
+/*
+ * 舞台可以单独选深浅（舞台设置里的「舞台主题」）。music-skin.js 把舞台根节点的
+ * stage-theme-light/dark 同步成 body 上的 music-stage-light/dark，这里让舞台浮层、
+ * 底栏和面板跟舞台的深浅走，而不是跟应用主题。
+ */
+body.music-stage-active.music-stage-dark > :is(#music-stage, #music-dock-root, #custom-title-bar, .mtst-layer) {
+  --ms-ink: #f2f3ef;
+  --ms-muted: rgba(242, 243, 239, .74);
+  --ms-faint: rgba(242, 243, 239, .42);
+  --ms-line: rgba(242, 243, 239, .22);
+  --ms-glass: rgba(16, 18, 20, .56);
+  --ms-glass-strong: rgba(22, 24, 27, .93);
+  --ms-glass-edge: rgba(255, 255, 255, .08);
+  --ms-text-shadow: 0 1px 2px rgba(0, 0, 0, .55), 0 0 18px rgba(0, 0, 0, .35);
+  --ms-panel-shadow: 0 30px 80px rgba(0, 0, 0, .55);
+  --md-tp: rgb(244, 244, 245);
+  --md-tp-rgb: 244, 244, 245;
+  --md-on-tp: rgb(9, 9, 11);
+  --md-accent: #f4f4f5;
+  --md-on-accent: #18181b;
+  --md-raise: rgba(255, 255, 255, .18);
+  --md-knob: #ececee;
+  --md-menu: #2b2b30;
+  --md-glass: rgba(28, 28, 31, .8);
+  --md-dr-glass: rgba(40, 40, 45, .88);
+  --md-panel-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .09);
+  --md-like: #f2607a;
+  --md-edge: rgba(255, 255, 255, .09);
+  --md-capsule-bg: rgba(0, 0, 0, .2);
+  --md-capsule-bg-open: rgba(0, 0, 0, .4);
+  --md-pill-bg: rgba(0, 0, 0, .35);
+  --md-handle-bg: rgba(0, 0, 0, .4);
+}
+
+body.music-stage-active.music-stage-light > :is(#music-stage, #music-dock-root, #custom-title-bar, .mtst-layer) {
+  --ms-ink: #141517;
+  --ms-muted: rgba(20, 21, 23, .72);
+  --ms-faint: rgba(20, 21, 23, .46);
+  --ms-line: rgba(20, 21, 23, .2);
+  --ms-glass: rgba(246, 244, 240, .78);
+  --ms-glass-strong: rgba(246, 244, 240, .95);
+  --ms-glass-edge: rgba(0, 0, 0, .06);
+  --ms-text-shadow: 0 0 1px rgba(255, 255, 255, .6), 0 0 16px rgba(255, 255, 255, .45);
+  --ms-panel-shadow: 0 30px 80px rgba(0, 0, 0, .22);
+  --md-tp: rgb(28, 25, 23);
+  --md-tp-rgb: 28, 25, 23;
+  --md-on-tp: rgb(245, 245, 244);
+  --md-accent: #ea580c;
+  --md-on-accent: #fff;
+  --md-raise: #ffffff;
+  --md-knob: #ffffff;
+  --md-menu: #ffffff;
+  --md-glass: rgba(244, 244, 245, .8);
+  --md-dr-glass: rgba(252, 252, 253, .92);
+  --md-panel-shadow: 0 30px 80px rgba(0, 0, 0, .24), 0 0 0 1px rgba(0, 0, 0, .06);
+  --md-like: #e0354f;
+  --md-edge: rgba(0, 0, 0, .06);
+  --md-capsule-bg: rgba(255, 255, 255, .4);
+  --md-capsule-bg-open: rgba(255, 255, 255, .6);
+  --md-pill-bg: rgba(255, 255, 255, .35);
+  --md-handle-bg: rgba(255, 255, 255, .7);
+}
+
+/*
+ * 舞台里底栏的对比度：舞台画面明暗不定（镜台有黑色遮幅，隧图会飞过亮的天体），
+ * 按底栏原值在镜台、隧图深浅各三个时刻实测，深色时间字只有 2.4:1、浅色收起胶囊上
+ * 的时间字只有 1.9:1。这里只在舞台里提高胶囊底色不透明度、提亮深色时间字，
+ * 实测后正文和时间字在 95% 的像素上都到 4.5:1 以上（WCAG AA）。
+ */
+body.music-stage-active:not(.light-theme):not(.music-stage-light) > :is(#music-stage, #music-dock-root, #custom-title-bar, .mtst-layer),
+body.music-stage-active.music-stage-dark > :is(#music-stage, #music-dock-root, #custom-title-bar, .mtst-layer) {
+  --md-time: rgb(212, 212, 216);
+  --md-capsule-bg: rgba(0, 0, 0, .3);
+  --md-capsule-bg-hover: rgba(0, 0, 0, .38);
+}
+
+body.music-stage-active.light-theme:not(.music-stage-dark) > :is(#music-stage, #music-dock-root, #custom-title-bar, .mtst-layer),
+body.music-stage-active.music-stage-light > :is(#music-stage, #music-dock-root, #custom-title-bar, .mtst-layer) {
+  --md-capsule-bg: rgba(255, 255, 255, .7);
+  --md-capsule-bg-open: rgba(255, 255, 255, .78);
+  --md-capsule-bg-hover: rgba(255, 255, 255, .76);
+}
+
+/*
+ * 列表视图深色下底栏时间字：原值 rgb(113,113,122) 在纸面上约 3.9:1，提到 AA。
+ * 用 body:not(.light-theme) 提高优先级，压过底栏样式表里同名的默认值。
+ * 底栏的胶囊、快捷行、把手、面板其余取值不动。
+ */
+body:not(.light-theme):not(.music-stage-active) > :is(#music-stage, #music-dock-root, #custom-title-bar, .mtst-layer) {
+  --md-time: rgb(161, 161, 170);
+}

@@ -14,6 +14,24 @@ use super::info::LoudnessInfo;
 use super::limiter::PeakLimiter;
 use super::meter::LoudnessMeter;
 
+/// The ReplayGain gain and peak `mode` takes from the tags, if it reads tags and they are there.
+/// Album mode has no album measurement of its own, so it reads the album tag like ReplayGain album.
+fn tag_gain(
+    mode: NormalizationMode,
+    metadata: &crate::decoder::TrackMetadata,
+) -> Option<(f64, Option<f64>)> {
+    match mode {
+        NormalizationMode::ReplayGainTrack => {
+            metadata.rg_track_gain.map(|g| (g, metadata.rg_track_peak))
+        }
+        NormalizationMode::ReplayGainAlbum | NormalizationMode::Album => metadata
+            .rg_album_gain
+            .map(|g| (g, metadata.rg_album_peak.or(metadata.rg_track_peak)))
+            .or_else(|| metadata.rg_track_gain.map(|g| (g, metadata.rg_track_peak))),
+        NormalizationMode::Track | NormalizationMode::Streaming => None,
+    }
+}
+
 /// Loudness normalizer with EBU R128 compliance.
 /// Supports track-based pre-analysis and real-time streaming modes.
 pub struct LoudnessNormalizer {
@@ -50,6 +68,8 @@ impl LoudnessNormalizer {
         )?);
         atomic_state.set_enabled(config.enabled);
         atomic_state.set_normalization_mode(config.mode);
+        atomic_state.set_target_lufs(config.target_lufs);
+        atomic_state.set_reference_lufs(config.replaygain_reference_lufs);
 
         Ok(Self {
             meter,
@@ -95,6 +115,8 @@ impl LoudnessNormalizer {
             .set_smoothing(config.smoothing_time_ms, self.sample_rate);
         self.atomic_state.set_enabled(config.enabled);
         self.atomic_state.set_normalization_mode(config.mode);
+        self.atomic_state.set_target_lufs(config.target_lufs);
+        self.atomic_state.set_reference_lufs(config.replaygain_reference_lufs);
         self.config = config;
 
         if let Some(loudness) = self.track_loudness {
@@ -112,6 +134,7 @@ impl LoudnessNormalizer {
             checked_gain(target_lufs - loudness, "target LUFS")?;
         }
         self.config.target_lufs = target_lufs;
+        self.atomic_state.set_target_lufs(target_lufs);
         if let Some(loudness) = self.track_loudness {
             let track_gain = target_lufs - loudness;
             self.track_gain = Some(track_gain);
@@ -208,6 +231,56 @@ impl LoudnessNormalizer {
             );
             Ok(0.0)
         }
+    }
+
+    /// Gain that brings a track measured at `integrated_lufs` to the target.
+    /// Non-finite measurements (silence, very short tracks) give 0 dB.
+    pub fn gain_for_integrated_loudness(&self, integrated_lufs: f64) -> f64 {
+        if integrated_lufs.is_finite() {
+            self.config.target_lufs - integrated_lufs
+        } else {
+            0.0
+        }
+    }
+
+    /// True when `mode` can take the gain from the track's ReplayGain tags.
+    pub fn has_tag_gain(mode: NormalizationMode, metadata: &crate::decoder::TrackMetadata) -> bool {
+        tag_gain(mode, metadata).is_some()
+    }
+
+    /// The gain (before preamp, which `process_gain` adds) that brings one track to the
+    /// target. Every way a track can start (picked by hand, joined gaplessly, restored)
+    /// goes through here, so a song plays at the same level however it was reached.
+    ///
+    /// - A ReplayGain tag, where the mode reads one, is moved from the tag's reference
+    ///   level to the target and kept below the tagged peak (with preamp) when it boosts.
+    /// - Otherwise the measured integrated loudness: `target - measured`.
+    /// - `None` when it needs a measurement that is not there yet.
+    pub fn planned_gain_db(
+        mode: NormalizationMode,
+        metadata: &crate::decoder::TrackMetadata,
+        measured_lufs: Option<f64>,
+        target_lufs: f64,
+        reference_lufs: f64,
+        preamp_db: f64,
+    ) -> Option<f64> {
+        if let Some((tag_db, peak)) = tag_gain(mode, metadata) {
+            let gain = tag_db + (target_lufs - reference_lufs);
+            if !gain.is_finite() {
+                return None;
+            }
+            if let Some(peak) = peak.filter(|p| p.is_finite() && *p > 0.0) {
+                let max_total = 20.0 * (0.99 / peak).log10();
+                if gain + preamp_db > 0.0 && gain + preamp_db > max_total {
+                    return Some((max_total - preamp_db).min(gain));
+                }
+            }
+            return Some(gain);
+        }
+        measured_lufs
+            .filter(|l| l.is_finite() && *l > -70.0)
+            .map(|l| target_lufs - l)
+            .filter(|g| g.is_finite())
     }
 
     /// Calculate gain for gapless preload with mode awareness (Bug-4 fix)
@@ -636,5 +709,41 @@ mod tests {
             loudness_info_bits(&normalizer.get_loudness_info()),
             loudness_info_bits(&reference.get_loudness_info())
         );
+    }
+
+    #[test]
+    fn planned_gain_is_the_same_rule_for_tags_and_measurements() {
+        use crate::decoder::TrackMetadata;
+        let plan = LoudnessNormalizer::planned_gain_db;
+        let tagged = TrackMetadata { rg_track_gain: Some(-6.0), rg_album_gain: Some(-4.0), ..Default::default() };
+        let untagged = TrackMetadata::default();
+
+        // Tag written for -18 LUFS, aiming at -12: 6 dB louder than the tag says. Preamp is
+        // not in the result (process_gain adds it once).
+        assert_eq!(plan(NormalizationMode::ReplayGainTrack, &tagged, None, -12.0, -18.0, -1.0), Some(0.0));
+        assert_eq!(plan(NormalizationMode::ReplayGainAlbum, &tagged, None, -12.0, -18.0, -1.0), Some(2.0));
+        // Album mode reads the album tag too (there is no album measurement to use).
+        assert_eq!(plan(NormalizationMode::Album, &tagged, None, -12.0, -18.0, -1.0), Some(2.0));
+        // Track mode measures even when tags are present.
+        assert_eq!(plan(NormalizationMode::Track, &tagged, None, -12.0, -18.0, 0.0), None);
+        assert_eq!(plan(NormalizationMode::Track, &tagged, Some(-8.5), -12.0, -18.0, 0.0), Some(-3.5));
+        // No tag: the measurement, or "not known yet".
+        assert_eq!(plan(NormalizationMode::ReplayGainTrack, &untagged, None, -12.0, -18.0, 0.0), None);
+        assert_eq!(plan(NormalizationMode::ReplayGainTrack, &untagged, Some(-20.0), -12.0, -18.0, 0.0), Some(8.0));
+        // Silence or a failed measurement is not a gain.
+        assert_eq!(plan(NormalizationMode::Track, &untagged, Some(f64::NEG_INFINITY), -12.0, -18.0, 0.0), None);
+        assert_eq!(plan(NormalizationMode::Track, &untagged, Some(-70.0), -12.0, -18.0, 0.0), None);
+    }
+
+    #[test]
+    fn planned_boost_from_a_tag_stays_under_the_tagged_peak() {
+        use crate::decoder::TrackMetadata;
+        // +4 dB tag, peak 0.8: at most 20*log10(0.99/0.8) = 1.85 dB in total, preamp included.
+        let quiet = TrackMetadata { rg_track_gain: Some(4.0), rg_track_peak: Some(0.8), ..Default::default() };
+        let gain = LoudnessNormalizer::planned_gain_db(NormalizationMode::ReplayGainTrack, &quiet, None, -18.0, -18.0, 1.0).unwrap();
+        assert!((gain + 1.0 - 20.0 * (0.99f64 / 0.8).log10()).abs() < 1e-9, "{gain}");
+        // A cut is never limited.
+        let loud = TrackMetadata { rg_track_gain: Some(-7.0), rg_track_peak: Some(1.0), ..Default::default() };
+        assert_eq!(LoudnessNormalizer::planned_gain_db(NormalizationMode::ReplayGainTrack, &loud, None, -18.0, -18.0, 0.0), Some(-7.0));
     }
 }

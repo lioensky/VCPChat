@@ -351,6 +351,8 @@ body.light-theme #lyrics-list li:hover {
 
 .lyric-word {
     display: inline-block;
+    /* 逐字歌词里词尾的空格要留着，否则英文一行粘成一串 */
+    white-space: pre;
     position: relative;
     /* 核心：文字裁剪 + 线性渐变染色 */
     background-image: linear-gradient(
@@ -410,6 +412,32 @@ body.light-theme #lyrics-list li:hover {
     opacity: 0.95;
     font-weight: 500;
 }
+
+/* 间奏等待点：平时不占位置；间奏期间出现在下一句上方，三个点按间奏进度依次亮起 */
+#lyrics-list li .lyric-gap {
+    display: none;
+    gap: 7px;
+    height: 10px;
+    margin-bottom: 6px;
+}
+#lyrics-list li.gap-on .lyric-gap { display: flex; }
+#lyrics-list li .lyric-gap i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.22;
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+#lyrics-list li.gap-on { opacity: 0.85; }
+#lyrics-list li.gap-on .lyric-gap i:nth-child(1) { opacity: calc(0.22 + 0.78 * clamp(0, var(--gap-progress, 0) * 3, 1)); }
+#lyrics-list li.gap-on .lyric-gap i:nth-child(2) { opacity: calc(0.22 + 0.78 * clamp(0, var(--gap-progress, 0) * 3 - 1, 1)); }
+#lyrics-list li.gap-on .lyric-gap i:nth-child(3) { opacity: calc(0.22 + 0.78 * clamp(0, var(--gap-progress, 0) * 3 - 2, 1)); }
+#lyrics-list li.active.gap-rest { opacity: 0.55 !important; transform: scale(1); }
+@media (prefers-reduced-motion: reduce) {
+    #lyrics-list li .lyric-gap i { transition: none; }
+}
+body.music-reduce-motion #lyrics-list li .lyric-gap i { transition: none; }
 
 #lyrics-list .no-lyrics {
     font-size: 1.2em;
@@ -544,6 +572,20 @@ body.light-theme .album-art {
     border-radius: 3px;
     transition: width 0.1s linear;
 }
+
+/* 流式播放时解码没跟上：进度条呼吸，提示在缓冲而不是卡住。 */
+body.music-buffering .progress {
+    animation: music-buffering-pulse 1s ease-in-out infinite;
+}
+
+@keyframes music-buffering-pulse {
+    50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.music-buffering .progress { animation: none; opacity: 0.6; }
+}
+body.music-reduce-motion.music-buffering .progress { animation: none; opacity: 0.6; }
 
 .time-display {
     display: flex;
@@ -893,7 +935,7 @@ select {
     font-size: 0.85em;
     outline: none;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     text-align: left;
 }
 
@@ -1046,6 +1088,10 @@ input:checked+.slider:before {
         transition: none;
     }
 }
+body.music-reduce-motion #eq-section,
+body.music-reduce-motion #eq-section > .block-content {
+    transition: none;
+}
 
 /* EQ bands 在手风琴内容中显示 */
 .eq-bands {
@@ -1150,7 +1196,7 @@ input:checked+.slider:before {
     padding: 4px 10px;
     font-size: 0.8em;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .ir-load-btn:hover {
@@ -1547,13 +1593,9 @@ body.light-theme option {
     color: var(--music-text);
 }
 
-.sidebar-toggle-btn svg {
-    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-    transform-origin: center;
-}
-
-.sidebar-toggle-btn.is-collapsed svg {
-    transform: rotate(180deg);
+body:not(.light-theme) #music-theme-toggle-btn .music-theme-moon,
+body.light-theme #music-theme-toggle-btn .music-theme-sun {
+    display: none;
 }
 
 #close-music-btn:hover {
@@ -1583,21 +1625,6 @@ body.light-theme option {
                 transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-body.sidebar-collapsed .left-sidebar {
-    width: 0;
-    margin-right: -20px; /* 抵消 .music-player-container 的 flex gap，避免左侧出现双倍空白 */
-    padding-left: 0;
-    padding-right: 0;
-    border-width: 0;
-    opacity: 0;
-    transform: translateX(-16px) scaleX(0.98);
-    pointer-events: none;
-}
-
-body.sidebar-collapsed .left-sidebar > * {
-    visibility: hidden;
-}
-
 /* 顶部操作区 */
 .sidebar-actions {
     display: flex;
@@ -1622,7 +1649,7 @@ body.sidebar-collapsed .left-sidebar > * {
     font-size: 0.9em;
     background-color: var(--hover-bg);
     color: var(--music-text);
-    transition: all 0.3s ease;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
     box-sizing: border-box;
 }
 
@@ -1644,7 +1671,7 @@ body.sidebar-collapsed .left-sidebar > * {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease, filter 0.2s ease;
     z-index: 2;
 }
 
@@ -1675,7 +1702,7 @@ body.sidebar-collapsed .left-sidebar > * {
     padding: 8px 12px;
     font-size: 0.85em;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, filter 0.2s ease;
 }
 
 .sidebar-action-btns #add-folder-btn {
@@ -1717,7 +1744,7 @@ body.sidebar-collapsed .left-sidebar > * {
     cursor: pointer;
     font-size: 0.8em;
     font-weight: 500;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1784,6 +1811,7 @@ body.sidebar-collapsed .left-sidebar > * {
  * preserve full glass while idle, but stop live backdrop sampling during the
  * short interval in which Chromium is compositing playlist scroll frames.
  */
+.left-sidebar.sidebar-is-scrolling,
 body.sidebar-is-scrolling .left-sidebar {
     background: rgba(20, 20, 20, 0.88);
     backdrop-filter: none;
@@ -1791,10 +1819,12 @@ body.sidebar-is-scrolling .left-sidebar {
     transition: none;
 }
 
+body.light-theme .left-sidebar.sidebar-is-scrolling,
 body.light-theme.sidebar-is-scrolling .left-sidebar {
     background: rgba(255, 255, 255, 0.92);
 }
 
+.left-sidebar.sidebar-is-scrolling .sidebar-playlist li,
 body.sidebar-is-scrolling .sidebar-playlist li {
     transition: none;
 }
@@ -1839,6 +1869,9 @@ body.sidebar-is-scrolling .sidebar-playlist li {
     border-radius: 10px;
     cursor: pointer;
     transition: background 0.2s ease;
+    /* 曲库大时专辑能有上千个：看不见的不排版，封面也等滚到了才读 */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 42px; /* 内容高，不含上下 padding */
 }
 
 .category-item:hover {
@@ -1893,7 +1926,7 @@ body.sidebar-is-scrolling .sidebar-playlist li {
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
-    transition: all 0.2s ease;
+    transition: opacity 0.2s ease, color 0.2s ease, background-color 0.2s ease;
     font-size: 1em;
 }
 
@@ -1928,7 +1961,7 @@ body.sidebar-is-scrolling .sidebar-playlist li {
     border-radius: 10px;
     cursor: pointer;
     font-size: 0.85em;
-    transition: all 0.2s ease;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2044,6 +2077,20 @@ body.sidebar-is-scrolling .sidebar-playlist li {
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
+/* 窗口太窄、子菜单被收窄时，长歌单名用省略号（完整名字在 title 里） */
+.context-submenu .submenu-item {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 菜单靠近窗口右边时，子菜单往左边展开 */
+.context-menu.sub-left .context-submenu {
+    left: auto;
+    right: calc(100% + 4px);
+    transform: translateX(5px);
+}
+
 .has-submenu:hover .context-submenu {
     opacity: 1;
     transform: translateX(0);
@@ -2139,7 +2186,7 @@ body.sidebar-is-scrolling .sidebar-playlist li {
     border-radius: 10px;
     font-size: 0.9em;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
 }
 
 .dialog-btn.cancel {
@@ -2258,7 +2305,7 @@ body.light-theme .dialog-btn.cancel {
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 6px;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .music-modal-close-btn:hover {
@@ -2314,6 +2361,9 @@ body.light-theme .dialog-btn.cancel {
     padding: 10px 20px;
     cursor: pointer;
     transition: background 0.15s ease;
+    /* 编辑歌单时列表是整个曲库（几千行）：看不见的行不排版，打开和每次搜索都快一截 */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 36px; /* 内容高，不含上下 padding */
 }
 
 .music-modal-song-item:hover {
@@ -2333,7 +2383,7 @@ body.light-theme .dialog-btn.cancel {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .music-modal-song-item.in-playlist .music-modal-song-checkbox {
@@ -2526,6 +2576,23 @@ body.light-theme .dialog-btn.cancel {
 .webdav-file-list::-webkit-scrollbar { width: 4px; }
 .webdav-file-list::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
 
+/* 打不开文件夹时那行话后面的「重试」 */
+.webdav-retry-btn {
+    display: block;
+    margin-top: 10px;
+    padding: 4px 14px;
+    font: inherit;
+    font-size: 0.85em;
+    color: inherit;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.webdav-retry-btn:hover { background: var(--hover-bg); }
+.webdav-retry-btn:focus-visible { outline: 2px solid var(--music-highlight); outline-offset: 2px; }
+
 .webdav-file-item {
     display: flex;
     align-items: center;
@@ -2586,7 +2653,7 @@ body.light-theme .dialog-btn.cancel {
     font-size: 10px;
     cursor: pointer;
     margin-left: 6px;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     vertical-align: middle;
 }
 
@@ -2913,4 +2980,77 @@ body.light-theme .dialog-btn.cancel {
     .lyrics-candidate-score {
         display: none;
     }
+}
+
+/* ------------------------- */
+/* --- 音频引擎状态提示 --- */
+/* ------------------------- */
+.audio-engine-notice {
+    position: fixed;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: min(640px, calc(100vw - 32px));
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 120, 90, 0.45);
+    background: var(--glass-bg);
+    box-shadow: 0 6px 20px var(--glass-shadow);
+    backdrop-filter: blur(12px);
+    color: var(--music-text);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.audio-engine-notice[hidden] {
+    display: none;
+}
+
+.audio-engine-notice-title {
+    font-weight: 600;
+}
+
+.audio-engine-notice-detail {
+    color: var(--music-text-secondary);
+    word-break: break-word;
+}
+
+/* 抖动处理关掉时，噪声整形的位深和曲线不起作用 */
+#noise-shaper-section.is-inactive > .block-content {
+    opacity: 0.45;
+}
+
+/* 引擎没能按设置打开输出（独占打不开、声卡不在了）时，设备下面说一句实际在用什么 */
+.output-fallback-note {
+    grid-column: 1 / -1;
+    margin: 4px 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--music-text-secondary);
+}
+.output-fallback-note[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner,
+    #semantic-search-btn.loading svg,
+    .help-tip-box {
+        animation: none;
+    }
+}
+body.music-reduce-motion .spinner,
+body.music-reduce-motion #semantic-search-btn.loading svg,
+body.music-reduce-motion .help-tip-box {
+    animation: none;
+}
+body.music-fl-low .help-tip-box,
+body.music-fl-low .audio-engine-notice,
+body.music-fl-low .context-menu,
+body.music-fl-low .context-submenu,
+body.music-fl-low .music-modal {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }

@@ -92,6 +92,16 @@ impl BiquadSection {
         }
     }
 
+    /// Magnitude response in dB at `freq` (design-time only, not on the sample path).
+    fn magnitude_db(&self, freq: f64, sample_rate: f64) -> f64 {
+        let w = 2.0 * std::f64::consts::PI * freq / sample_rate;
+        let (c1, s1) = (w.cos(), -w.sin());
+        let (c2, s2) = ((2.0 * w).cos(), -(2.0 * w).sin());
+        let (nr, ni) = (self.b0 + self.b1 * c1 + self.b2 * c2, self.b1 * s1 + self.b2 * s2);
+        let (dr, di) = (1.0 + self.a1 * c1 + self.a2 * c2, self.a1 * s1 + self.a2 * s2);
+        10.0 * ((nr * nr + ni * ni) / (dr * dr + di * di)).log10()
+    }
+
     #[inline]
     pub fn process(&mut self, x: f64) -> f64 {
         let y = self.b0 * x + self.z1;
@@ -104,6 +114,33 @@ impl BiquadSection {
         self.z1 = 0.0;
         self.z2 = 0.0;
     }
+}
+
+/// Gaussian elimination with partial pivoting on an augmented `n x (n+1)` matrix.
+fn solve(m: &mut [[f64; EQ_BANDS + 1]; EQ_BANDS]) -> Option<[f64; EQ_BANDS]> {
+    let n = EQ_BANDS;
+    for col in 0..n {
+        let pivot = (col..n).max_by(|&a, &b| m[a][col].abs().total_cmp(&m[b][col].abs()))?;
+        if m[pivot][col].abs() < 1e-12 {
+            return None;
+        }
+        m.swap(col, pivot);
+        for row in col + 1..n {
+            let f = m[row][col] / m[col][col];
+            for k in col..=n {
+                m[row][k] -= f * m[col][k];
+            }
+        }
+    }
+    let mut x = [0.0; EQ_BANDS];
+    for row in (0..n).rev() {
+        let mut acc = m[row][n];
+        for k in row + 1..n {
+            acc -= m[row][k] * x[k];
+        }
+        x[row] = acc / m[row][row];
+    }
+    Some(x)
 }
 
 /// 10-band Parametric EQ
@@ -129,7 +166,13 @@ impl Equalizer {
     const FREQUENCIES: [f64; EQ_BANDS] = [
         31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0,
     ];
-    const Q: f64 = 1.41;
+    /// Band width shared by all ten peaking sections. With octave-spaced centers,
+    /// Q 0.9 lets neighbouring bands overlap enough that, after the interaction
+    /// compensation in [`Self::compensated_gains`], a flat setting (all +6, all +12)
+    /// comes out flat instead of rippling between the centers.
+    const Q: f64 = 0.9;
+    /// Internal design gains may exceed the user range to cancel band overlap.
+    const DESIGN_GAIN_LIMIT_DB: f64 = 24.0;
 
     /// Construct a disabled, flat 10-band equalizer for `channels` streams.
     pub fn new(channels: usize, sample_rate: f64) -> Self {
@@ -206,23 +249,88 @@ impl Equalizer {
         sample_rate: f64,
     ) {
         let gain_db = gain_db.clamp(EQ_BAND_GAIN_DB_MIN, EQ_BAND_GAIN_DB_MAX);
-        let freq = Self::FREQUENCIES[band_idx];
-        // Update target filters for all channels
-        for ch in 0..self.channels {
-            self.target_bands[ch][band_idx] =
-                BiquadSection::peaking_eq(freq, gain_db, Self::Q, sample_rate);
-        }
         self.target_gains[band_idx] = gain_db;
-        // Start crossfade for this band
-        self.smooth_counter[band_idx] = EQ_SMOOTH_SAMPLES;
+        self.redesign(sample_rate);
     }
 
     /// Apply an already-validated complete bank; see
     /// [`Self::set_band_gain_validated`] for the caller's precondition.
     pub(crate) fn set_all_bands_validated(&mut self, gains: &[f64; EQ_BANDS], sample_rate: f64) {
         for (idx, &gain) in gains.iter().enumerate() {
-            self.set_band_gain_validated(idx, gain, sample_rate);
+            self.target_gains[idx] = gain.clamp(EQ_BAND_GAIN_DB_MIN, EQ_BAND_GAIN_DB_MAX);
         }
+        self.redesign(sample_rate);
+    }
+
+    /// Re-design every band from the user gains and crossfade the bands whose
+    /// coefficients changed. Overlapping bands add up, so each section is designed
+    /// with the gain that makes the *sum* hit the user's setting at every center.
+    fn redesign(&mut self, sample_rate: f64) {
+        let mut user = [0.0; EQ_BANDS];
+        user.copy_from_slice(&self.target_gains[..EQ_BANDS]);
+        let design = Self::compensated_gains(&user, sample_rate);
+        for (idx, &gain) in design.iter().enumerate() {
+            let section = BiquadSection::peaking_eq(Self::FREQUENCIES[idx], gain, Self::Q, sample_rate);
+            let changed = match self.target_bands.first() {
+                Some(bank) => {
+                    let old = &bank[idx];
+                    old.b0 != section.b0 || old.b1 != section.b1 || old.b2 != section.b2
+                        || old.a1 != section.a1 || old.a2 != section.a2
+                }
+                None => true,
+            };
+            if !changed {
+                continue;
+            }
+            for ch in 0..self.channels {
+                self.target_bands[ch][idx] = section.clone();
+            }
+            self.smooth_counter[idx] = EQ_SMOOTH_SAMPLES;
+        }
+    }
+
+    /// Section gains whose summed response equals `user` at each band center.
+    ///
+    /// The interaction matrix `B[i][j]` is band `j`'s response (dB per dB of its
+    /// gain) at center `i`; solving `B g = user` cancels the overlap. dB response is
+    /// not linear in gain, so the matrix is rebuilt from the previous solution a few
+    /// times. Bands at or above Nyquist are identity and stay out of the system.
+    /// Design-time only: fixed-size arrays, no allocation.
+    pub(crate) fn compensated_gains(user: &[f64; EQ_BANDS], sample_rate: f64) -> [f64; EQ_BANDS] {
+        const PROTO_DB: f64 = 6.0;
+        let mut out = [0.0; EQ_BANDS];
+        if user.iter().all(|g| g.abs() < 1e-9) {
+            return out;
+        }
+        let active: [bool; EQ_BANDS] = std::array::from_fn(|i| Self::FREQUENCIES[i] * 2.0 < sample_rate);
+        let mut gains = *user;
+        for iteration in 0..3 {
+            let mut m = [[0.0f64; EQ_BANDS + 1]; EQ_BANDS];
+            for i in 0..EQ_BANDS {
+                for j in 0..EQ_BANDS {
+                    m[i][j] = if !active[i] || !active[j] {
+                        if i == j { 1.0 } else { 0.0 }
+                    } else {
+                        let g = if iteration > 0 && gains[j].abs() > 0.05 { gains[j] } else { PROTO_DB };
+                        let section = BiquadSection::peaking_eq(Self::FREQUENCIES[j], g, Self::Q, sample_rate);
+                        section.magnitude_db(Self::FREQUENCIES[i], sample_rate) / g
+                    };
+                }
+                m[i][EQ_BANDS] = if active[i] { user[i] } else { 0.0 };
+            }
+            match solve(&mut m) {
+                Some(solution) => gains = solution,
+                None => return *user, // degenerate geometry: plain per-band gains
+            }
+        }
+        for i in 0..EQ_BANDS {
+            out[i] = if gains[i].is_finite() {
+                gains[i].clamp(-Self::DESIGN_GAIN_LIMIT_DB, Self::DESIGN_GAIN_LIMIT_DB)
+            } else {
+                user[i]
+            };
+        }
+        out
     }
 
     /// Enable or bypass filtering without discarding filter state.
@@ -358,6 +466,71 @@ impl Equalizer {
 
 #[cfg(test)]
 mod tests {
+
+    /// Summed response (dB) of the designed bank at `freq`.
+    fn bank_db(eq: &Equalizer, freq: f64, sample_rate: f64) -> f64 {
+        eq.target_bands[0].iter().map(|b| b.magnitude_db(freq, sample_rate)).sum()
+    }
+
+    fn worst_error(gains: [f64; EQ_BANDS], sample_rate: f64, up_to: f64) -> (f64, f64) {
+        let mut eq = Equalizer::new(1, sample_rate);
+        eq.set_all_bands(&gains, sample_rate).unwrap();
+        let logs: Vec<f64> = Equalizer::FREQUENCIES.iter().map(|f| f.log2()).collect();
+        let mut worst = (0.0f64, 0.0f64);
+        let steps = 240;
+        for k in 0..=steps {
+            let f = 31.0 * (up_to / 31.0f64).powf(k as f64 / steps as f64);
+            let x = f.log2();
+            let seg = logs.windows(2).position(|w| x <= w[1]).unwrap_or(EQ_BANDS - 2);
+            let t = ((x - logs[seg]) / (logs[seg + 1] - logs[seg])).clamp(0.0, 1.0);
+            let want = gains[seg] + (gains[seg + 1] - gains[seg]) * t;
+            let e = (bank_db(&eq, f, sample_rate) - want).abs();
+            if e > worst.0 { worst = (e, f); }
+        }
+        worst
+    }
+
+    #[test]
+    fn flat_settings_come_out_flat() {
+        // Before: all +6 read +8.8 dB at 1 kHz, all +12 read +18 dB in the mids.
+        for &sr in &[44_100.0, 48_000.0, 96_000.0] {
+            for &g in &[6.0, 12.0, -12.0] {
+                let (e, f) = worst_error([g; EQ_BANDS], sr, 8_000.0);
+                assert!(e < 1.0, "all {g:+} dB at {sr} Hz: {e:.2} dB off at {f:.0} Hz");
+            }
+        }
+    }
+
+    #[test]
+    fn every_band_center_hits_its_setting() {
+        let curves = [
+            [12.0, 8.0, 4.0, 0.0, -4.0, -4.0, 0.0, 4.0, 8.0, 12.0],
+            [0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [6.0, 6.0, 6.0, 6.0, 6.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ];
+        for gains in curves {
+            let mut eq = Equalizer::new(1, 48_000.0);
+            eq.set_all_bands(&gains, 48_000.0).unwrap();
+            for (i, &f) in Equalizer::FREQUENCIES.iter().enumerate() {
+                let got = bank_db(&eq, f, 48_000.0);
+                assert!((got - gains[i]).abs() < 0.3, "{gains:?}: band {f} Hz reads {got:.2}");
+            }
+            assert_eq!(eq.target_gains, gains.to_vec(), "user gains are kept as set");
+        }
+    }
+
+    #[test]
+    fn one_band_change_still_crossfades_only_what_moved() {
+        let mut eq = Equalizer::new(2, 44_100.0);
+        eq.set_band_gain(5, 6.0, 44_100.0).unwrap();
+        assert!(eq.smooth_counter[5] > 0);
+        // Flat again: every section returns to identity exactly.
+        eq.set_band_gain(5, 0.0, 44_100.0).unwrap();
+        for b in &eq.target_bands[1] {
+            assert!((b.magnitude_db(1_000.0, 44_100.0)).abs() < 1e-9);
+        }
+    }
+
     use super::*;
 
     fn assert_section_bit_equal(actual: &BiquadSection, expected: &BiquadSection) {

@@ -1,0 +1,74 @@
+/* 「加入歌单」选择器（music-playlist-picker.js）：一张只放歌单的小卡片。
+ * 材质用 .mf-glass（music-fluid-kit.css），尺寸跟全窗口的下拉一样：外框留 4、行高 28、圆角 12 / 7、字号 12.5。 */
+.mpp {
+  position: fixed;
+  z-index: 1300;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 248px;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 18px;
+  overflow: hidden;
+}
+.mpp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 10px 6px;
+  color: var(--mf-ink2);
+  font-size: 11.5px;
+}
+.mpp-head b { flex: none; color: var(--mf-ink); font-weight: 600; font-size: 12.5px; }
+.mpp-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mpp-search {
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  height: 28px;
+  margin: 0 4px 4px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  outline: none;
+  background: var(--mf-hover);
+  box-shadow: inset 0 0 0 1px var(--mf-rule);
+  color: var(--mf-ink);
+  font: inherit;
+}
+.mpp-search::placeholder { color: var(--mf-ink2); }
+.mpp .mpp-search:is(:focus, :focus-visible) { outline: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mf-tint) 70%, transparent); }
+.mpp-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.mpp-foot { flex: none; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--mf-rule); }
+.mpp-foot .mpp-search { margin: 0 4px; }
+.mpp-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  color: var(--mf-ink);
+  cursor: pointer;
+  outline: none;
+}
+.mpp-item:is(:hover, :focus) { background: var(--mf-hover); }
+.mpp-item > svg:first-child { flex: none; opacity: .62; }
+.mpp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mpp-item i { flex: none; color: var(--mf-ink2); font-style: normal; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.mpp-mark { flex: none; color: var(--mf-tint); }
+.mpp-item[data-state="all"] .mpp-name { font-weight: 600; }
+.mpp-new { color: var(--mf-ink); }
+.mpp-new > svg:first-child { opacity: .8; }
+.mpp-empty { padding: 6px 10px; color: var(--mf-ink2); font-size: 12px; }
+body.music-fl-low .mpp { backdrop-filter: none; -webkit-backdrop-filter: none; }

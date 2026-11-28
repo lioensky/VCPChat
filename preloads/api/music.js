@@ -11,6 +11,8 @@ module.exports = {
     api: {
         openMusicWindow: send('open-music-window').roles('chat', 'utility'),
         musicRendererReady: send('music-renderer-ready'),
+        // 窗口最小化 / 藏起来（页面关了后台节流，自己报不出来；Musicmodules/music-window-visibility.js）
+        onMusicWindowVisibility: on('music-window-visibility'),
         getMusicCapsuleState: invoke('music-capsule-get-state').roles('chat'),
         onMusicCapsuleState: on('music-capsule-state').roles('chat'),
         toggleMusicInfoInjection: invoke('music-info-injection-toggle').roles('chat'),
@@ -18,6 +20,24 @@ module.exports = {
         publishMusicCapsuleState: send('music-capsule-publish', 'state'),
         publishMusicGroove: send('music-groove-publish', 'payload'),
         getMusicPendingTrack: invoke('music-get-pending-track'),
+        // 外语歌词没有翻译时用 VCP 的模型翻成中文（modules/musicLyricsTranslate.js）
+        translateMusicLyrics: invoke('music-translate-lyrics', 'payload'),
+        readMusicAudioFile: invoke('music-read-audio-file', 'payload'),
+        exportMusicM3u: invoke('music-m3u-export', 'payload'),
+        importMusicM3u: invoke('music-m3u-import', 'payload'),
+        showMusicInFolder: invoke('music-show-in-folder', 'payload'),
+        musicLibraryFolders: invoke('music-library-folders', 'payload'),
+        // 新版 / 旧版（上游原版）音乐界面
+        getMusicLegacyUI: invoke('music-get-legacy-ui'),
+        setMusicLegacyUI: invoke('music-set-legacy-ui', 'enabled'),
+        // 桌面歌词：音乐窗口开关、送歌词；歌词条收歌词、发遥控指令（modules/ipc/musicDesktopLyrics.js）
+        getDesktopLyrics: invoke('music-desktop-lyrics-get'),
+        toggleDesktopLyrics: invoke('music-desktop-lyrics-toggle', 'on'),
+        publishDesktopLyrics: send('music-desktop-lyrics-publish', 'payload'),
+        onDesktopLyricsChanged: on('music-desktop-lyrics-changed'),
+        onDesktopLyricsState: on('music-desktop-lyrics-state'),
+        onDesktopLyricsPrefs: on('music-desktop-lyrics-prefs'),
+        sendDesktopLyricsCommand: send('music-desktop-lyrics-command', 'command', 'value'),
 
         // 播放列表
         getMusicPlaylist: invoke('get-music-playlist'),
@@ -25,10 +45,14 @@ module.exports = {
         getCustomPlaylists: invoke('get-custom-playlists'),
         saveCustomPlaylists: invoke('save-custom-playlists', 'playlists'),
         addMusicFolder: invoke('music-add-folder'),
+        // 拖进音乐窗口的本地文件/文件夹路径；结果照常经 music-scan-* 送回
+        addMusicPaths: invoke('music-add-paths', 'paths'),
         shareMusicTrack: invoke('music-share-track', 'trackPath'),
         onMusicFiles: on('music-files'),
-        onMusicScanStart: onSignal('music-scan-start'),
+        onMusicScanStart: on('music-scan-start'),
         onMusicScanProgress: on('music-scan-progress'),
+        // 扫描途中成批送来的新曲目 { tracks, folderPath }；完整结果仍以 music-scan-complete 为准
+        onMusicScanBatch: on('music-scan-batch'),
         onMusicScanComplete: on('music-scan-complete'),
 
         // 播放控制；桌面小组件也可控制播放
@@ -43,6 +67,9 @@ module.exports = {
         onMusicSetTrack: on('music-set-track'),
         onMusicControl: on('music-control'),
         onAudioEngineError: on('audio-engine-error'),
+        // 音频引擎实际监听的地址与状态（端口启动时探测，可能不是默认的 63789）
+        getAudioEngineEndpoint: invoke('music-get-audio-engine-endpoint'),
+        onAudioEngineStatus: on('audio-engine-status'),
         // 桌面小组件 → 音乐窗口的遥控指令（上一首/下一首等）
         sendMusicRemoteCommand: send('music-remote-command', 'command').roles('desktop'),
 
@@ -70,6 +97,7 @@ module.exports = {
         setMusicSaturation: invoke('music-set-saturation', 'options'),
         getMusicCrossfeed: invoke('music-get-crossfeed'),
         setMusicCrossfeed: invoke('music-set-crossfeed', 'options'),
+        setMusicChannels: invoke('music-set-channels', 'options'),
         getMusicDynamicLoudness: invoke('music-get-dynamic-loudness'),
         setMusicDynamicLoudness: invoke('music-set-dynamic-loudness', 'options'),
         getMusicSettings: invoke('music-get-settings'),

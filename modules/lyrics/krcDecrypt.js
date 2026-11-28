@@ -3,10 +3,11 @@
 
 const zlib = require('zlib');
 
-const KRC_KEY = [
+const KRC_KEY = Uint8Array.from([
   0x40, 0x47, 0x61, 0x77, 0x5e, 0x32, 0x6e, 0x2d,
   0x41, 0x70, 0x66, 0x21, 0x5a, 0x53, 0x64, 0x32
-];
+]);
+const KRC_LANG_TAG_RE = /\[language:([^\]]*)\]/;
 
 /**
  * Decrypts Kugou KRC buffer.
@@ -21,9 +22,10 @@ function decryptKrcBuffer(buffer) {
   const isKrcMagic = buffer[0] === 0x6b && buffer[1] === 0x72 && buffer[2] === 0x63 && buffer[3] === 0x31;
   const dataStart = isKrcMagic ? 4 : 0;
 
-  const decrypted = Buffer.alloc(buffer.length - dataStart);
-  for (let i = dataStart; i < buffer.length; i++) {
-    decrypted[i - dataStart] = buffer[i] ^ KRC_KEY[(i - dataStart) % KRC_KEY.length];
+  const len = buffer.length - dataStart;
+  const decrypted = Buffer.allocUnsafe(len);
+  for (let i = 0; i < len; i += 1) {
+    decrypted[i] = buffer[dataStart + i] ^ KRC_KEY[i & 15];
   }
 
   try {
@@ -59,7 +61,8 @@ function krcDecrypt(content) {
  * which carries translations and romanization.
  */
 function decodeKrcLanguageTag(krcString) {
-  const match = krcString.match(/\[language:([^\]]*)\]/);
+  if (typeof krcString !== 'string' || !krcString || krcString.indexOf('[language:') === -1) return { translations: [], romanizations: [] };
+  const match = KRC_LANG_TAG_RE.exec(krcString);
   if (!match) return { translations: [], romanizations: [] };
 
   try {
@@ -69,21 +72,31 @@ function decodeKrcLanguageTag(krcString) {
     }
     const decoded = Buffer.from(cleanB64, 'base64').toString('utf8');
     const obj = JSON.parse(decoded);
+    const content = Array.isArray(obj?.content) ? obj.content : [];
 
-    const readEmbeddedTrack = (type) => {
-      const track = obj.content?.find(item => item.type === type);
-      if (!track || !Array.isArray(track.lyricContent)) return [];
-      return track.lyricContent.map(lines => {
-        if (Array.isArray(lines)) {
-          return lines.join('').trim();
-        }
-        return String(lines || '').trim();
-      });
+    const extractLines = (lyricContent) => {
+      if (!Array.isArray(lyricContent)) return [];
+      const out = new Array(lyricContent.length);
+      for (let i = 0; i < lyricContent.length; i += 1) {
+        const lines = lyricContent[i];
+        out[i] = Array.isArray(lines) ? lines.join('').trim() : String(lines || '').trim();
+      }
+      return out;
     };
 
+    let romanTrack = null;
+    let transTrack = null;
+    for (let i = 0; i < content.length; i += 1) {
+      const item = content[i];
+      if (!item) continue;
+      if (!romanTrack && item.type === 0) romanTrack = item;
+      else if (!transTrack && item.type === 1) transTrack = item;
+      if (romanTrack && transTrack) break;
+    }
+
     return {
-      romanizations: readEmbeddedTrack(0),
-      translations: readEmbeddedTrack(1)
+      romanizations: romanTrack ? extractLines(romanTrack.lyricContent) : [],
+      translations: transTrack ? extractLines(transTrack.lyricContent) : []
     };
   } catch (err) {
     return { translations: [], romanizations: [] };

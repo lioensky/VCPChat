@@ -1,0 +1,54 @@
+/* 回环（orbit）：舞台光束、烟雾和歌词都由着色器画。 */
+.music-stage-mode-orbit {
+    isolation: isolate;
+    background: var(--orbit-field, #0a0b0e);
+}
+.music-stage-mode-orbit > .orbit-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+    pointer-events: none;
+}
+.orbit-kicker {
+    position: absolute;
+    z-index: 2;
+    top: calc(max(5%, 42px) + 26px);
+    right: calc(max(4%, 36px) + 2px);
+    color: color-mix(in srgb, var(--stage-ink) 50%, transparent);
+    font: 600 10px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.24em;
+    pointer-events: none;
+}
+.music-stage-mode-orbit > .orbit-translation {
+    position: absolute;
+    left: 50%;
+    bottom: max(calc(16% + 12px), 122px);
+    z-index: 2;
+    max-width: min(76%, 1000px);
+    margin: 0;
+    transform: translateX(-50%);
+    color: color-mix(in srgb, var(--stage-ink) 66%, transparent);
+    font-size: 15px;
+    line-height: 1.5;
+    text-align: center;
+    white-space: pre-line;
+    text-shadow: none;
+    pointer-events: none;
+}
+.music-stage-mode-orbit > .orbit-translation:empty,
+.orbit-notice[hidden] {
+    display: none;
+}
+.orbit-notice {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--stage-ink) 66%, transparent);
+    font-size: 14px;
+}
+

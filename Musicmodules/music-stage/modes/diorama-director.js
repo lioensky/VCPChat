@@ -68,12 +68,30 @@
         return kinds;
     };
 
+    // Glyph indices where a word begins, so a sign page is never cut inside a
+    // word ("隧 / 道"). Without a segmenter every glyph may start a page.
+    const wordSegmenter = typeof Intl !== 'undefined' && Intl.Segmenter
+        ? new Intl.Segmenter('zh', { granularity: 'word' }) : null;
+    const wordStarts = glyphs => {
+        if (!wordSegmenter) return null;
+        const at = new Map();
+        let offset = 0;
+        glyphs.forEach((glyph, index) => { at.set(offset, index); offset += glyph.text.length; });
+        const starts = new Set();
+        for (const part of wordSegmenter.segment(glyphs.map(glyph => glyph.text).join(''))) {
+            if (at.has(part.index)) starts.add(at.get(part.index));
+        }
+        return starts;
+    };
+
     // Timings are never synthesized again here: Runtime owns glyph timing.
     const compilePhrases = lines => {
         const phrases = [];
         lines.forEach((line, lineIndex) => {
             const glyphs = buildGlyphTimeline(line);
             const cjkLine = /[\u3040-\u30ff\u3400-\u9fff]/u.test(line.fullText);
+            const starts = wordStarts(glyphs);
+            const startsWord = index => !starts || starts.has(index);
             const groups = [];
             let group = [];
             const flush = () => { if (group.length) groups.push(group); group = []; };
@@ -85,7 +103,8 @@
                 // Latin spaces delimit words, not shots. Keep several words together.
                 const punctuation = previous && /[，。！？；,.!?;:：]/u.test(previous.text);
                 if (cjkLine
-                    ? (group.length >= 4 && boundary || group.length >= 12 && cjk || group.length >= 24)
+                    ? (group.length >= 4 && boundary || group.length >= 12 && cjk && startsWord(i)
+                        || group.length >= 16 && cjk || group.length >= 24)
                     : (group.length >= 36 && boundary || group.length >= 18 && punctuation
                         || group.length >= 64)) flush();
                 group.push(glyph);
@@ -99,7 +118,13 @@
                 const natural = /[\s，。！？；,.!?;:：]/u.test(groups[i - 1].at(-1).text);
                 if (joined.length <= 14) groups.splice(i - 1, 2, joined);
                 else if (!natural) {
-                    const cut = Math.ceil(joined.length / 2);
+                    // Halve at the word start nearest the middle.
+                    const first = groups.slice(0, i - 1).reduce((sum, group) => sum + group.length, 0);
+                    let cut = Math.ceil(joined.length / 2);
+                    for (let step = 0; step < joined.length / 2; step++) {
+                        if (startsWord(first + cut + step)) { cut += step; break; }
+                        if (startsWord(first + cut - step)) { cut -= step; break; }
+                    }
                     groups.splice(i - 1, 2, joined.slice(0, cut), joined.slice(cut));
                 }
             }
@@ -126,7 +151,9 @@
         // screen up for a name. They are left to the lyric panel.
         const credit = line => CREDIT.test(String(line.fullText ?? line.text ?? ''));
         const firstSung = sorted.findIndex(line => !credit(line));
-        const lines = firstSung > 0 ? sorted.slice(firstSung) : sorted;
+        // Marker lines ("●●●", "//") time a break; they get no screen.
+        const lines = (firstSung > 0 ? sorted.slice(firstSung) : sorted)
+            .filter(line => R.readableText(line.fullText ?? line.text));
         const seed = String(input.trackId || 'last-train');
         const lastEnd = lines.reduce((end, line) => Math.max(end, vocalEnd(line),
             finiteNumber(line.renderHints?.renderEndTime, 0)), 0);
@@ -195,21 +222,43 @@
             const t = clamp(time, 0, duration);
             const index = Math.max(0, upperBound(acts, t, 'start') - 1);
             const act = acts[index];
-            const previous = acts[Math.max(0, index - 1)];
+            const prevP = acts[Math.max(0, index - 1)].params;
+            const curP = act.params;
             const blend = index ? smooth((t - act.start) / Math.min(3, (act.end - act.start) * 0.45)) : 1;
-            const params = {};
-            for (const key of Object.keys(act.params)) params[key] = mix(previous.params[key], act.params[key], blend);
-            if (act.kind === 'Departure') params.speed *= smooth(t / Math.max(1, act.end));
-            return { ...params, act: act.kind, actIndex: index, visit: act.visit, blend, dream: dreamAt(t), dusk: duskAt(t) };
+            let speed = mix(prevP.speed, curP.speed, blend);
+            if (act.kind === 'Departure') speed *= smooth(t / Math.max(1, act.end));
+            return {
+                speed,
+                height: mix(prevP.height, curP.height, blend),
+                fov: mix(prevP.fov, curP.fov, blend),
+                openness: mix(prevP.openness, curP.openness, blend),
+                warmth: mix(prevP.warmth, curP.warmth, blend),
+                density: mix(prevP.density, curP.density, blend),
+                act: act.kind, actIndex: index, visit: act.visit, blend, dream: dreamAt(t), dusk: duskAt(t)
+            };
+        };
+        const speedAt = time => {
+            const t = clamp(time, 0, duration);
+            const index = Math.max(0, upperBound(acts, t, 'start') - 1);
+            const act = acts[index];
+            const prevP = acts[Math.max(0, index - 1)].params;
+            const curP = act.params;
+            const blend = index ? smooth((t - act.start) / Math.min(3, (act.end - act.start) * 0.45)) : 1;
+            let speed = mix(prevP.speed, curP.speed, blend);
+            if (act.kind === 'Departure') speed *= smooth(t / Math.max(1, act.end));
+            return speed;
         };
         // Fixed offline quadrature: sample order, refresh rate and seeks cannot
         // change distance. Long recordings retain a bounded integration table.
         const step = Math.max(1 / 30, duration / 120000);
         const count = Math.ceil(duration / step);
         const distances = new Float64Array(count + 1);
+        let prevSpeed = speedAt(0);
         for (let i = 1; i <= count; i++) {
             const a = (i - 1) * step, b = Math.min(duration, i * step);
-            distances[i] = distances[i - 1] + (sample(a).speed + sample(b).speed) * (b - a) * 0.5;
+            const nextSpeed = speedAt(b);
+            distances[i] = distances[i - 1] + (prevSpeed + nextSpeed) * (b - a) * 0.5;
+            prevSpeed = nextSpeed;
         }
         const distanceAt = (time, speed = 1) => {
             const t = clamp(time, 0, duration);
@@ -241,8 +290,12 @@
         };
         const cuts = [];
         const candidates = [];
-        const safe = t => !protectedIntervals.some(interval =>
-            interval.start < t + 0.18 && interval.end > t - 0.18);
+        const safe = t => {
+            const idx = upperBound(protectedIntervals, t + 0.18, 'start') - 1;
+            if (idx < 0) return true;
+            const iv = protectedIntervals[idx];
+            return !(iv.start < t + 0.18 && iv.end > t - 0.18);
+        };
         acts.forEach((act, index) => {
             if (!index) return;
             const earlier = act.start - 0.35;

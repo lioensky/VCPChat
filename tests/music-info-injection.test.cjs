@@ -21,7 +21,9 @@ function loadMusic(manager) {
             if (name === 'electron') return {
                 ipcMain: { handle: (name, handler) => handles.set(name, handler), on() {} }
             };
+            if (name === '../services/audioEngineEndpoint') return require('../modules/services/audioEngineEndpoint');
             if (name.startsWith('../')) return {};
+            if (name.startsWith('./')) return require(path.join(__dirname, '../modules/ipc', name));
             return require(name);
         }
     });
@@ -79,6 +81,10 @@ test('actual request injection block gates current music but preserves system pr
                 messages, settings: { musicInfoInjectionEnabled: enabled, agentMusicControl: control },
                 getMusicState: () => ({ currentSongInfo: { title: '歌曲', artist: '艺术家', album: '专辑' } }),
                 fs: { pathExists: async () => true, readJson: async () => [{ title: '列表曲目' }] },
+                require: (name) => {
+                    assert.equal(name, '../musicPlaylistPrompt');
+                    return { playlistPrompt: async () => require('../modules/musicPlaylistPrompt').formatPlaylistPrompt([{ title: '列表曲目' }]) };
+                },
                 path, APP_DATA_ROOT_IN_PROJECT: os.tmpdir(), console
             });
             await vm.runInContext(`(async () => { ${block} })()`, context);
@@ -145,4 +151,29 @@ test('UI preserves enabled appearance and gives retry hint when persistence fail
     assert.equal(root.classList.contains('is-injection-disabled'), false);
     assert.match(trigger.title, /保存失败/);
     assert.equal(trigger.getAttribute('aria-busy'), 'false');
+});
+
+test('Batch 61: unchanged injection setting skips redundant music-capsule-state broadcasts and toggle publishes once', async t => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vchat-music-inj-dedup-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const file = path.join(dir, 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({ agentMusicControl: true, musicInfoInjectionEnabled: true }));
+    const manager = new SettingsManager(file);
+    const { handles, mainWindow, sent } = loadMusic(manager);
+    const snapshot = handles.get('music-capsule-get-state');
+    const toggle = handles.get('music-info-injection-toggle');
+
+    // Reading unchanged default-true state emits 0 IPC broadcasts
+    await snapshot();
+    assert.equal(sent.length, 0, 'reading unchanged injection setting does not broadcast music-capsule-state');
+
+    // Updating an unrelated setting emits 0 IPC broadcasts
+    await manager.updateSettings(cur => ({ ...cur, userName: 'Other' }));
+    assert.equal(sent.length, 0, 'unrelated settings update does not broadcast music-capsule-state');
+
+    // Toggling injection emits exactly once (not duplicated by settings-updated + explicit apply)
+    await toggle({ sender: mainWindow.webContents });
+    const capsulePushes = sent.filter(([ch]) => ch === 'music-capsule-state');
+    assert.equal(capsulePushes.length, 1, 'injection toggle broadcasts music-capsule-state exactly once');
+    assert.equal(capsulePushes[0][1].musicInfoInjectionEnabled, false);
 });

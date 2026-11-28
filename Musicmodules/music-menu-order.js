@@ -1,0 +1,154 @@
+/*
+ * 曲目右键菜单的顺序和分组。
+ *
+ * 菜单里的项是几个模块各自插进去的（喜欢、电台、转到歌手 / 专辑、复制歌名），都插在「加入队列」后面，
+ * 结果是「添加到歌单」沉到最底下，中间八项连成一片没有分隔。这里按 Apple Music 的习惯排：
+ * 先是播放怎么放，再是收进歌单 / 喜欢，然后是去哪儿看，最后是复制、获取歌词这类工具，危险的移除单独放最后。
+ * 有新的项插进来（或者某个模块晚加载）会自动再排一次；不认识的项放在工具组末尾。
+ */
+(function (global) {
+    'use strict';
+    const document = global.document;
+    if (!document) return;
+
+    const GROUPS = [
+        ['archive-pick'],
+        ['play', 'play-next', 'add-to-queue'],
+        ['add-to-playlist', 'create-playlist-add', 'toggle-like'],
+        ['start-radio', 'goto-artist', 'goto-album'],
+        ['copy-title', 'get-lyrics', '*'],
+        ['remove-from-list'],
+    ];
+
+    const KNOWN = new Set(GROUPS.flat());
+
+    function arrange(menu) {
+        const byAction = new Map();
+        const others = [];
+        const now = [];
+        const dividers = [];
+        const kids = menu.children;
+        for (let i = 0; i < kids.length; i += 1) {
+            const el = kids[i];
+            if (el.classList.contains('context-menu-item')) {
+                const act = el.dataset.action;
+                byAction.set(act, el);
+                if (!KNOWN.has(act)) others.push(el);
+                now.push(el);
+            } else if (el.classList.contains('context-menu-divider')) {
+                now.push(el);
+                dividers.push(el);
+            }
+        }
+        const wanted = [];
+        for (let gi = 0; gi < GROUPS.length; gi += 1) {
+            const group = GROUPS[gi];
+            const startLen = wanted.length;
+            let added = false;
+            for (let ai = 0; ai < group.length; ai += 1) {
+                const a = group[ai];
+                if (a === '*') {
+                    for (let oi = 0; oi < others.length; oi += 1) {
+                        if (!added && startLen > 0) wanted.push('divider');
+                        added = true;
+                        wanted.push(others[oi]);
+                    }
+                } else if (byAction.has(a)) {
+                    if (!added && startLen > 0) wanted.push('divider');
+                    added = true;
+                    wanted.push(byAction.get(a));
+                }
+            }
+        }
+        // 已经是这个顺序就什么都不动（避免和观察器互相触发）
+        let same = now.length === wanted.length;
+        if (same) {
+            for (let i = 0; i < now.length; i += 1) {
+                if (wanted[i] === 'divider' ? !now[i].classList.contains('context-menu-divider') : now[i] !== wanted[i]) {
+                    same = false;
+                    break;
+                }
+            }
+        }
+        if (same) return;
+        const frag = document.createDocumentFragment();
+        let divIdx = 0;
+        for (let i = 0; i < wanted.length; i += 1) {
+            const w = wanted[i];
+            if (w === 'divider') {
+                const d = divIdx < dividers.length ? dividers[divIdx++] : document.createElement('div');
+                d.className = 'context-menu-divider';
+                frag.appendChild(d);
+            } else frag.appendChild(w);
+        }
+        for (let i = divIdx; i < dividers.length; i += 1) dividers[i].remove();
+        // 菜单里别的东西（比如流体层）留在原地，菜单项排在它们前面
+        menu.insertBefore(frag, menu.firstChild);
+    }
+
+    // 有的项按场景藏起来（比如不在歌单里就没有「移除」），藏掉以后别留下连着的两道分隔线
+    function tidyDividers(menu) {
+        const shown = (el) => el.style.display !== 'none' && !el.hidden;
+        let seenItem = false;
+        let pending = null;
+        for (const el of menu.children) {
+            if (el.classList.contains('context-menu-divider')) {
+                if (pending && pending.style.display !== 'none') pending.style.display = 'none';
+                if (seenItem) pending = el;
+                else if (el.style.display !== 'none') el.style.display = 'none';
+            } else if (el.classList.contains('context-menu-item') && shown(el)) {
+                if (pending) {
+                    if (pending.style.display !== '') pending.style.display = '';
+                    pending = null;
+                }
+                seenItem = true;
+            }
+        }
+        if (pending && pending.style.display !== 'none') pending.style.display = 'none';
+    }
+
+    // 鼠标右键点开的菜单也要接住方向键 / 回车 / Esc：不接的话按键会落到后面的目录上（换了选中的歌，甚至直接开始播放）。
+    // 键盘打开的那几处自己已经接好了（menu.__kbdDetach 有值），这里只补没接的。
+    function attachKeyboard(menu) {
+        if (typeof menu.__kbdDetach === 'function') return;
+        const active = document.activeElement;
+        global.MusicArchiveList?.menuKeyboard?.({ contextMenu: menu }, { restore: active && active !== document.body ? active : null, focus: false });
+    }
+
+    function start() {
+        const menu = document.getElementById('track-context-menu');
+        if (!menu) return;
+        arrange(menu);
+        tidyDividers(menu);
+        const isMenuNode = (node) => Boolean(node && node.nodeType === 1 && (node.classList.contains('context-menu-item') || node.classList.contains('context-menu-divider')));
+        const childObserver = new MutationObserver((records) => {
+            let relevant = false;
+            for (let i = 0; i < records.length && !relevant; i++) {
+                const r = records[i];
+                for (let j = 0; j < r.addedNodes.length; j++) if (isMenuNode(r.addedNodes[j])) { relevant = true; break; }
+                if (relevant) break;
+                for (let j = 0; j < r.removedNodes.length; j++) if (isMenuNode(r.removedNodes[j])) { relevant = true; break; }
+            }
+            if (!relevant) return;
+            arrange(menu);
+            childObserver.takeRecords();
+        });
+        childObserver.observe(menu, { childList: true });
+        let wasVisible = menu.classList.contains('visible');
+        const classObserver = new MutationObserver(() => {
+            const visible = menu.classList.contains('visible');
+            if (visible) tidyDividers(menu);
+            if (visible && !wasVisible) attachKeyboard(menu);
+            wasVisible = visible;
+        });
+        classObserver.observe(menu, { attributes: true, attributeFilter: ['class'] });
+        global.addEventListener?.('beforeunload', () => {
+            childObserver.disconnect();
+            classObserver.disconnect();
+        }, { once: true });
+    }
+
+    global.MusicMenuOrder = { arrange, tidyDividers, GROUPS };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+    else start();
+})(typeof window !== 'undefined' ? window : globalThis);

@@ -321,7 +321,7 @@ function initializeInputEnhancer(refs) {
                 updateAttachmentPreviewRef();
                 console.log(`[InputEnhancer] Successfully attached shared file: ${att.name}`);
             } else {
-                const errorMsg = results && results.length > 0 && results[0].error ? results[0].error : '閺堫亞鐓￠柨娆掝嚖';
+                const errorMsg = results && results.length > 0 && results[0].error ? results[0].error : '未知错误';
                 alert('附加分享的文件失败: ' + errorMsg);
             }
         } catch (err) {

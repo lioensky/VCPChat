@@ -4,21 +4,193 @@
 function setupUtils(app) {
     const api = app.api || window.utilityAPI || window.electronAPI;
 
-    // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
+    const AUDIO_EXT_RE = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i;
+    const AUDIO_EXTS = new Set(['mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac', 'wma', 'ape', 'dsf', 'dff', 'alac', 'aif', 'aiff', 'opus', 'wv']);
+    const HEX_RE = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i;
+    const PATH_MATCH_RE = /\[路径: (.*?)\]/;
+    const LINE_SPLIT_RE = /[\r\n]+/;
+    const EXT_TRIM_RE = /\.[^.]+$/;
+    const WS_SPLIT_RE = /\s+/;
+    const FILE_BSLASH_RE = /\\/g;
+    const FILE_ENC_RE = /[?#']/g;
+    const SEM_ERR_SELF_RE = /^还没有设置|^VCP 服务器响应超时/;
+    const SEM_ERR_NET_RE = /failed to fetch|networkerror|econnrefused/i;
+    const SEM_ERR_AUTH_RE = /status: (401|403)/;
+    const TXT_EXT_RE = /\.txt$/;
+
+    // 去除标题尾部的音频文件扩展名（仅检查末 5 字符的 '.' 并查 Set，跳过全串扫描与正则替换）
     app.stripAudioExtension = (title) => {
-        if (!title) return title;
-        return title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff|opus|wv)$/i, '');
+        if (!title || typeof title !== 'string') return title;
+        const len = title.length;
+        const lo = len > 5 ? len - 5 : 0;
+        let dot = -1;
+        for (let i = len - 1; i >= lo; i -= 1) {
+            if (title.charCodeAt(i) === 46) { dot = i; break; }
+        }
+        if (dot === -1 || dot === len - 1) return title;
+        return AUDIO_EXTS.has(title.slice(dot + 1).toLowerCase()) ? title.slice(0, dot) : title;
     };
 
+    // 列表搜索框和歌单编辑框共用的匹配：全角半角、大小写、合字统一（NFKC），标题去掉扩展名，
+    // 歌手和专辑也算；空格分开的几个词都要命中（顺序不限）。
+    // ASCII、常用汉字（U+4E00–U+9FFF）和基础平假名（U+3041–U+3096）均为 NFKC 不变量，跳过昂贵的 ICU normalize('NFKC')。
+    const needsNfkc = (s) => {
+        for (let i = 0, n = s.length; i < n; i += 1) {
+            const c = s.charCodeAt(i);
+            if (c <= 0x7f || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3041 && c <= 0x3096)) continue;
+            return true;
+        }
+        return false;
+    };
+    const searchKey = (text) => {
+        if (!text) return '';
+        const s = typeof text === 'string' ? text : String(text);
+        return needsNfkc(s) ? s.normalize('NFKC').toLowerCase() : s.toLowerCase();
+    };
+    const searchFieldCache = new Map();
+    const cachedFieldKey = (raw) => {
+        if (!raw) return '';
+        let hit = searchFieldCache.get(raw);
+        if (hit === undefined) {
+            hit = searchKey(raw);
+            if (searchFieldCache.size >= 4096) searchFieldCache.clear();
+            searchFieldCache.set(raw, hit);
+        }
+        return hit;
+    };
+    let lastArtistRaw = '';
+    let lastArtistKey = '';
+    let lastAlbumRaw = '';
+    let lastAlbumKey = '';
+    const searchHayCache = new WeakMap();
+    const hayOfTrack = (t) => {
+        const title = t.title || '';
+        const artist = t.artist || '';
+        const album = t.album || '';
+        const hit = searchHayCache.get(t);
+        if (hit && hit.title === title && hit.artist === artist && hit.album === album) return hit.hay;
+        let aKey = '';
+        if (artist) {
+            if (artist === lastArtistRaw) aKey = lastArtistKey;
+            else { aKey = cachedFieldKey(artist); lastArtistRaw = artist; lastArtistKey = aKey; }
+        }
+        let alKey = '';
+        if (album) {
+            if (album === lastAlbumRaw) alKey = lastAlbumKey;
+            else { alKey = cachedFieldKey(album); lastAlbumRaw = album; lastAlbumKey = alKey; }
+        }
+        const hay = `${searchKey(app.stripAudioExtension(title))}\n${aKey}\n${alKey}`;
+        searchHayCache.set(t, { title, artist, album, hay });
+        return hay;
+    };
+    let lastSearchSrc = null;
+    let lastSearchLen = -1;
+    let lastSearchFirst = null;
+    let lastSearchLast = null;
+    let lastSearchWords = null;
+    let lastSearchHits = null;
+    const canNarrowWords = (prevWords, nextWords) => {
+        if (!prevWords || nextWords.length < prevWords.length) return false;
+        for (let i = 0; i < prevWords.length; i += 1) {
+            const pw = prevWords[i];
+            let covered = false;
+            for (let j = 0; j < nextWords.length; j += 1) {
+                if (nextWords[j].includes(pw)) { covered = true; break; }
+            }
+            if (!covered) return false;
+        }
+        return true;
+    };
+    const WS_RE = /\s/;
+    app.searchTracks = (tracks, query) => {
+        const key = searchKey(query).trim();
+        const list = Array.isArray(tracks) ? tracks : [];
+        if (!key) return list;
+        let words;
+        if (!WS_RE.test(key)) {
+            words = [key];
+        } else {
+            const parts = key.split(WS_SPLIT_RE);
+            words = [];
+            for (let i = 0; i < parts.length; i += 1) if (parts[i]) words.push(parts[i]);
+        }
+        const wLen = words.length;
+        if (!wLen) return list;
+        const len = list.length;
+        const first = len ? list[0] : null;
+        const last = len ? list[len - 1] : null;
+        const scan = (lastSearchHits && lastSearchSrc === list && lastSearchLen === len
+            && lastSearchFirst === first && lastSearchLast === last
+            && canNarrowWords(lastSearchWords, words))
+            ? lastSearchHits
+            : list;
+        const out = list.slice(0, 0);
+        if (wLen === 1) {
+            const w0 = words[0];
+            for (let i = 0, n = scan.length; i < n; i += 1) {
+                const t = scan[i];
+                if (t && hayOfTrack(t).includes(w0)) out.push(t);
+            }
+        } else {
+            for (let i = 0, n = scan.length; i < n; i += 1) {
+                const t = scan[i];
+                if (!t) continue;
+                const hay = hayOfTrack(t);
+                let ok = true;
+                for (let j = 0; j < wLen; j += 1) {
+                    if (!hay.includes(words[j])) { ok = false; break; }
+                }
+                if (ok) out.push(t);
+            }
+        }
+        lastSearchSrc = list;
+        lastSearchLen = len;
+        lastSearchFirst = first;
+        lastSearchLast = last;
+        lastSearchWords = words;
+        lastSearchHits = out.slice();
+        return out;
+    };
+
+    // 分享当前曲目到聊天；分享不了（远程曲目、文件已不在）时给个提示。
+    app.shareCurrentTrack = async () => {
+        if (!app.pendingTrackPath || !app.api?.shareMusicTrack) return;
+        try {
+            const result = await app.api.shareMusicTrack(app.pendingTrackPath);
+            if (result && result.success === false && result.message) window.MusicToast?.show?.({ message: result.message });
+        } catch (error) {
+            console.error('[Music] Share failed:', error);
+            window.MusicToast?.show?.({ kind: 'error', message: window.MusicErrorText ? window.MusicErrorText(error, '分享失败') : '分享失败' });
+        }
+    };
+
+    // 本地文件路径转 file:// 地址：空格、中文、%、#、? 都要编码，不然用户名或缓存目录里带这些字符时封面出不来；
+    // 结果里没有引号，可以直接放进 CSS 的 url("...")。
+    app.fileUrl = (filePath) => {
+        if (!filePath) return '';
+        let p = String(filePath).replace(FILE_BSLASH_RE, '/');
+        if (!p.startsWith('/')) p = '/' + p;
+        return 'file://' + encodeURI(p).replace(FILE_ENC_RE, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+    };
+
+    // 和列表、档案页一样：一小时以上写成 1:02:03（以前写 62:03）；引擎还没报时长（undefined）时写 0:00，不是 NaN:NaN
     app.formatTime = (seconds) => {
-        const minutes = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+        const total = Math.max(0, Math.floor(Number(seconds) || 0));
+        if (total < 3600) {
+            const m = (total / 60) | 0;
+            const secs = total - m * 60;
+            return `${m}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+        const h = (total / 3600) | 0;
+        const rem = total - h * 3600;
+        const m = (rem / 60) | 0;
+        const secs = rem - m * 60;
+        return `${h}:${m < 10 ? '0' : ''}${m}:${secs < 10 ? '0' : ''}${secs}`;
     };
 
     app.normalizePathForCompare = (inputPath) => {
         if (!inputPath) return null;
-        let normalized = inputPath.replace(/\\/g, '/');
+        let normalized = inputPath.replace(FILE_BSLASH_RE, '/');
         if (normalized.startsWith('//?/')) {
             normalized = normalized.substring(4);
         }
@@ -27,7 +199,7 @@ function setupUtils(app) {
 
     app.hexToRgb = (hex) => {
         if (!hex) return null;
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+        const result = HEX_RE.exec(hex.trim());
         return result ? {
             r: parseInt(result[1], 16),
             g: parseInt(result[2], 16),
@@ -38,16 +210,28 @@ function setupUtils(app) {
     app.performSemanticSearch = async (query) => {
         if (app.isSemanticSearching) return;
         app.isSemanticSearching = true;
-        app.semanticSearchBtn.classList.add('loading');
+        app.semanticSearchBtn?.classList.add('loading');
+        // 结果回来时语义搜索已经关掉、或者框里已经换了别的字：这份结果不用了，不能盖掉现在的列表。
+        const stillWanted = () => app.isSemanticSearchActive && String(app.searchInput?.value || '').trim() === query;
+        const tell = (message) => { try { (globalThis.MusicToast?.show || (() => {}))({ message, kind: 'error' }); } catch (e) { /* 没有提示层 */ } };
 
         try {
             const settings = await api.loadSettings();
-            const res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'LightMemo', {
-                maid: 'MusicPlay',
-                query: `[音乐检索]${query}`,
-                k: 10,
-                tag_boost: 0.95
-            });
+            // 没配 VCP 服务器地址时以前在这里抛 TypeError，按钮转一下就没了下文。
+            if (!settings?.vcpServerUrl) throw new Error('还没有设置 VCP 服务器地址');
+            const controller = typeof AbortController === 'function' ? new AbortController() : null;
+            const fetchTimer = controller ? setTimeout(() => controller.abort(), 20000) : null;
+            let res;
+            try {
+                res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'LightMemo', {
+                    maid: 'MusicPlay',
+                    query: `[音乐检索]${query}`,
+                    k: 10,
+                    tag_boost: 0.95
+                }, controller ? { signal: controller.signal } : {});
+            } finally {
+                if (fetchTimer) clearTimeout(fetchTimer);
+            }
 
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             
@@ -57,16 +241,26 @@ function setupUtils(app) {
             // 兼容 LightMemo 旧格式与新版内部 JSON / MCP content 数组格式
             const output = app.extractLightMemoOutput(data);
 
+            if (!stillWanted()) return;
             if (output) {
                 app.processSemanticSearchResults(output);
             } else {
                 console.error('[Music] Semantic search failed or returned empty:', data);
+                tell('语义搜索没有返回结果，检查 VCP 服务器和 LightMemo 插件');
             }
         } catch (err) {
             console.error('[Music] Semantic search error:', err);
+            if (stillWanted()) {
+                const raw = err?.name === 'AbortError' ? 'VCP 服务器响应超时' : (err?.message || String(err));
+                const reason = SEM_ERR_SELF_RE.test(raw) ? raw
+                    : SEM_ERR_NET_RE.test(raw) ? '连不上 VCP 服务器'
+                    : SEM_ERR_AUTH_RE.test(raw) ? 'VCP 服务器拒绝了请求，检查 API Key'
+                    : (globalThis.MusicErrorText ? globalThis.MusicErrorText(raw, '原因不明') : raw);
+                tell(`语义搜索没有完成：${reason}`);
+            }
         } finally {
             app.isSemanticSearching = false;
-            app.semanticSearchBtn.classList.remove('loading');
+            app.semanticSearchBtn?.classList.remove('loading');
         }
     };
 
@@ -134,57 +328,76 @@ function setupUtils(app) {
         
         const results = [];
         const sections = output.split('--- (来源:');
-        
-        sections.forEach(section => {
-            if (!section.trim()) return;
-            
+        for (let si = 0; si < sections.length; si += 1) {
+            const section = sections[si];
+            if (!section.trim()) continue;
             // 提取路径
-            const pathMatch = section.match(/\[路径: (.*?)\]/);
+            const pathMatch = PATH_MATCH_RE.exec(section);
             if (pathMatch) {
-                let path = pathMatch[1];
+                let p = pathMatch[1];
                 // 处理 file:/// 协议
-                if (path.startsWith('file:///')) {
-                    path = path.substring(8);
-                }
-                
+                if (p.startsWith('file:///')) p = p.substring(8);
                 // 提取文件名（不含扩展名）作为搜索关键词
-                const fileName = path.split('/').pop().replace(/\.txt$/, '');
-                results.push({
-                    path: path,
-                    fileName: fileName,
-                    originalSection: section
-                });
+                const slash = p.lastIndexOf('/');
+                const fileName = (slash >= 0 ? p.slice(slash + 1) : p).replace(TXT_EXT_RE, '');
+                results.push({ path: p, fileName, originalSection: section });
             }
-        });
+        }
 
         console.log('[Music] Parsed semantic results:', results);
 
-        // 与本地播放列表匹配
+        // 与本地播放列表匹配（预计算小写字段，避免每条结果/每行歌单重复扫全库转小写）
         const matchedTracks = [];
         const seenPaths = new Set();
+        const pl = app.playlist || [];
+        const indexedPlaylist = new Array(pl.length);
+        for (let i = 0; i < pl.length; i += 1) {
+            const track = pl[i];
+            indexedPlaylist[i] = {
+                track,
+                title: (track.title || '').toLowerCase(),
+                artist: (track.artist || '').toLowerCase(),
+                path: (track.path || '').toLowerCase()
+            };
+        }
 
-        results.forEach(res => {
+        for (let ri = 0; ri < results.length; ri += 1) {
+            const res = results[ri];
             // 1. 尝试通过文件名匹配 (处理歌单中的逐行扫描逻辑)
             const query = res.fileName.toLowerCase();
-            const queryParts = query.split('-').map(p => p.trim()).filter(p => p.length > 1);
-            
-            app.playlist.forEach(track => {
-                if (seenPaths.has(track.path)) return;
+            const rawParts = query.split('-');
+            const queryParts = [];
+            for (let pi = 0; pi < rawParts.length; pi += 1) {
+                const part = rawParts[pi].trim();
+                if (part.length > 1) queryParts.push(part);
+            }
+            const qPartsLen = queryParts.length;
 
-                const title = (track.title || '').toLowerCase();
-                const artist = (track.artist || '').toLowerCase();
-                const trackPath = track.path.toLowerCase();
+            for (let i = 0; i < indexedPlaylist.length; i++) {
+                const item = indexedPlaylist[i];
+                const track = item.track;
+                if (seenPaths.has(track.path)) continue;
+
+                const title = item.title;
+                const artist = item.artist;
+                const trackPath = item.path;
 
                 let isMatch = false;
-                
+
                 // A. 精确匹配标题或标题包含在查询中（要求标题长度大于2以避免误伤）
                 if (title && (title === query || (query.includes(title) && title.length > 2))) {
                     isMatch = true;
                 }
                 // B. 匹配 歌曲-歌手 结构：要求同时匹配标题和艺术家
-                else if (queryParts.length >= 2) {
-                    const matchesTitle = queryParts.some(p => title && (title.includes(p) || p.includes(title)));
-                    const matchesArtist = queryParts.some(p => artist && (artist.includes(p) || p.includes(artist)));
+                else if (qPartsLen >= 2) {
+                    let matchesTitle = false;
+                    let matchesArtist = false;
+                    for (let pi = 0; pi < qPartsLen; pi += 1) {
+                        const part = queryParts[pi];
+                        if (!matchesTitle && title && (title.includes(part) || part.includes(title))) matchesTitle = true;
+                        if (!matchesArtist && artist && (artist.includes(part) || part.includes(artist))) matchesArtist = true;
+                        if (matchesTitle && matchesArtist) break;
+                    }
                     if (matchesTitle && matchesArtist) isMatch = true;
                 }
                 // C. 路径匹配 (要求查询词有一定长度)
@@ -196,39 +409,38 @@ function setupUtils(app) {
                     matchedTracks.push(track);
                     seenPaths.add(track.path);
                 }
-            });
-            
+            }
+
             // 2. 处理歌单文件内容 (逐行扫描)
-            const lines = res.originalSection.split(/[\r\n]+/);
-            lines.forEach(line => {
-                const trimmedLine = line.trim();
+            const lines = res.originalSection.split(LINE_SPLIT_RE);
+            for (let li = 0; li < lines.length; li += 1) {
+                const trimmedLine = lines[li].trim();
                 // 过滤掉元数据行
-                if (!trimmedLine || trimmedLine.startsWith('[') || trimmedLine.startsWith('---')) return;
+                if (!trimmedLine || trimmedLine.startsWith('[') || trimmedLine.startsWith('---')) continue;
 
-                const isAudioFile = /\.(mp3|flac|wav|m4a|ogg|aac|dsf|dff|ape)$/i.test(trimmedLine);
-                if (isAudioFile) {
-                    const songQuery = trimmedLine.replace(/\.[^.]+$/, '').toLowerCase();
-                    app.playlist.forEach(track => {
-                        if (seenPaths.has(track.path)) return;
-                        
-                        const title = (track.title || '').toLowerCase();
-                        const trackPath = track.path.toLowerCase();
+                if (AUDIO_EXT_RE.test(trimmedLine)) {
+                    const songQuery = trimmedLine.replace(EXT_TRIM_RE, '').toLowerCase();
+                    for (let i = 0; i < indexedPlaylist.length; i++) {
+                        const item = indexedPlaylist[i];
+                        const track = item.track;
+                        if (seenPaths.has(track.path)) continue;
 
+                        const title = item.title;
                         // 歌单行匹配要求更高，避免误伤
                         if (title === songQuery || (title && songQuery.includes(title) && title.length > 2)) {
                             matchedTracks.push(track);
                             seenPaths.add(track.path);
                         }
-                    });
+                    }
                 }
-            });
-        });
+            }
+        }
 
         console.log('[Music] Matched tracks count:', matchedTracks.length);
 
         // 强制切换到 "全部" 视图并渲染结果
         app.currentSidebarView = 'all';
-        app.sidebarTabs.forEach(t => t.classList.remove('active'));
+        app.sidebarTabs?.forEach(t => t.classList.remove('active'));
         const allTab = document.querySelector('.sidebar-tab[data-view="all"]');
         if (allTab) allTab.classList.add('active');
         
@@ -236,6 +448,7 @@ function setupUtils(app) {
         if (categoryView) categoryView.style.display = 'none';
         if (app.playlistEl) app.playlistEl.style.display = 'block';
 
+        app.filteredPlaylistSource = null; // 搜索结果是整个曲库里找的，不再算某个歌单
         if (matchedTracks.length > 0) {
             app.currentFilteredTracks = matchedTracks;
             app.renderPlaylist(matchedTracks);

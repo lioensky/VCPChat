@@ -10,6 +10,15 @@ const SCORE_WEIGHTS = {
 
 const AUTO_MATCH_COMPONENT_MISS_SCORE_CAP = 74;
 
+const PUNCT_SYMBOL_RE = /[\p{P}\p{S}]/gu;
+const MULTI_SPACE_RE = /\s+/g;
+const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|ape|opus|wma|alac|aiff?)$/i;
+const FEAT_PARENS_RE = /[\(\[（【]\s*(feat|featuring|ft)\.?\s+[^\)\]）】]+[\)\]）】]/gi;
+const FEAT_TAIL_RE = /\b(feat|featuring|ft)\.?\s+.+$/i;
+const PARENS_CONTENT_RE = /[\(\[（【]([^\)\]）】]+)[\)\]）】]/g;
+const VERSION_MARKER_RE = /(instrumental|inst|off\s*vocal|karaoke|remix|mix|version|ver\.?|cover|live|edit|arrange|伴奏|カラオケ|インスト|リミックス|remaster|remastered)/i;
+const ARTIST_SPLIT_RE = /[,&、\/]|feat\.?|ft\.?|featuring|与/i;
+
 /**
  * Normalizes text for comparison by removing punctuation and converting to lowercase.
  */
@@ -17,8 +26,8 @@ function normalizeLyricMatchText(value) {
     if (!value) return '';
     return String(value)
         .toLowerCase()
-        .replace(/[\p{P}\p{S}]/gu, '')
-        .replace(/\s+/g, ' ')
+        .replace(PUNCT_SYMBOL_RE, '')
+        .replace(MULTI_SPACE_RE, ' ')
         .trim();
 }
 
@@ -26,18 +35,36 @@ function normalizeLyricMatchText(value) {
  * Normalizes title for match, preserving version tags (remix, ver, instrumental, etc.)
  * but removing standard featured artists.
  */
+function hasTailDot(s) {
+    const len = s.length;
+    const lo = len > 5 ? len - 5 : 0;
+    for (let i = len - 1; i >= lo; i -= 1) {
+        if (s.charCodeAt(i) === 46) return true;
+    }
+    return false;
+}
+
+function hasOpenBracket(s) {
+    for (let i = 0; i < s.length; i += 1) {
+        const c = s.charCodeAt(i);
+        if (c === 40 || c === 91 || c === 0xff08 || c === 0x3010) return true;
+    }
+    return false;
+}
+
 function normalizeTitleForMatch(value) {
     if (!value) return '';
-    const versionMarkerPattern = /(instrumental|inst|off\s*vocal|karaoke|remix|mix|version|ver\.?|cover|live|edit|arrange|伴奏|カラオケ|インスト|リミックス|remaster|remastered)/i;
-    return normalizeLyricMatchText(
-        String(value)
-            .replace(/\.(mp3|flac|wav|ogg|m4a|aac|ape|opus|wma|alac|aiff?)$/i, '')
-            .replace(/[\(\[（【]\s*(feat|featuring|ft)\.?\s+[^\)\]）】]+[\)\]）】]/gi, '')
-            .replace(/\b(feat|featuring|ft)\.?\s+.+$/i, '')
-            .replace(/[\(\[（【]([^\)\]）】]+)[\)\]）】]/g, (match, content) => {
-                return versionMarkerPattern.test(content) ? match : '';
-            })
-    );
+    let s = typeof value === 'string' ? value : String(value);
+    if (hasTailDot(s)) s = s.replace(AUDIO_EXT_RE, '');
+    const bracketed = hasOpenBracket(s);
+    if (bracketed) s = s.replace(FEAT_PARENS_RE, '');
+    if (s.indexOf('f') !== -1 || s.indexOf('F') !== -1) s = s.replace(FEAT_TAIL_RE, '');
+    if (bracketed) {
+        s = s.replace(PARENS_CONTENT_RE, (match, content) => {
+            return VERSION_MARKER_RE.test(content) ? match : '';
+        });
+    }
+    return normalizeLyricMatchText(s);
 }
 
 /**
@@ -58,7 +85,7 @@ function stringSimilarity(s1, s2, normalizer = normalizeLyricMatchText) {
     for (const char of set1) {
         if (set2.has(char)) intersection++;
     }
-    const union = new Set([...set1, ...set2]).size;
+    const union = set1.size + set2.size - intersection;
     return union > 0 ? intersection / union : 0;
 }
 
@@ -85,10 +112,13 @@ function calculateDurationScore(targetDurationMs, searchDurationMs) {
 
 function splitArtists(artistText) {
     if (!artistText) return [];
-    return String(artistText)
-        .split(/[,&、\/]|feat\.?|ft\.?|featuring|与/i)
-        .map(a => normalizeLyricMatchText(a))
-        .filter(a => a.length > 0);
+    const parts = String(artistText).split(ARTIST_SPLIT_RE);
+    const out = [];
+    for (let i = 0; i < parts.length; i += 1) {
+        const norm = normalizeLyricMatchText(parts[i]);
+        if (norm.length > 0) out.push(norm);
+    }
+    return out;
 }
 
 function calculateArtistSimilarity(target, search) {
@@ -100,8 +130,10 @@ function calculateArtistSimilarity(target, search) {
     }
 
     let matchCount = 0;
-    for (const a1 of tArtists) {
-        for (const a2 of sArtists) {
+    for (let i = 0; i < tArtists.length; i += 1) {
+        const a1 = tArtists[i];
+        for (let j = 0; j < sArtists.length; j += 1) {
+            const a2 = sArtists[j];
             if (a1 === a2 || (a1.length >= 2 && a2.includes(a1)) || (a2.length >= 2 && a1.includes(a2))) {
                 matchCount++;
                 break;
@@ -116,6 +148,7 @@ function calculateArtistSimilarity(target, search) {
         (sArtists[0].length >= 2 && tArtists[0].includes(sArtists[0])));
 
     const mainBonus = isMainArtistMatched ? Math.max(tokenSim, 0.75) : tokenSim;
+    if (mainBonus >= 1) return 1;
     return Math.max(mainBonus, stringSimilarity(target, search));
 }
 
@@ -125,12 +158,14 @@ function calculateArtistSimilarity(target, search) {
  * candidate: { title, artist, durationMs, album }
  */
 function calculateMatchScore(target, candidate) {
-    const targetTitle = target.title || '';
-    const searchTitle = candidate.title || '';
-    const targetArtist = target.artist || '';
-    const searchArtist = candidate.artist || '';
-    const targetAlbum = target.album || '';
-    const searchAlbum = candidate.album || '';
+    const t = target || {};
+    const c = candidate || {};
+    const targetTitle = t.title || '';
+    const searchTitle = c.title || '';
+    const targetArtist = t.artist || '';
+    const searchArtist = c.artist || '';
+    const targetAlbum = t.album || '';
+    const searchAlbum = c.album || '';
 
     const titleSimilarity = stringSimilarity(targetTitle, searchTitle, normalizeTitleForMatch);
     const titleScore = titleSimilarity * SCORE_WEIGHTS.title;
@@ -149,7 +184,7 @@ function calculateMatchScore(target, candidate) {
         ? (hasTargetAlbum ? 0 : SCORE_WEIGHTS.album)
         : albumSimilarity * SCORE_WEIGHTS.album;
 
-    const duration = calculateDurationScore(target.durationMs, candidate.durationMs);
+    const duration = calculateDurationScore(t.durationMs, c.durationMs);
     const identityScore = titleScore + artistScore + albumScore;
     const titleMatched = titleSimilarity >= 0.65;
     const artistMatched = !targetArtist.trim() || artistSimilarity >= 0.5;

@@ -1,0 +1,4 @@
+{
+  "$comment": "按旧界面写、本机新版界面已经改掉的断言。修好一条就删一条；不要往里加新的回归。由 node scripts/test-music.mjs --update-known 生成。",
+  "failures": {}
+}

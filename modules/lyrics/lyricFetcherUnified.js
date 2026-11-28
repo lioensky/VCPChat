@@ -14,6 +14,7 @@ const { calculateMatchScore } = require('./matchScore');
 const DEFAULT_TIMEOUT_MS = 6000;
 const AMLL_DB_BASE_URL = 'https://amll-ttml-db.stevexmh.net';
 const MANUAL_CANDIDATE_TTL_MS = 10 * 60 * 1000;
+const MANUAL_CANDIDATE_MAX_ENTRIES = 200;
 const AUTO_MATCH_MIN_SCORE = 60;
 const AUTO_CANDIDATES_PER_SOURCE = 3;
 const LYRIC_QUALITY_BONUS = Object.freeze({
@@ -23,6 +24,48 @@ const LYRIC_QUALITY_BONUS = Object.freeze({
     romanization: 0.5
 });
 const manualCandidateCache = new Map();
+const ILLEGAL_FILE_CHARS_RE = /[\\/:"*?<>|]/g;
+const QRC_TIMED_LINE_RE = /\[\d+,\d+\]/;
+let atomicTmpSeq = 0;
+
+function scanLyricFlags(lines) {
+    let hasTranslation = false;
+    let hasRomanization = false;
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        if (!line) continue;
+        if (!hasTranslation && line.translation) hasTranslation = true;
+        if (!hasRomanization && line.romanization) hasRomanization = true;
+        if (hasTranslation && hasRomanization) break;
+    }
+    return { hasTranslation, hasRomanization };
+}
+
+function sanitizeFilePart(str) {
+    return String(str ?? '').replace(ILLEGAL_FILE_CHARS_RE, '_').trim();
+}
+
+function buildLyricBaseName(artist, title) {
+    const safeTitle = sanitizeFilePart(title);
+    if (!safeTitle) return null;
+    const safeArtist = sanitizeFilePart(artist);
+    return safeArtist ? `${safeArtist} - ${safeTitle}` : safeTitle;
+}
+
+async function writeFileAtomic(filePath, content) {
+    if (typeof fs.move !== 'function') {
+        await fs.writeFile(filePath, content, 'utf8');
+        return;
+    }
+    const tmp = `${filePath}.${process.pid}.${++atomicTmpSeq}.tmp`;
+    try {
+        await fs.writeFile(tmp, content, 'utf8');
+        await fs.move(tmp, filePath, { overwrite: true });
+    } catch (err) {
+        if (typeof fs.remove === 'function') await fs.remove(tmp).catch(() => {});
+        throw err;
+    }
+}
 
 const SOURCE_LABELS = {
     netease: '网易云音乐',
@@ -216,7 +259,7 @@ async function fetchQQLyric(songCandidate) {
         const decryptedTrans = encryptedTransHex ? await qrcDecrypt(encryptedTransHex) : '';
         const decryptedRoma = encryptedRomanHex ? await qrcDecrypt(encryptedRomanHex) : '';
 
-        const isQrc = decryptedLyric.includes('(') && decryptedLyric.includes(')') && /\[\d+,\d+\]/.test(decryptedLyric);
+        const isQrc = decryptedLyric.includes('(') && decryptedLyric.includes(')') && QRC_TIMED_LINE_RE.test(decryptedLyric);
         const parsed = isQrc
             ? parseQRC(decryptedLyric, decryptedTrans, decryptedRoma)
             : parseLRC(decryptedLyric, decryptedTrans, decryptedRoma);
@@ -364,6 +407,11 @@ function cleanupManualCandidateCache() {
             manualCandidateCache.delete(key);
         }
     }
+    while (manualCandidateCache.size > MANUAL_CANDIDATE_MAX_ENTRIES) {
+        const oldestKey = manualCandidateCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        manualCandidateCache.delete(oldestKey);
+    }
 }
 
 function scoreCandidates(target, candidates, limit = 3) {
@@ -390,6 +438,14 @@ function createCandidateSummary(candidate, result) {
     if (!lyrics || !Array.isArray(lyrics.lines) || lyrics.lines.length === 0) return null;
 
     const candidateKey = crypto.randomUUID();
+    if (manualCandidateCache.size >= MANUAL_CANDIDATE_MAX_ENTRIES) {
+        cleanupManualCandidateCache();
+        while (manualCandidateCache.size >= MANUAL_CANDIDATE_MAX_ENTRIES) {
+            const oldestKey = manualCandidateCache.keys().next().value;
+            if (oldestKey === undefined) break;
+            manualCandidateCache.delete(oldestKey);
+        }
+    }
     manualCandidateCache.set(candidateKey, {
         createdAt: Date.now(),
         lyrics,
@@ -398,11 +454,14 @@ function createCandidateSummary(candidate, result) {
         sourceId: result.id || candidate.id
     });
 
-    const preview = lyrics.lines
-        .slice(0, 3)
-        .map(line => line.fullText)
-        .filter(Boolean)
-        .join(' / ');
+    const lines = lyrics.lines;
+    let preview = '';
+    const previewCap = Math.min(3, lines.length);
+    for (let i = 0; i < previewCap; i += 1) {
+        const text = lines[i]?.fullText;
+        if (text) preview = preview ? `${preview} / ${text}` : text;
+    }
+    const { hasTranslation, hasRomanization } = scanLyricFlags(lines);
 
     return {
         candidateKey,
@@ -415,9 +474,9 @@ function createCandidateSummary(candidate, result) {
         durationMs: candidate.durationMs || 0,
         matchScore: Math.round(candidate.matchScore || 0),
         isWordByWord: Boolean(lyrics.isWordByWord),
-        hasTranslation: lyrics.lines.some(line => Boolean(line.translation)),
-        hasRomanization: lyrics.lines.some(line => Boolean(line.romanization)),
-        lineCount: lyrics.lines.length,
+        hasTranslation,
+        hasRomanization,
+        lineCount: lines.length,
         preview
     };
 }
@@ -499,15 +558,17 @@ async function saveSelectedLyrics({ candidateKey, artist, title, lyricDir }) {
         return { success: false, message: '歌词候选已过期，请重新搜索' };
     }
 
-    const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
-    const baseName = artist ? `${sanitize(artist)} - ${sanitize(title)}` : sanitize(title);
+    const baseName = buildLyricBaseName(artist, title);
+    if (!baseName) {
+        return { success: false, message: '曲目标题无效，无法保存歌词' };
+    }
     const jsonPath = path.join(lyricDir, `${baseName}.json`);
     const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
 
     await fs.ensureDir(lyricDir);
     await Promise.all([
-        fs.writeJson(jsonPath, cached.lyrics, { spaces: 2 }),
-        fs.writeFile(lrcPath, convertToLrcString(cached.lyrics), 'utf8')
+        writeFileAtomic(jsonPath, JSON.stringify(cached.lyrics, null, 2)),
+        writeFileAtomic(lrcPath, convertToLrcString(cached.lyrics))
     ]);
     manualCandidateCache.delete(candidateKey);
 
@@ -525,11 +586,12 @@ async function saveSelectedLyrics({ candidateKey, artist, title, lyricDir }) {
 function getLyricFeatureFlags(result) {
     const lyrics = result?.lyrics;
     const lines = Array.isArray(lyrics?.lines) ? lyrics.lines : [];
+    const { hasTranslation, hasRomanization } = scanLyricFlags(lines);
     return {
         valid: lines.length > 0,
         isWordByWord: Boolean(lyrics?.isWordByWord),
-        hasTranslation: lines.some(line => Boolean(line?.translation)),
-        hasRomanization: lines.some(line => Boolean(line?.romanization))
+        hasTranslation,
+        hasRomanization
     };
 }
 
@@ -567,7 +629,7 @@ function rankAuditedLyrics(entries) {
         .sort((a, b) =>
             b.matchScore - a.matchScore
             || Number(b.features?.isWordByWord) - Number(a.features?.isWordByWord)
-            || (a.durationDifference || 0) - (b.durationDifference || 0)
+            || (a.durationDifference === b.durationDifference ? 0 : (a.durationDifference || 0) - (b.durationDifference || 0))
             || b.auditScore - a.auditScore
             || Number(b.result?.source === 'amll') - Number(a.result?.source === 'amll')
         );
@@ -621,20 +683,21 @@ async function fetchAndSaveLyricsUnified({ artist, title, durationMs, album, lyr
     }
 
     try {
-        await fs.ensureDir(lyricDir);
-        const sanitize = (str) => (str || '').replace(/[\\/:"*?<>|]/g, '_').trim();
-        const baseName = artist ? `${sanitize(artist)} - ${sanitize(title)}` : sanitize(title);
+        const baseName = buildLyricBaseName(artist, title);
+        if (baseName && lyricDir) {
+            await fs.ensureDir(lyricDir);
 
-        // Save structured JSON format for high precision UI
-        const jsonPath = path.join(lyricDir, `${baseName}.json`);
-        await fs.writeJson(jsonPath, result.lyrics, { spaces: 2 });
+            // Save structured JSON format and traditional LRC atomically in parallel
+            const jsonPath = path.join(lyricDir, `${baseName}.json`);
+            const lrcString = convertToLrcString(result.lyrics);
+            const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
+            await Promise.all([
+                writeFileAtomic(jsonPath, JSON.stringify(result.lyrics, null, 2)),
+                writeFileAtomic(lrcPath, lrcString)
+            ]);
 
-        // Save traditional LRC file for backwards compatibility
-        const lrcString = convertToLrcString(result.lyrics);
-        const lrcPath = path.join(lyricDir, `${baseName}.lrc`);
-        await fs.writeFile(lrcPath, lrcString, 'utf8');
-
-        console.log(`[LyricFetcher] Saved lyrics cache to ${lrcPath} and ${jsonPath}`);
+            console.log(`[LyricFetcher] Saved lyrics cache to ${lrcPath} and ${jsonPath}`);
+        }
     } catch (err) {
         console.error('[LyricFetcher] Failed to save lyric cache:', err.message);
     }

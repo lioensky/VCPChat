@@ -5,21 +5,9 @@
     'use strict';
 
     const TAU = Math.PI * 2;
+    const DEFAULT_COLOR = Object.freeze({ r: 0, g: 195, b: 255 });
     const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
     const lerp = (a, b, t) => a + (b - a) * t;
-
-    // 极坐标闭合平滑采样 (首尾无缝镜像连续)
-    function sampleSpectrumMirror(spectrum, ratio) {
-        if (!spectrum || spectrum.length === 0) return 0;
-        const folded = ratio <= 0.5 ? ratio * 2 : (1 - ratio) * 2;
-        const indexFloat = folded * (spectrum.length - 1);
-        const i1 = Math.floor(indexFloat);
-        const i2 = Math.min(i1 + 1, spectrum.length - 1);
-        const frac = indexFloat - i1;
-        const v1 = spectrum[i1] || 0;
-        const v2 = spectrum[i2] || 0;
-        return v1 + (v2 - v1) * frac;
-    }
 
     // 气泡微粒
     class AmbientBubble {
@@ -78,6 +66,26 @@
             this.bandOffset = config.bandOffset || 0;
             this.baseWidth = config.baseWidth || 1.8;
             this.colorType = config.colorType || 'primary'; // 'primary' | 'soft' | 'highlight'
+            const n = this.segments + 1;
+            this.xs = new Float32Array(n);
+            this.ys = new Float32Array(n);
+            // 预计算各顶点基角、3 倍频有机扰动角及镜像频谱采样位置，用和角公式把每帧 ~900 次三角函数降到 16 次
+            this.cosBase = new Float32Array(n);
+            this.sinBase = new Float32Array(n);
+            this.cosSway = new Float32Array(n);
+            this.sinSway = new Float32Array(n);
+            this.foldedPos = new Float32Array(n);
+            for (let i = 0; i < n; i++) {
+                const ratio = i / this.segments;
+                const a = ratio * TAU;
+                this.cosBase[i] = Math.cos(a);
+                this.sinBase[i] = Math.sin(a);
+                const swayA = a * 3;
+                this.cosSway[i] = Math.cos(swayA);
+                this.sinSway[i] = Math.sin(swayA);
+                const shifted = (ratio + this.bandOffset) % 1.0;
+                this.foldedPos[i] = shifted <= 0.5 ? shifted * 2 : (1 - shifted) * 2;
+            }
         }
 
         advance(dt, energyFactor) {
@@ -120,11 +128,15 @@
             this.waveLayer = null;
             this.bubbleLayer = null;
             this.bubbles = [];
+            this.hadBubbles = false;
             this.maxBubbles = 75;
             this.lastKickEnergy = 0;
             this.kickCooldown = 0;
             this.width = 1;
             this.height = 1;
+            this.lastStaticW = -1;
+            this.lastStaticH = -1;
+            this.lastStaticColor = -1;
             this.initialized = false;
             this.destroyed = false;
             this.initPromise = null;
@@ -133,6 +145,12 @@
             this.smoothBass = 0;
             this.smoothMid = 0;
             this.smoothHigh = 0;
+            // 复用绘制样式描述对象，避免每帧（含气泡爆发时）分配上百个临时短生命周期对象
+            this._glowFill = { color: 0, alpha: 0 };
+            this._ringStroke = { color: 0, alpha: 0, width: 1 };
+            this._bubbleStroke = { color: 0, alpha: 0, width: 1.2 };
+            this._bubbleFill = { color: 0, alpha: 0 };
+            this._bubbleHlFill = { color: 0xffffff, alpha: 0 };
 
             // 4 层循环错峰向外扩散的涟漪环
             this.rippleRings = [
@@ -188,8 +206,10 @@
             if (this.initPromise) return this.initPromise;
 
             this.initPromise = (async () => {
-                const PIXI = global.PIXI;
+                const PIXI = global.PIXI || await global.MusicStageRuntime?.ensurePixi?.();
+                if (this.destroyed || this.pixiApp) return;
                 if (!PIXI) {
+                    this.initPromise = null;
                     console.warn('[AmbientPixi] PIXI.js is not loaded.');
                     return;
                 }
@@ -197,14 +217,24 @@
                 const pixiApp = new PIXI.Application();
                 this.pixiApp = pixiApp;
 
-                await pixiApp.init({
-                    backgroundAlpha: 0,
-                    preference: 'webgl',
-                    autoStart: false,
-                    antialias: true,
-                    resolution: Math.min(1.5, global.devicePixelRatio || 1),
-                    autoDensity: true
-                });
+                const lowPower = this.app?.currentStageQuality === 'energy-saving'
+                    || Boolean(global.document?.body?.classList?.contains('music-fl-low'));
+                try {
+                    await pixiApp.init({
+                        backgroundAlpha: 0,
+                        preference: 'webgl',
+                        autoStart: false,
+                        antialias: !lowPower,
+                        resolution: lowPower ? 1 : Math.min(1.5, global.devicePixelRatio || 1),
+                        autoDensity: true
+                    });
+                } catch (err) {
+                    if (this.pixiApp === pixiApp) this.pixiApp = null;
+                    this.initPromise = null;
+                    try { pixiApp.destroy(true, { children: true }); } catch (_) {}
+                    console.warn('[AmbientPixi] Failed to initialize PIXI:', err);
+                    return;
+                }
 
                 if (this.destroyed || this.pixiApp !== pixiApp) {
                     try { pixiApp.destroy(true, { children: true }); } catch (_) {}
@@ -220,8 +250,11 @@
                 canvas.style.height = '100%';
                 canvas.style.pointerEvents = 'none';
 
-                this.container.innerHTML = '';
-                this.container.appendChild(canvas);
+                if (typeof this.container.replaceChildren === 'function') this.container.replaceChildren(canvas);
+                else {
+                    this.container.innerHTML = '';
+                    this.container.appendChild(canvas);
+                }
 
                 this.stage = pixiApp.stage;
 
@@ -247,6 +280,7 @@
             if (w === this.width && h === this.height) return;
             this.width = w;
             this.height = h;
+            this.lastStaticW = -1;
             this.pixiApp.renderer.resize(w, h);
         }
 
@@ -271,9 +305,13 @@
 
         update(dt = 0.016) {
             if (!this.initialized || this.destroyed || !this.pixiApp) return;
+            dt = Number.isFinite(dt) ? Math.min(0.1, Math.max(0, dt)) : 0.016;
 
             const app = this.app;
             const isPlaying = Boolean(app.isPlaying);
+            const reduced = global.MusicMotion
+                ? Boolean(global.MusicMotion.reduced?.())
+                : Boolean(global.document?.body?.classList?.contains('music-reduce-motion'));
             const spectrum = app.currentVisualizerData || [];
             const hasAudio = spectrum.length > 0;
 
@@ -300,14 +338,25 @@
             this.smoothMid = lerp(this.smoothMid, midEnergy, 0.14);
             this.smoothHigh = lerp(this.smoothHigh, highEnergy, 0.12);
 
-            const idleBreath = Math.sin(Date.now() * 0.0012) * 0.035;
-            const currentBass = isPlaying ? this.smoothBass : (0.05 + idleBreath);
-            const currentMid = isPlaying ? this.smoothMid : 0.03;
+            const currentBass = isPlaying
+                ? this.smoothBass
+                : (0.05 + (reduced ? 0 : Math.sin(Date.now() * 0.0012) * 0.035));
 
             // 2. 颜色计算
-            const { r, g, b } = app.visualizerColor || { r: 0, g: 195, b: 255 };
+            const { r, g, b } = app.visualizerColor || DEFAULT_COLOR;
             const primaryColor = (r << 16) | (g << 8) | b;
             const softColor = (Math.min(255, r + 45) << 16) | (Math.min(255, g + 45) << 8) | Math.min(255, b + 45);
+
+            // 暂停且降低动态时涟漪与呼吸均静止：首帧落稳且气泡清零后直接跳过重复重绘与 WebGL 提交（整数比较零分配）
+            const isStatic = !isPlaying && reduced && this.smoothBass < 0.001 && !this.bubbles.length && !this.hadBubbles;
+            if (isStatic) {
+                if (this.lastStaticW === this.width && this.lastStaticH === this.height && this.lastStaticColor === primaryColor) return;
+                this.lastStaticW = this.width;
+                this.lastStaticH = this.height;
+                this.lastStaticColor = primaryColor;
+            } else {
+                this.lastStaticW = -1;
+            }
 
             // 3. 中心位置与基础尺寸
             const cx = this.width * 0.50;
@@ -317,7 +366,7 @@
 
             // 4. 起音爆发生成气泡
             this.kickCooldown -= dt;
-            if (isPlaying && currentBass > 0.32 && (currentBass - this.lastKickEnergy > 0.08) && this.kickCooldown <= 0) {
+            if (!reduced && isPlaying && currentBass > 0.32 && (currentBass - this.lastKickEnergy > 0.08) && this.kickCooldown <= 0) {
                 const bubbleCount = Math.min(10, Math.floor(4 + currentBass * 8));
                 this.spawnBubbles(cx, cy, baseR, bubbleCount, softColor);
                 this.kickCooldown = 0.18;
@@ -328,13 +377,17 @@
             this.glowLayer.clear();
             const glowR = baseR * (1.05 + currentBass * 0.35);
             const glowAlpha = clamp(0.06 + currentBass * 0.18, 0.04, 0.28);
-            this.glowLayer.circle(cx, cy, glowR).fill({ color: primaryColor, alpha: glowAlpha });
+            this._glowFill.color = primaryColor;
+            this._glowFill.alpha = glowAlpha;
+            this.glowLayer.circle(cx, cy, glowR).fill(this._glowFill);
 
             // 6. 核心：绘制一圈圈一边旋转一边扩散的声纹涟漪波 (Expanding Ripple Rings)
             this.waveLayer.clear();
 
-            this.rippleRings.forEach((ring) => {
-                ring.advance(dt, currentBass);
+            const rings = this.rippleRings;
+            for (let rIdx = 0; rIdx < rings.length; rIdx++) {
+                const ring = rings[rIdx];
+                if (!reduced) ring.advance(dt, currentBass);
 
                 const ringScale = ring.getCurrentScale();
                 const ringAlpha = ring.getOpacity() * (isPlaying ? 1.0 : 0.45);
@@ -346,55 +399,83 @@
                 // 振幅随向外扩散略微舒展
                 const waveAmp = minDim * (0.02 + currentBass * 0.09) * Math.sqrt(ringScale);
                 const segments = ring.segments;
-                const points = [];
+                const xs = ring.xs;
+                const ys = ring.ys;
+                const cosBase = ring.cosBase;
+                const sinBase = ring.sinBase;
+                const cosSway = ring.cosSway;
+                const sinSway = ring.sinSway;
+                const foldedPos = ring.foldedPos;
+                const cosRot = Math.cos(ringRotation);
+                const sinRot = Math.sin(ringRotation);
+                const phaseTau = ring.phase * TAU;
+                const cosPhase = Math.cos(phaseTau);
+                const sinPhase = Math.sin(phaseTau);
+                const specMax = hasAudio ? spectrum.length - 1 : -1;
 
                 for (let i = 0; i <= segments; i++) {
-                    const ratio = i / segments;
-                    const theta = ratio * TAU + ringRotation;
-                    // 结合频谱与平滑正弦扰动
-                    const specVal = sampleSpectrumMirror(spectrum, (ratio + ring.bandOffset) % 1.0);
-                    const organicSway = Math.sin(ratio * TAU * 3 + ring.phase * TAU) * 0.12;
-                    const r = ringRadius + (specVal * 1.1 + organicSway) * waveAmp;
-
-                    points.push({
-                        x: cx + Math.cos(theta) * r,
-                        y: cy + Math.sin(theta) * r
-                    });
-                }
-
-                if (points.length > 2) {
-                    this.waveLayer.moveTo(points[0].x, points[0].y);
-                    for (let i = 0; i < points.length - 1; i++) {
-                        const p0 = points[i];
-                        const p1 = points[i + 1];
-                        const mx = (p0.x + p1.x) * 0.5;
-                        const my = (p0.y + p1.y) * 0.5;
-                        this.waveLayer.quadraticCurveTo(p0.x, p0.y, mx, my);
+                    // 结合频谱与平滑正弦扰动（使用预计算查表 + 和角展开）
+                    let specVal = 0;
+                    if (specMax >= 0) {
+                        const indexFloat = foldedPos[i] * specMax;
+                        const i1 = indexFloat | 0;
+                        const i2 = i1 < specMax ? i1 + 1 : specMax;
+                        const v1 = spectrum[i1] || 0;
+                        const v2 = spectrum[i2] || 0;
+                        specVal = v1 + (v2 - v1) * (indexFloat - i1);
                     }
-                    const last = points[points.length - 1];
-                    this.waveLayer.lineTo(last.x, last.y);
-                    this.waveLayer.stroke({ color: ringColor, alpha: ringAlpha, width: strokeWidth });
-                }
-            });
+                    const organicSway = (sinSway[i] * cosPhase + cosSway[i] * sinPhase) * 0.12;
+                    const r = ringRadius + (specVal * 1.1 + organicSway) * waveAmp;
+                    const cb = cosBase[i];
+                    const sb = sinBase[i];
 
-            // 7. 更新与绘制气泡粒子
-            this.bubbleLayer.clear();
-            for (let i = this.bubbles.length - 1; i >= 0; i--) {
-                const b = this.bubbles[i];
-                b.update(dt);
-                if (b.dead) {
-                    this.bubbles.splice(i, 1);
-                    continue;
+                    xs[i] = cx + (cb * cosRot - sb * sinRot) * r;
+                    ys[i] = cy + (sb * cosRot + cb * sinRot) * r;
                 }
 
-                this.bubbleLayer.circle(b.x, b.y, b.radius)
-                    .stroke({ color: b.color, alpha: b.alpha * 0.75, width: 1.2 })
-                    .fill({ color: b.color, alpha: b.alpha * 0.12 });
+                if (segments >= 2) {
+                    this.waveLayer.moveTo(xs[0], ys[0]);
+                    for (let i = 0; i < segments; i++) {
+                        const x0 = xs[i], y0 = ys[i];
+                        this.waveLayer.quadraticCurveTo(x0, y0, (x0 + xs[i + 1]) * 0.5, (y0 + ys[i + 1]) * 0.5);
+                    }
+                    this.waveLayer.lineTo(xs[segments], ys[segments]);
+                    this._ringStroke.color = ringColor;
+                    this._ringStroke.alpha = ringAlpha;
+                    this._ringStroke.width = strokeWidth;
+                    this.waveLayer.stroke(this._ringStroke);
+                }
+            }
 
-                const hlOffset = b.radius * 0.35;
-                const hlRadius = Math.max(0.6, b.radius * 0.25);
-                this.bubbleLayer.circle(b.x - hlOffset, b.y - hlOffset, hlRadius)
-                    .fill({ color: 0xffffff, alpha: b.alpha * 0.85 });
+            // 7. 更新与绘制气泡粒子（无气泡时跳过每帧 clear）
+            if (this.bubbles.length > 0 || this.hadBubbles) {
+                this.bubbleLayer.clear();
+                this.hadBubbles = false;
+                for (let i = this.bubbles.length - 1; i >= 0; i--) {
+                    const b = this.bubbles[i];
+                    b.update(dt);
+                    if (b.dead) {
+                        const last = this.bubbles.length - 1;
+                        if (i !== last) this.bubbles[i] = this.bubbles[last];
+                        this.bubbles.pop();
+                        continue;
+                    }
+                    this.hadBubbles = true;
+
+                    this._bubbleStroke.color = b.color;
+                    this._bubbleStroke.alpha = b.alpha * 0.75;
+                    this._bubbleFill.color = b.color;
+                    this._bubbleFill.alpha = b.alpha * 0.12;
+                    this.bubbleLayer.circle(b.x, b.y, b.radius)
+                        .stroke(this._bubbleStroke)
+                        .fill(this._bubbleFill);
+
+                    const hlOffset = b.radius * 0.35;
+                    const hlRadius = Math.max(0.6, b.radius * 0.25);
+                    this._bubbleHlFill.alpha = b.alpha * 0.85;
+                    this.bubbleLayer.circle(b.x - hlOffset, b.y - hlOffset, hlRadius)
+                        .fill(this._bubbleHlFill);
+                }
             }
 
             this.pixiApp.render();
@@ -454,11 +535,28 @@
             }
         };
 
+        const isContainerHidden = () => {
+            if (app.isArchiveActive || container.hidden || global.document?.body?.classList?.contains('music-archive-on')) return true;
+            const inline = container.style;
+            if (inline && (inline.display === 'none' || inline.visibility === 'hidden')) return true;
+            if (typeof global.getComputedStyle === 'function') {
+                try {
+                    const cs = global.getComputedStyle(container);
+                    if (cs && (cs.visibility === 'hidden' || cs.display === 'none')) return true;
+                } catch (_) { /* noop */ }
+            }
+            return false;
+        };
+
         app.createAmbientPixi = async () => {
-            if (app.isStageActive) return;
+            if (app.isStageActive || app.destroyed || isContainerHidden()) return;
             clearStageRelease();
             if (app.ambientPixiController && !app.ambientPixiController.destroyed) {
-                app.ambientPixiController.resize();
+                if (!app.ambientPixiController.initialized) {
+                    await app.ambientPixiController.init();
+                } else {
+                    app.ambientPixiController.resize();
+                }
                 return;
             }
 
@@ -487,15 +585,27 @@
             app.ambientPixiController?.update(dt);
         };
 
-        window.addEventListener('resize', () => {
-            if (!app.isStageActive) {
-                app.ambientPixiController?.resize();
-            }
-        });
+        let resizeRaf = 0;
+        const onResize = () => {
+            if (app.isStageActive || resizeRaf) return;
+            resizeRaf = requestAnimationFrame(() => {
+                resizeRaf = 0;
+                if (!app.isStageActive) app.ambientPixiController?.resize();
+            });
+        };
+        window.addEventListener('resize', onResize);
+        window.addEventListener('beforeunload', () => {
+            if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = 0; }
+            window.removeEventListener('resize', onResize);
+            releaseController();
+        }, { once: true });
 
-        if (!app.isStageActive) {
-            app.createAmbientPixi();
-        }
+        // 等这一轮启动代码跑完再决定要不要建：默认的档案页紧接着就会接管背景、把它销毁，
+        // 先建一个 WebGL 上下文、编译着色器再立刻拆掉，是启动时最大的一块白干的活。
+        // 档案页在同一轮里把 createAmbientPixi 换成「档案页开着就不建」，所以这里调的是换过的那个。
+        queueMicrotask(() => {
+            if (!app.isStageActive && !app.isArchiveActive) app.createAmbientPixi?.();
+        });
     }
 
     global.setupAmbientPixi = setupAmbientPixi;

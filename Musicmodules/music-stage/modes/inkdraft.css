@@ -1,0 +1,87 @@
+
+/*
+ * 墨痕（inkdraft）：整张纸由着色器画，底下的模糊封面不画（.stage-opaque）。
+ * 叠在上面的只有很少的 DOM：四角裁切标记、页眉、时间码、翻译。
+ */
+.music-stage.stage-opaque .music-stage-backdrop {
+    display: none;
+}
+.music-stage-mode-inkdraft {
+    isolation: isolate;
+    background: var(--inkdraft-paper, #171a1d);
+}
+.music-stage-mode-inkdraft > .inkdraft-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 0;
+    pointer-events: none;
+}
+.inkdraft-crop {
+    position: absolute;
+    inset: max(5%, 42px) max(4%, 36px) max(calc(16% + 4px), 112px);
+    z-index: 1;
+    pointer-events: none;
+}
+.inkdraft-crop i {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 0 solid var(--inkdraft-mark, rgba(242, 240, 233, 0.6));
+}
+.inkdraft-crop i:nth-child(1) { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.inkdraft-crop i:nth-child(2) { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.inkdraft-crop i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.inkdraft-crop i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+.inkdraft-kicker,
+.inkdraft-timecode {
+    position: absolute;
+    z-index: 2;
+    color: var(--inkdraft-mark, rgba(242, 240, 233, 0.6));
+    font: 600 10px/1.2 "SFMono-Regular", Consolas, monospace;
+    letter-spacing: 0.24em;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+}
+/* 左上角是曲目卡的位置，页眉放右上 */
+.inkdraft-kicker {
+    top: calc(max(5%, 42px) + 26px);
+    right: calc(max(4%, 36px) + 2px);
+}
+.inkdraft-timecode {
+    bottom: calc(max(calc(16% + 4px), 112px) + 8px);
+    right: calc(max(4%, 36px) + 2px);
+}
+.music-stage-mode-inkdraft > .inkdraft-translation {
+    position: absolute;
+    left: 50%;
+    bottom: max(calc(16% + 12px), 122px);
+    z-index: 2;
+    max-width: min(76%, 1000px);
+    margin: 0;
+    transform: translateX(-50%);
+    color: var(--inkdraft-mark, rgba(242, 240, 233, 0.6));
+    font-size: 15px;
+    line-height: 1.5;
+    text-align: center;
+    white-space: pre-line;
+    pointer-events: none;
+}
+.music-stage-mode-inkdraft > .inkdraft-translation:empty {
+    display: none;
+}
+.inkdraft-notice {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    color: var(--inkdraft-mark, rgba(242, 240, 233, 0.6));
+    font-size: 14px;
+}
+.inkdraft-notice[hidden] {
+    display: none;
+}
+
