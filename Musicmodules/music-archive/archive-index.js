@@ -535,8 +535,14 @@
         if (!per) RANKS.set(index, per = {});
         if (!per[key]) {
             const cmp = cmpFactory();
-            const order = mergeOrder(index, LAST_ORDER[key], cmp) || Array.from({ length: index.size }, (_, i) => i).sort(cmp);
-            const rank = new Uint32Array(index.size);
+            const n = index.size;
+            let order = mergeOrder(index, LAST_ORDER[key], cmp);
+            if (!order) {
+                order = new Array(n);
+                for (let i = 0; i < n; i += 1) order[i] = i;
+                order.sort(cmp);
+            }
+            const rank = new Uint32Array(n);
             const packed = new Uint32Array(order.length);
             for (let k = 0; k < order.length; k += 1) {
                 const idx = order[k];
@@ -545,7 +551,11 @@
             }
             per[key] = rank;
             per[key + 'Order'] = packed;
-            if (index.entry) LAST_ORDER[key] = order.map((i) => index.entry(i));
+            if (index.entry) {
+                const last = new Array(order.length);
+                for (let k = 0; k < order.length; k += 1) last[k] = index.entry(order[k]);
+                LAST_ORDER[key] = last;
+            }
         }
         return per[key];
     };
@@ -912,14 +922,15 @@
         }
         // 标题、歌手排序：组标题是首字母（放在左侧外边距）；时长、添加时间：组标题是小标题行
         const letterHeads = sp.mode === 'title' || sp.mode === 'artist';
-        [...groups.entries()]
-            .sort((a, b) => sp.rank(a[0]) - sp.rank(b[0]))
-            .forEach(([g, items]) => {
-                head(sp.name(g), (letterHeads ? 'letter:' : 'sort:') + g, items.length);
-                const bucketCtx = columnOfGroup ? columnOfGroup(g) : 'all';
-                if (!preSortedAll) items.sort(sp.cmp);
-                for (let k = 0; k < items.length; k += 1) push(items[k], bucketCtx);
-            });
+        const groupKeys = [...groups.keys()].sort((a, b) => sp.rank(a) - sp.rank(b));
+        for (let gi = 0; gi < groupKeys.length; gi += 1) {
+            const g = groupKeys[gi];
+            const items = groups.get(g);
+            head(sp.name(g), (letterHeads ? 'letter:' : 'sort:') + g, items.length);
+            const bucketCtx = columnOfGroup ? columnOfGroup(g) : 'all';
+            if (!preSortedAll) items.sort(sp.cmp);
+            for (let k = 0; k < items.length; k += 1) push(items[k], bucketCtx);
+        }
         return { rows, count };
     };
 

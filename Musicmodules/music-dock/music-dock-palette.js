@@ -440,7 +440,7 @@
         };
 
         /* 按检索词找歌，返回 { track, index }（按得分排好），避免后续 60 次 O(N) indexOf。 */
-        const findSongs = (q, limit) => {
+        const findSongs = (q, limit, hasQueueFilter = false) => {
             const tracks = app.playlist || [];
             const index = getIndex();
             if (!index) {
@@ -455,21 +455,25 @@
                 scored.sort((a, b) => b.s - a.s);
                 return scored.slice(0, limit);
             }
+            const extraLimit = hasQueueFilter ? Math.max(limit * 4, 400) : limit;
             let order;
             let skipArtist = false;
             let skipAlbum = false;
             if (q.text) {
-                order = index.query(q.text, { limit: Math.max(limit * 4, 400) });
+                const singleFilter = !q.artist && !q.album && !q.title;
+                order = index.query(q.text, { limit: singleFilter ? extraLimit : Math.max(limit * 4, 400) });
             } else if (q.artist) {
                 const singleFilter = !q.album && !q.title;
-                order = index.query(q.artist, singleFilter ? { kind: 'artist', limit: Math.max(limit * 4, 400) } : { kind: 'artist' });
+                order = index.query(q.artist, singleFilter ? { kind: 'artist', limit: extraLimit } : { kind: 'artist' });
                 skipArtist = true;
             } else if (q.album) {
                 const singleFilter = !q.artist && !q.title;
-                order = index.query(q.album, singleFilter ? { kind: 'album', limit: Math.max(limit * 4, 400) } : { kind: 'album' });
+                order = index.query(q.album, singleFilter ? { kind: 'album', limit: extraLimit } : { kind: 'album' });
                 skipAlbum = true;
             } else {
-                order = tracks.map((_, i) => i);
+                const len = tracks.length;
+                order = new Array(len);
+                for (let i = 0; i < len; i += 1) order[i] = i;
             }
             const keep = (kind, value) => {
                 if (!value) return;
@@ -564,38 +568,71 @@
                 let commandPrefix = false;
                 if (onlyText) {
                     const textWords = qTextLower.split(WS_SPLIT_RE).filter(Boolean);
-                    getCommands()
-                        .map((c) => ({ c, s: matchCommand(c, textWords) }))
-                        .filter((x) => x.s > 0)
-                        .sort((a, b) => b.s - a.s)
-                        .slice(0, 6)
-                        .forEach((x) => { if (x.s >= 3) commandPrefix = true; cmds.push({ ...x.c, section: '命令' }); });
-                    const matchedPlaylists = (app.customPlaylists || [])
-                        .map((pl) => ({ pl, s: nameMatches(pl.name || '', textWords) }))
-                        .filter((x) => x.s > 0)
-                        .sort((a, b) => b.s - a.s)
-                        .slice(0, 6);
+                    const allCmds = getCommands();
+                    const matchedCmds = [];
+                    for (let i = 0; i < allCmds.length; i += 1) {
+                        const c = allCmds[i];
+                        const s = matchCommand(c, textWords);
+                        if (s > 0) matchedCmds.push({ c, s });
+                    }
+                    if (matchedCmds.length > 1) matchedCmds.sort((a, b) => b.s - a.s);
+                    const cmdCap = Math.min(6, matchedCmds.length);
+                    for (let i = 0; i < cmdCap; i += 1) {
+                        const x = matchedCmds[i];
+                        if (x.s >= 3) commandPrefix = true;
+                        cmds.push({ ...x.c, section: '命令' });
+                    }
+                    const customPls = app.customPlaylists || [];
+                    const matchedPlaylists = [];
+                    for (let i = 0; i < customPls.length; i += 1) {
+                        const pl = customPls[i];
+                        const s = nameMatches(pl.name || '', textWords);
+                        if (s > 0) matchedPlaylists.push({ pl, s });
+                    }
                     if (matchedPlaylists.length) {
+                        if (matchedPlaylists.length > 1) matchedPlaylists.sort((a, b) => b.s - a.s);
+                        const plCap = Math.min(6, matchedPlaylists.length);
                         const byPath = getTrackByPath();
-                        matchedPlaylists.forEach((x) => playlists.push(playlistItem(x.pl, '歌单', byPath)));
+                        for (let i = 0; i < plCap; i += 1) playlists.push(playlistItem(matchedPlaylists[i].pl, '歌单', byPath));
                     }
                 }
                 if (hasSongFilter(q)) {
-                    const found = findSongs(q, MAX_SONGS);
                     const queue = getFilteredQueueSet();
+                    const found = findSongs(q, MAX_SONGS, Boolean(queue));
                     // 当前列表里的排前面，其余按得分。
-                    const inQueue = queue ? found.filter((hit) => queue.has(hit.track)).slice(0, 20) : [];
-                    const picked = inQueue.length ? new Set(inQueue.map((hit) => hit.track)) : null;
-                    for (let i = 0; i < inQueue.length; i += 1) songs.push(songItem(inQueue[i].track, '队列', inQueue[i].index));
+                    let picked = null;
+                    if (queue) {
+                        for (let i = 0; i < found.length; i += 1) {
+                            const hit = found[i];
+                            if (queue.has(hit.track)) {
+                                if (!picked) picked = new Set();
+                                picked.add(hit.track);
+                                songs.push(songItem(hit.track, '队列', hit.index));
+                                if (picked.size >= 20) break;
+                            }
+                        }
+                    }
                     for (let i = 0; i < found.length; i += 1) {
                         const hit = found[i];
                         if (!picked || !picked.has(hit.track)) songs.push(songItem(hit.track, '曲库', hit.index));
                     }
                 }
                 // 默认歌曲贴着输入框；输入像是在找操作（命令名开头命中、又没有歌名开头命中）时命令排前。
-                const songPrefix = Boolean(qTextLower) && songs.some((it) => lower(it.title).startsWith(qTextLower));
-                const groups = commandPrefix && !songPrefix ? [cmds, songs, playlists] : [songs, playlists, cmds];
-                items = groups.flat();
+                let songPrefix = false;
+                if (qTextLower) {
+                    for (let i = 0; i < songs.length; i += 1) {
+                        if (lower(songs[i].title).startsWith(qTextLower)) { songPrefix = true; break; }
+                    }
+                }
+                if (commandPrefix && !songPrefix) {
+                    for (let i = 0; i < cmds.length; i += 1) items.push(cmds[i]);
+                    for (let i = 0; i < songs.length; i += 1) items.push(songs[i]);
+                    for (let i = 0; i < playlists.length; i += 1) items.push(playlists[i]);
+                } else {
+                    for (let i = 0; i < songs.length; i += 1) items.push(songs[i]);
+                    for (let i = 0; i < playlists.length; i += 1) items.push(playlists[i]);
+                    for (let i = 0; i < cmds.length; i += 1) items.push(cmds[i]);
+                }
             }
             state.items = items;
             state.active = 0;
@@ -795,19 +832,25 @@
                 }
             }
             if (drop) desired.push(drop);
-            let cursor = list.firstChild;
-            for (let i = 0; i < desired.length; i += 1) {
-                const node = desired[i];
-                if (cursor === node) {
-                    cursor = cursor.nextSibling;
-                } else {
-                    list.insertBefore(node, cursor);
+            if (!list.firstChild || (list.childNodes.length === 1 && list.firstChild === emptyEl)) {
+                const frag = document.createDocumentFragment();
+                for (let i = 0; i < desired.length; i += 1) frag.appendChild(desired[i]);
+                list.replaceChildren(frag);
+            } else {
+                let cursor = list.firstChild;
+                for (let i = 0; i < desired.length; i += 1) {
+                    const node = desired[i];
+                    if (cursor === node) {
+                        cursor = cursor.nextSibling;
+                    } else {
+                        list.insertBefore(node, cursor);
+                    }
                 }
-            }
-            while (cursor) {
-                const next = cursor.nextSibling;
-                cursor.remove();
-                cursor = next;
+                while (cursor) {
+                    const next = cursor.nextSibling;
+                    cursor.remove();
+                    cursor = next;
+                }
             }
             syncActive(false, true);
         };
@@ -939,9 +982,10 @@
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
             state.capRect = null;
-            const back = restoreFocus && state.lastFocus?.isConnected ? state.lastFocus : null;
+            const prevFocus = state.lastFocus;
             state.lastFocus = null;
-            // 在切换 body 类之前还回焦点，避免写完 music-dock-cmd-open 立刻 focus() 触发整页强制重排
+            const back = restoreFocus && prevFocus && prevFocus !== document.body && prevFocus.isConnected && !root.contains(prevFocus) ? prevFocus : null;
+            // 在切换 body 类之前还回焦点（目标为 body 时直接 blur，避免移类后二次 focus 触发整页强制重排）
             if (back) back.focus?.({ preventScroll: true });
             else if (root.contains(document.activeElement)) document.activeElement.blur();
             root.classList.remove('md-open');

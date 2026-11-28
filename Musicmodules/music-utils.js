@@ -20,7 +20,9 @@ function setupUtils(app) {
 
     // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
     app.stripAudioExtension = (title) => {
-        if (!title || typeof title !== 'string' || title.indexOf('.') === -1) return title;
+        if (!title || typeof title !== 'string') return title;
+        const dot = title.lastIndexOf('.');
+        if (dot === -1 || title.length - dot > 5) return title;
         return title.replace(AUDIO_EXT_RE, '');
     };
 
@@ -32,6 +34,17 @@ function setupUtils(app) {
         const s = String(text || '');
         return NEEDS_NFKC_RE.test(s) ? s.normalize('NFKC').toLowerCase() : s.toLowerCase();
     };
+    const searchFieldCache = new Map();
+    const cachedFieldKey = (raw) => {
+        if (!raw) return '';
+        let hit = searchFieldCache.get(raw);
+        if (hit === undefined) {
+            hit = searchKey(raw);
+            if (searchFieldCache.size >= 4096) searchFieldCache.clear();
+            searchFieldCache.set(raw, hit);
+        }
+        return hit;
+    };
     const searchHayCache = new WeakMap();
     const hayOfTrack = (t) => {
         const title = t.title || '';
@@ -39,34 +52,66 @@ function setupUtils(app) {
         const album = t.album || '';
         const hit = searchHayCache.get(t);
         if (hit && hit.title === title && hit.artist === artist && hit.album === album) return hit.hay;
-        const hay = searchKey(`${app.stripAudioExtension(title)}\n${artist}\n${album}`);
+        const hay = `${searchKey(app.stripAudioExtension(title))}\n${cachedFieldKey(artist)}\n${cachedFieldKey(album)}`;
         searchHayCache.set(t, { title, artist, album, hay });
         return hay;
+    };
+    let lastSearchSrc = null;
+    let lastSearchLen = -1;
+    let lastSearchFirst = null;
+    let lastSearchLast = null;
+    let lastSearchWords = null;
+    let lastSearchHits = null;
+    const canNarrowWords = (prevWords, nextWords) => {
+        if (!prevWords || nextWords.length < prevWords.length) return false;
+        for (let i = 0; i < prevWords.length; i += 1) {
+            const pw = prevWords[i];
+            let covered = false;
+            for (let j = 0; j < nextWords.length; j += 1) {
+                if (nextWords[j].includes(pw)) { covered = true; break; }
+            }
+            if (!covered) return false;
+        }
+        return true;
     };
     app.searchTracks = (tracks, query) => {
         const words = searchKey(query).split(WS_SPLIT_RE).filter(Boolean);
         const list = Array.isArray(tracks) ? tracks : [];
         const wLen = words.length;
         if (!wLen) return list;
-        const out = list.slice(0, 0);
+        const len = list.length;
+        const first = len ? list[0] : null;
+        const last = len ? list[len - 1] : null;
+        const scan = (lastSearchHits && lastSearchSrc === list && lastSearchLen === len
+            && lastSearchFirst === first && lastSearchLast === last
+            && canNarrowWords(lastSearchWords, words))
+            ? lastSearchHits
+            : list;
+        const out = [];
         if (wLen === 1) {
             const w0 = words[0];
-            for (let i = 0, n = list.length; i < n; i += 1) {
-                const t = list[i];
+            for (let i = 0, n = scan.length; i < n; i += 1) {
+                const t = scan[i];
                 if (t && hayOfTrack(t).includes(w0)) out.push(t);
             }
-            return out;
-        }
-        for (let i = 0, n = list.length; i < n; i += 1) {
-            const t = list[i];
-            if (!t) continue;
-            const hay = hayOfTrack(t);
-            let ok = true;
-            for (let j = 0; j < wLen; j += 1) {
-                if (!hay.includes(words[j])) { ok = false; break; }
+        } else {
+            for (let i = 0, n = scan.length; i < n; i += 1) {
+                const t = scan[i];
+                if (!t) continue;
+                const hay = hayOfTrack(t);
+                let ok = true;
+                for (let j = 0; j < wLen; j += 1) {
+                    if (!hay.includes(words[j])) { ok = false; break; }
+                }
+                if (ok) out.push(t);
             }
-            if (ok) out.push(t);
         }
+        lastSearchSrc = list;
+        lastSearchLen = len;
+        lastSearchFirst = first;
+        lastSearchLast = last;
+        lastSearchWords = words;
+        lastSearchHits = out.slice();
         return out;
     };
 

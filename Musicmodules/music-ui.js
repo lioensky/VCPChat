@@ -130,9 +130,9 @@ function setupUI(app) {
         const titleText = app.stripAudioExtension(t.title) || '未知标题';
         const index = libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
         const indexStr = String(index);
-        if (li.dataset.index !== indexStr) li.dataset.index = indexStr;
+        if (li._idxStr !== indexStr) { li._idxStr = indexStr; li.dataset.index = indexStr; }
         const isActive = index === app.currentTrackIndex;
-        if (li.classList.contains('active') !== isActive) li.classList.toggle('active', isActive);
+        if (li._active !== isActive) { li._active = isActive; li.classList.toggle('active', isActive); }
         li._track = t;
         if (li._cl && typeof app.decorateClassicRow === 'function') {
             app.decorateClassicRow(li, true, titleText);
@@ -206,8 +206,8 @@ function setupUI(app) {
                 rows[i - from] = li;
             }
             // 行号写在行上（CSS 计数器在只建一段时会从 1 数起，而且 content-visibility 的样式隔离也会把它截断）
-            const n = String(i + 1).padStart(2, '0');
-            if (li.dataset.n !== n) { li.dataset.n = n; li.classList.toggle('n-long', n.length > 4); }
+            const n = i < 9 ? `0${i + 1}` : String(i + 1);
+            if (li._n !== n) { li._n = n; li.dataset.n = n; const isLong = n.length > 4; if (li._nLong !== isLong) { li._nLong = isLong; li.classList.toggle('n-long', isLong); } }
         }
         for (let u = uHead; u < uLen; u += 1) {
             const stale = unused[u];
@@ -409,7 +409,10 @@ function setupUI(app) {
             const cur = app.currentTrackIndex;
             for (const li of app.playlistEl.children) {
                 const isActive = Number(li.dataset.index) === cur;
-                if (li.classList.contains('active') !== isActive) li.classList.toggle('active', isActive);
+                if (li._active !== isActive || li.classList.contains('active') !== isActive) {
+                    li._active = isActive;
+                    li.classList.toggle('active', isActive);
+                }
             }
             app.updateAllCount();
             return;

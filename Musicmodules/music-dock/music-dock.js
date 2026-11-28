@@ -1905,13 +1905,8 @@
         observe(document.getElementById('music-archive-view'), { attributes: true, attributeFilter: ['class'] }, queueShift);
         queueShift();
         if (dspCard) syncFx(false);
-        let lastPlaying = null;
-        let lastStage = null;
-        let lastTheme = null;
-        const bodyLayoutKey = () => {
-            const c = document.body.classList;
-            return `${c.contains('music-stage-active') ? 1 : 0}${c.contains('music-archive-on') ? 1 : 0}${c.contains('music-stage-entering') ? 1 : 0}`;
-        };
+        let lastPlaying = null, lastStage = null, lastTheme = document.body.classList.contains('light-theme');
+        const bodyLayoutKey = () => { const c = document.body.classList; return (c.contains('music-stage-active') ? 1 : 0) | (c.contains('music-archive-on') ? 2 : 0) | (c.contains('music-stage-entering') ? 4 : 0); };
         let lastBodyLayout = bodyLayoutKey();
         // 主题文件换了（样式表重新加载、换了 href）或舞台换了自定义主题：颜色跟着换。
         let glowTimer = 0;
@@ -1921,14 +1916,17 @@
             glowTimer = id;
             timers.add(id);
         };
-        observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] }, queueGlow);
+        const isThemeNode = (n) => n && (n.tagName === 'LINK' || (n.tagName === 'STYLE' && !n.dataset?.md));
+        observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] }, (recs) => {
+            for (const r of recs) {
+                if (r.type === 'attributes' ? r.target?.tagName === 'LINK' : r.target === document.head && [...r.addedNodes, ...r.removedNodes].some(isThemeNode)) { queueGlow(); return; }
+            }
+        });
         listen(document, 'load', (event) => { if (event.target?.tagName === 'LINK') queueGlow(); }, true);
         const stageRootEl = document.getElementById('music-stage');
         if (stageRootEl) {
-            const stageGlowKey = () => {
-                const c = stageRootEl.classList;
-                return `${c.contains('stage-theme-custom') ? 1 : 0}${c.contains('stage-theme-light') ? 1 : 0}${c.contains('stage-theme-dark') ? 1 : 0}${c.contains('stage-night') ? 1 : 0}${c.contains('stage-scene-3d') ? 1 : 0}${c.contains('stage-opaque') ? 1 : 0}${c.contains('is-visible') ? 1 : 0}`;
-            };
+            const STAGE_CLS = ['stage-theme-custom', 'stage-theme-light', 'stage-theme-dark', 'stage-night', 'stage-scene-3d', 'stage-opaque', 'is-visible'];
+            const stageGlowKey = () => { let m = 0, c = stageRootEl.classList; for (let i = 0; i < 7; i += 1) if (c.contains(STAGE_CLS[i])) m |= 1 << i; return m; };
             let lastStageGlow = stageGlowKey();
             observe(stageRootEl, { attributes: true, attributeFilter: ['class'] }, () => {
                 const next = stageGlowKey();

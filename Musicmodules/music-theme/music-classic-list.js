@@ -340,19 +340,25 @@
                 if (!update || !li._cl) return;
                 const titleText = preTitle !== undefined ? preTitle : (titleOf(track) || '未知标题');
                 const artistText = track?.artist || '';
-                const durText = formatDuration(track?.duration);
+                const durRaw = track?.duration;
                 const c = li._cl;
-                if (c.title.textContent !== titleText) c.title.textContent = titleText;
-                if (c.artist.textContent !== artistText) c.artist.textContent = artistText;
-                if (c.duration.textContent !== durText) c.duration.textContent = durText;
+                if (c.lastTitle !== titleText) { c.lastTitle = titleText; c.title.textContent = titleText; }
+                if (c.lastArtist !== artistText) { c.lastArtist = artistText; c.artist.textContent = artistText; }
+                if (c.lastDurRaw !== durRaw) {
+                    c.lastDurRaw = durRaw;
+                    const durText = formatDuration(durRaw);
+                    if (c.lastDur !== durText) { c.lastDur = durText; c.duration.textContent = durText; }
+                }
                 paintLike(li, track);
                 const mainTitle = titleText || titleOf(track);
                 const tip = mainTitle && artistText ? `${mainTitle} — ${artistText}` : (mainTitle || artistText);
-                if (li.title !== tip) li.title = tip;
+                if (c.lastTip !== tip) { c.lastTip = tip; li.title = tip; }
                 return;
             }
             const titleText = preTitle !== undefined ? preTitle : (li.textContent || '');
             const artistText = track?.artist || '';
+            const durRaw = track?.duration;
+            const durText = formatDuration(durRaw);
             const frag = getColProto().cloneNode(true);
             const title = frag.childNodes[0];
             const artist = frag.childNodes[1];
@@ -360,14 +366,15 @@
             const duration = frag.childNodes[3];
             title.textContent = titleText;
             artist.textContent = artistText;
-            duration.textContent = formatDuration(track?.duration);
+            duration.textContent = durText;
             like._likeState = 'false';
             li._likeBtn = like;
-            li._cl = { title, artist, like, duration };
+            const mainTitle = titleText || titleOf(track);
+            const tip = mainTitle && artistText ? `${mainTitle} — ${artistText}` : (mainTitle || artistText);
+            li._cl = { title, artist, like, duration, lastTitle: titleText, lastArtist: artistText, lastDurRaw: durRaw, lastDur: durText, lastTip: tip };
             li.replaceChildren(frag);
             paintLike(li, track);
-            const mainTitle = titleText || titleOf(track);
-            li.title = mainTitle && artistText ? `${mainTitle} — ${artistText}` : (mainTitle || artistText);
+            li.title = tip;
             li.dataset.cols = '1';
         };
 
