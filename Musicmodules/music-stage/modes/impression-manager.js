@@ -422,36 +422,11 @@ void main() {
     outColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
-    const compile = (gl, type, src) => {
-        const shader = gl.createShader(type);
-        gl.shaderSource(shader, src);
-        gl.compileShader(shader);
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`[impression] shader: ${gl.getShaderInfoLog(shader)}`);
-        return shader;
-    };
-    const link = (gl, frag) => {
-        const program = gl.createProgram();
-        const vs = compile(gl, gl.VERTEX_SHADER, VERT);
-        const fs = compile(gl, gl.FRAGMENT_SHADER, frag);
-        gl.attachShader(program, vs);
-        gl.attachShader(program, fs);
-        gl.linkProgram(program);
-        gl.deleteShader(vs);
-        gl.deleteShader(fs);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[impression] link: ${gl.getProgramInfoLog(program)}`);
-        const uniforms = {};
-        const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-        for (let i = 0; i < count; i += 1) {
-            const info = gl.getActiveUniform(program, i);
-            uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
-        }
-        return { program, uniforms };
-    };
     const createGl = (canvas) => {
         const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'low-power' });
         if (!gl) return null;
-        const paint = link(gl, PAINT_FRAG);
-        const main = link(gl, FRAG);
+        const paint = Utils.compileProgram(gl, VERT, PAINT_FRAG, 'impression:paint');
+        const main = Utils.compileProgram(gl, VERT, FRAG, 'impression');
         const makeTex = () => {
             const t = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, t);
@@ -512,6 +487,7 @@ void main() {
         let lastT = null;
         let lostContext = false;
         let coverUrl = null;
+        let pendingCover = null;
         let painted = false;
         let paintedAt = 0;     // 墙上时钟：开始落笔的时刻（秒）
         let energy = 0;
@@ -571,8 +547,17 @@ void main() {
         };
 
         // 封面 → 油画：只在换封面时做一次
+        const onProgramsReady = () => {
+            if (pendingCover && glState && !lostContext && !mode.destroyed) {
+                const img = pendingCover;
+                pendingCover = null;
+                paintCover(img);
+            }
+            redraw();
+        };
         const paintCover = (image) => {
             if (!glState || lostContext) return;
+            if (!Runtime.programsReady(glState.gl, onProgramsReady)) { pendingCover = image; return; }
             const { gl, paint, cover, vao } = glState;
             // 已经有一幅了：换到另一张上画，旧的那张留作底
             if (painted) { glState.cur = 1 - glState.cur; glState.hasPrev = true; }
@@ -624,6 +609,7 @@ void main() {
             const url = fileUrl(frame.track?.albumArt) || `../assets/${light ? 'musiclight.jpeg' : 'musicdark.jpeg'}`;
             if (url === coverUrl) return;
             coverUrl = url;
+            pendingCover = null;
             const image = new global.Image();
             image.decoding = 'async';
             image.onload = () => { if (coverUrl === url && !mode.destroyed) paintCover(image); };
@@ -857,7 +843,8 @@ void main() {
             const phase = stepState(frame, dt, s);
             updateRail(frame, s);
             updateLabel(frame, phase);
-            if (!glState || lostContext) return;
+            if (!glState || lostContext || !Runtime.programsReady(glState.gl, onProgramsReady)) return;
+            if (pendingCover) { const img = pendingCover; pendingCover = null; paintCover(img); }
             if (!revealing && !frame.isPlaying && still.same(frame, `${canvas.width}x${canvas.height}|${stats.paints}|${phase}`)) return;
             if (frame.isPlaying || revealing) still.invalidate();
             lastDraw = now - lastDraw < aim * 2 ? lastDraw + aim : now;
@@ -873,23 +860,25 @@ void main() {
         mode.updateTheme = () => { readColours(); coverUrl = null; redraw(); };
         mode.getDebugSnapshot = () => ({ initialized: Boolean(glState), draws: stats.draws, paints: stats.paints, buffer: `${canvas.width}x${canvas.height}` });
 
-        const onLost = (event) => { event.preventDefault(); lostContext = true; };
+        const onLost = (event) => { event.preventDefault(); lostContext = true; pendingCover = null; Runtime.cancelPrograms(glState?.gl); };
         const onRestored = () => {
-            try { glState = createGl(canvas); lostContext = false; coverUrl = null; painted = false; redraw(); } catch (error) { console.error(error); }
+            try { glState = createGl(canvas); lostContext = false; coverUrl = null; pendingCover = null; painted = false; redraw(); } catch (error) { console.error(error); }
         };
         canvas.addEventListener('webglcontextlost', onLost);
         canvas.addEventListener('webglcontextrestored', onRestored);
         mode.scope.add(() => {
             canvas.removeEventListener('webglcontextlost', onLost);
             canvas.removeEventListener('webglcontextrestored', onRestored);
+            pendingCover = null;
             if (glState) {
                 const { gl } = glState;
+                Runtime.cancelPrograms(gl);
                 gl.deleteProgram(glState.paint.program);
                 gl.deleteProgram(glState.main.program);
                 gl.deleteTexture(glState.cover);
                 glState.sheets.forEach(({ tex, fbo }) => { gl.deleteTexture(tex); gl.deleteFramebuffer(fbo); });
                 gl.deleteVertexArray(glState.vao);
-                gl.getExtension('WEBGL_lose_context')?.loseContext();
+                Runtime.releaseWebGLContext(gl);
             }
             glState = null;
         });

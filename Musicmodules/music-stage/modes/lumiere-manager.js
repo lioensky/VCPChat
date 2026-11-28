@@ -438,28 +438,7 @@ vec2 home(vec2 t) {
             premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'default'
         });
         if (!gl) return null;
-        const compile = (type, source) => {
-            const shader = gl.createShader(type);
-            gl.shaderSource(shader, source);
-            gl.compileShader(shader);
-            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`[lumiere] shader: ${gl.getShaderInfoLog(shader)}`);
-            return shader;
-        };
-        const program = gl.createProgram();
-        const vs = compile(gl.VERTEX_SHADER, VERT);
-        const fs = compile(gl.FRAGMENT_SHADER, FRAG);
-        gl.attachShader(program, vs);
-        gl.attachShader(program, fs);
-        gl.linkProgram(program);
-        gl.deleteShader(vs);
-        gl.deleteShader(fs);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[lumiere] link: ${gl.getProgramInfoLog(program)}`);
-        const uniforms = {};
-        const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-        for (let i = 0; i < count; i += 1) {
-            const info = gl.getActiveUniform(program, i);
-            uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
-        }
+        const { program, uniforms } = Utils.compileProgram(gl, VERT, FRAG, 'lumiere');
         gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         const texture = (filter, mip) => {
@@ -472,7 +451,7 @@ vec2 home(vec2 t) {
             return t;
         };
         const slots = Array.from({ length: 3 }, () => ({ text: texture(gl.LINEAR, true), glyph: texture(gl.NEAREST, false), key: null, used: 0 }));
-        const sharp = Utils.createSharpText(gl, { label: 'lumiere', coverage: COVERAGE });
+        const sharp = Utils.createSharpText(gl, { label: 'lumiere', coverage: COVERAGE, bloom: true });
         const glyphs = Utils.createGlyphLayer(gl, { label: 'lumiere', home: HOME });
         return { gl, program, uniforms, vao: gl.createVertexArray(), slots, sharp, glyphs, glyphData: new Float32Array(256 * Utils.GLYPH_FLOATS) };
     };
@@ -937,7 +916,7 @@ vec2 home(vec2 t) {
             const s = settings();
             ensureCues(frame);
             updateOverlay(frame, s);
-            if (!glState) return;
+            if (!glState || lostContext || !Runtime.programsReady(glState.gl, redraw)) return;
             const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
@@ -960,7 +939,7 @@ vec2 home(vec2 t) {
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`, effects: `${low[0]}x${low[1]}`
         });
 
-        const onLost = (event) => { event.preventDefault(); lostContext = true; };
+        const onLost = (event) => { event.preventDefault(); lostContext = true; Runtime.cancelPrograms(glState?.gl); };
         const onRestored = () => { try { glState = createGl(canvas); lostContext = false; redraw(); } catch (error) { console.error(error); } };
         canvas.addEventListener('webglcontextlost', onLost);
         canvas.addEventListener('webglcontextrestored', onRestored);
@@ -970,12 +949,13 @@ vec2 home(vec2 t) {
             cancelIdle();
             if (glState) {
                 const { gl } = glState;
+                Runtime.cancelPrograms(gl);
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.text); gl.deleteTexture(slot.glyph); });
                 gl.deleteProgram(glState.program);
                 glState.sharp.dispose();
                 glState.glyphs.dispose();
                 gl.deleteVertexArray(glState.vao);
-                gl.getExtension('WEBGL_lose_context')?.loseContext();
+                Runtime.releaseWebGLContext(gl);
             }
             glState = null;
             textCanvas.width = textCanvas.height = 0;

@@ -417,31 +417,6 @@ void main() {
             premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'default'
         });
         if (!gl) return null;
-        const compile = (type, source) => {
-            const shader = gl.createShader(type);
-            gl.shaderSource(shader, source);
-            gl.compileShader(shader);
-            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`[orbit] shader: ${gl.getShaderInfoLog(shader)}`);
-            return shader;
-        };
-        const link = (vs, fs) => {
-            const program = gl.createProgram();
-            const v = compile(gl.VERTEX_SHADER, vs);
-            const f = compile(gl.FRAGMENT_SHADER, fs);
-            gl.attachShader(program, v);
-            gl.attachShader(program, f);
-            gl.linkProgram(program);
-            gl.deleteShader(v);
-            gl.deleteShader(f);
-            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[orbit] link: ${gl.getProgramInfoLog(program)}`);
-            const uniforms = {};
-            const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-            for (let i = 0; i < count; i += 1) {
-                const info = gl.getActiveUniform(program, i);
-                uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
-            }
-            return { program, uniforms };
-        };
         gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         const texture = () => {
@@ -455,7 +430,7 @@ void main() {
         };
         const slots = Array.from({ length: 3 }, () => ({ atlas: texture(), key: null, used: 0, line: null }));
         return {
-            gl, field: link(FIELD_VERT, FIELD_FRAG), glyph: link(GLYPH_VERT, GLYPH_FRAG),
+            gl, field: Utils.compileProgram(gl, FIELD_VERT, FIELD_FRAG, 'orbit:field'), glyph: Utils.compileProgram(gl, GLYPH_VERT, GLYPH_FRAG, 'orbit:glyph'),
             vao: gl.createVertexArray(), slots,
             scene: Utils.createTarget(gl), over: Utils.createTarget(gl),
             bloom: Utils.createBloom(gl, { label: 'orbit' })
@@ -823,7 +798,7 @@ void main() {
             const s = settings();
             ensureLines(frame);
             updateOverlay(frame, s);
-            if (!glState) return;
+            if (!glState || lostContext || !Runtime.programsReady(glState.gl, redraw)) return;
             const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
@@ -846,7 +821,7 @@ void main() {
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`
         });
 
-        const onLost = (event) => { event.preventDefault(); lostContext = true; };
+        const onLost = (event) => { event.preventDefault(); lostContext = true; Runtime.cancelPrograms(glState?.gl); };
         const onRestored = () => { try { glState = createGl(canvas); lostContext = false; redraw(); } catch (error) { console.error(error); } };
         canvas.addEventListener('webglcontextlost', onLost);
         canvas.addEventListener('webglcontextrestored', onRestored);
@@ -856,6 +831,7 @@ void main() {
             cancelIdle();
             if (glState) {
                 const { gl } = glState;
+                Runtime.cancelPrograms(gl);
                 glState.slots.forEach((slot) => gl.deleteTexture(slot.atlas));
                 gl.deleteProgram(glState.field.program);
                 gl.deleteProgram(glState.glyph.program);
@@ -863,7 +839,7 @@ void main() {
                 glState.over.dispose();
                 glState.bloom.dispose();
                 gl.deleteVertexArray(glState.vao);
-                gl.getExtension('WEBGL_lose_context')?.loseContext();
+                Runtime.releaseWebGLContext(gl);
             }
             glState = null;
             atlas.width = atlas.height = 0;

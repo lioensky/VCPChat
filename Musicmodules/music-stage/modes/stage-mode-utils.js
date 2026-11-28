@@ -886,7 +886,7 @@ float vnoise(vec2 p) {
     };
     const noiseTexture = (gl) => {
         const cached = noiseTextures.get(gl);
-        if (cached && gl.isTexture(cached)) return cached;
+        if (cached && !gl.isContextLost?.()) return cached;
         noisePixels();
         const t = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, t);
@@ -897,6 +897,9 @@ float vnoise(vec2 p) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
         noiseTextures.set(gl, t);
+        gl.canvas?.addEventListener?.('webglcontextlost', () => {
+            if (noiseTextures.get(gl) === t) noiseTextures.delete(gl);
+        }, { once: true });
         return t;
     };
     // 把噪声纹理绑到 unit 号纹理单元，并告诉 program 的 uNoise
@@ -924,40 +927,7 @@ void main() {
     vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
-    const compileProgram = (gl, vert, frag, label) => {
-        const compile = (type, source) => {
-            const shader = gl.createShader(type);
-            gl.shaderSource(shader, source);
-            gl.compileShader(shader);
-            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-                const log = gl.getShaderInfoLog(shader);
-                gl.deleteShader(shader);
-                throw new Error(`[${label}] shader: ${log}`);
-            }
-            return shader;
-        };
-        const program = gl.createProgram();
-        const vs = compile(gl.VERTEX_SHADER, vert);
-        let fs;
-        try { fs = compile(gl.FRAGMENT_SHADER, frag); } catch (err) { gl.deleteShader(vs); gl.deleteProgram(program); throw err; }
-        gl.attachShader(program, vs);
-        gl.attachShader(program, fs);
-        gl.linkProgram(program);
-        gl.deleteShader(vs);
-        gl.deleteShader(fs);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-            const log = gl.getProgramInfoLog(program);
-            gl.deleteProgram(program);
-            throw new Error(`[${label}] link: ${log}`);
-        }
-        const uniforms = {};
-        const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-        for (let i = 0; i < count; i += 1) {
-            const info = gl.getActiveUniform(program, i);
-            uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
-        }
-        return { program, uniforms };
-    };
+    const compileProgram = (gl, vert, frag, label) => global.MusicStageRuntime.compileProgram(gl, vert, frag, label);
     // 泛光（可选）：从合成好的颜色里取亮的部分，在 1/2 到 1/32 的小图上逐级缩小再放大（双滤波），
     // 加回合成那一遍。只在小图上算，开销远小于再画一遍全屏；亮度阈值以下的不泛。
     const BLOOM_LEVELS = 5;
@@ -995,7 +965,7 @@ void main() {
     c += texture(uSrc, uv + vec2(-h.x, -h.y)).rgb * 2.0;
     outColor = vec4(c / 12.0, 1.0);
 }`;
-    const createSharpText = (gl, { coverage, post = 'vec3 post(vec3 col, vec4 c) { return col; }', label = 'stage' }) => {
+    const createSharpText = (gl, { coverage, post = 'vec3 post(vec3 col, vec4 c) { return col; }', label = 'stage', bloom = false }) => {
         const frag = (seed) => `#version 300 es
 precision highp float;
 precision highp int;
@@ -1046,6 +1016,7 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
             };
             return bloomGl;
         };
+        if (bloom) bloomPrograms();
         const linearTexture = () => {
             const t = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, t);
@@ -1224,7 +1195,7 @@ ${seed ? `    float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
     //     两者合起来取亮部，在 1/2 到 1/32 的小图上双滤波；返回泛光纹理
     //   present(scene, glow, w, h, opts)：把画面放大到屏幕，加上泛光和颗粒
     //   add(glow, w, h, strength)：只把泛光叠加到当前画布上（只给一部分东西泛光时用，比如烟花火星）
-    const createBloom = (gl, { label = 'stage' } = {}) => {
+    const createBloom = (gl, { label = 'stage', add = false, present: usePresent = true } = {}) => {
         const seedFrag = `#version 300 es
 precision mediump float;
 uniform sampler2D uScene;
@@ -1264,7 +1235,7 @@ void main() {
         const seed = compileProgram(gl, SPLIT_VERT, seedFrag, `${label}:glow-seed`);
         const down = compileProgram(gl, SPLIT_VERT, BLOOM_DOWN, `${label}:glow-down`);
         const up = compileProgram(gl, SPLIT_VERT, BLOOM_UP, `${label}:glow-up`);
-        const present = compileProgram(gl, SPLIT_VERT, presentFrag, `${label}:present`);
+        let present = usePresent ? compileProgram(gl, SPLIT_VERT, presentFrag, `${label}:present`) : null;
         const addFrag = `#version 300 es
 precision mediump float;
 uniform sampler2D uGlow;
@@ -1274,7 +1245,7 @@ out vec4 outColor;
 void main() {
     outColor = vec4(texture(uGlow, gl_FragCoord.xy / uRes).rgb * (uBloom / ${BLOOM_LEVELS}.0), 1.0);
 }`;
-        let adder = null;
+        let adder = add ? compileProgram(gl, SPLIT_VERT, addFrag, `${label}:glow-add`) : null;
         const half = Boolean(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
         const format = half ? [gl.RGBA16F, gl.HALF_FLOAT] : [gl.RGBA8, gl.UNSIGNED_BYTE];
         const levels = [], fbos = [];
@@ -1347,6 +1318,7 @@ void main() {
                 return levels[0];
             },
             present(scene, glow, w, h, { bloom = 0, grain = 0, grainStep = 0 } = {}) {
+                if (!present) present = compileProgram(gl, SPLIT_VERT, presentFrag, `${label}:present`);
                 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
                 gl.viewport(0, 0, w, h);
                 gl.disable(gl.BLEND);
@@ -1385,7 +1357,7 @@ void main() {
                 gl.deleteProgram(seed.program);
                 gl.deleteProgram(down.program);
                 gl.deleteProgram(up.program);
-                gl.deleteProgram(present.program);
+                if (present) { gl.deleteProgram(present.program); present = null; }
                 if (adder) { gl.deleteProgram(adder.program); adder = null; }
                 levels.forEach(t => gl.deleteTexture(t));
                 fbos.forEach(f => gl.deleteFramebuffer(f));

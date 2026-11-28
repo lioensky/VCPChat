@@ -846,39 +846,14 @@ void main() {
         { cells: 28, density: 0.45, rMin: 0.0028, rMax: 0.0072, salt: 2, ring: 0 }
     ]);
 
-    const compile = (gl, type, source) => {
-        const shader = gl.createShader(type);
-        gl.shaderSource(shader, source);
-        gl.compileShader(shader);
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`[fogpane] shader: ${gl.getShaderInfoLog(shader)}`);
-        return shader;
-    };
-    const link = (gl, frag) => {
-        const program = gl.createProgram();
-        const vs = compile(gl, gl.VERTEX_SHADER, VERT);
-        const fs = compile(gl, gl.FRAGMENT_SHADER, frag);
-        gl.attachShader(program, vs);
-        gl.attachShader(program, fs);
-        gl.linkProgram(program);
-        gl.deleteShader(vs);
-        gl.deleteShader(fs);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[fogpane] link: ${gl.getProgramInfoLog(program)}`);
-        const uniforms = {};
-        const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-        for (let i = 0; i < count; i += 1) {
-            const info = gl.getActiveUniform(program, i);
-            uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
-        }
-        return { program, uniforms };
-    };
     const createGl = (canvas) => {
         const gl = canvas.getContext('webgl2', {
             alpha: false, antialias: false, depth: false, stencil: false,
             premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'default'
         });
         if (!gl) return null;
-        const scene = link(gl, SCENE_FRAG);
-        const main = link(gl, MAIN_FRAG);
+        const scene = Utils.compileProgram(gl, VERT, SCENE_FRAG, 'fogpane:scene');
+        const main = Utils.compileProgram(gl, VERT, MAIN_FRAG, 'fogpane');
         const drops = Utils.compileProgram(gl, DROP_VERT, DROP_FRAG, 'fogpane:drops');
         const vao = gl.createVertexArray();
         gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
@@ -902,7 +877,7 @@ void main() {
         const slots = Array.from({ length: LINE_SLOTS + 1 }, () => ({ atlas: texture(gl.LINEAR), data: texture(gl.NEAREST), key: null, used: 0 }));
         return {
             gl, scene, main, drops, vao, sceneTex, fbo, sceneSize: [0, 0], blank, blankData, slots,
-            window: Utils.createTarget(gl), upscale: Utils.createBloom(gl, { label: 'fogpane' }),
+            window: Utils.createTarget(gl),
             fogBlur: Utils.createBloom(gl, { label: 'fogpane-blur' })
         };
     };
@@ -1027,7 +1002,19 @@ void main() {
         };
 
         const fontFor = (size) => `600 ${size.toFixed(1)}px ${Utils.STAGE_FONT}`;
-        const measure = (text, size, cjk) => { measureCtx.font = fontFor(size, cjk); return measureCtx.measureText(text).width; };
+        const measureCache = new Map();
+        let measureFont = '';
+        const measure = (text, size) => {
+            const ref = fontFor(100);
+            if (measureFont !== ref) { measureFont = ref; measureCtx.font = ref; measureCache.clear(); }
+            let w100 = measureCache.get(text);
+            if (w100 === undefined) {
+                w100 = measureCtx.measureText(text).width;
+                if (measureCache.size > 2000) measureCache.clear();
+                measureCache.set(text, w100);
+            }
+            return w100 * (size / 100);
+        };
 
         const ensurePlan = (frame, s = settings()) => {
             const b = card.box;
@@ -1037,7 +1024,7 @@ void main() {
             plan = planSong(frame.lines || [], world.W, world.H, s.fontScale, measure, `${frame.track?.path || frame.track?.title || ''}|${world.W}x${world.H}|${s.fontScale}`, avoid);
             planFor = { lines: frame.lines, key };
             glState?.slots.forEach((slot) => { slot.key = null; });
-            Utils.loadLyricFont(frame.lines, [600], () => { if (mode.destroyed) return; planFor = null; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
+            Utils.loadLyricFont(frame.lines, [600], () => { if (mode.destroyed) return; measureCache.clear(); planFor = null; glState?.slots.forEach((slot) => { slot.key = null; }); redraw(); }, `${frame.track?.title || ''}${frame.track?.artist || ''}`);
         };
 
         // 一句的指痕图：G 通道是字的编号，R 通道是手指擦过的形状（字描粗、圆头）。
@@ -1366,7 +1353,7 @@ void main() {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
 
             // 3) 放大到屏幕，再按原生像素画水珠
-            glState.upscale.present(glState.window, null, canvas.width, canvas.height);
+            fogBlur.present(glState.window, null, canvas.width, canvas.height);
             if (s.drops) {
                 const { drops } = glState;
                 const du = drops.uniforms;
@@ -1477,7 +1464,7 @@ void main() {
             const s = settings();
             ensurePlan(frame, s);
             updateOverlay(frame, s);
-            if (!glState) return;
+            if (!glState || lostContext || !Runtime.programsReady(glState.gl, redraw)) return;
             const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
@@ -1504,7 +1491,7 @@ void main() {
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`
         });
 
-        const onLost = (event) => { event.preventDefault(); lostContext = true; };
+        const onLost = (event) => { event.preventDefault(); lostContext = true; Runtime.cancelPrograms(glState?.gl); };
         const onRestored = () => {
             try { glState = createGl(canvas); lostContext = false; resize(); redraw(); } catch (error) { console.error(error); }
         };
@@ -1516,6 +1503,7 @@ void main() {
             cancelIdle();
             if (glState) {
                 const { gl } = glState;
+                Runtime.cancelPrograms(gl);
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.atlas); gl.deleteTexture(slot.data); });
                 [glState.sceneTex, glState.blank, glState.blankData].forEach(t => gl.deleteTexture(t));
                 gl.deleteFramebuffer(glState.fbo);
@@ -1523,10 +1511,9 @@ void main() {
                 gl.deleteProgram(glState.main.program);
                 gl.deleteProgram(glState.drops.program);
                 glState.window.dispose();
-                glState.upscale.dispose();
                 glState.fogBlur.dispose();
                 gl.deleteVertexArray(glState.vao);
-                gl.getExtension('WEBGL_lose_context')?.loseContext();
+                Runtime.releaseWebGLContext(gl);
             }
             glState = null;
             atlasCanvas.width = atlasCanvas.height = 0;

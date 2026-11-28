@@ -1036,6 +1036,168 @@
         return true;
     };
 
+    const programBatches = new WeakMap();
+    const cancelBatchPoll = (batch) => {
+        if (!batch || !batch.pollId) return;
+        const id = batch.pollId;
+        const kind = batch.pollKind;
+        batch.pollId = 0;
+        batch.pollKind = 0;
+        try {
+            if (kind === 1) global.cancelAnimationFrame?.(id);
+            else global.clearTimeout?.(id);
+        } catch (_) {}
+    };
+    const deletePendingShaders = (gl, batch) => {
+        if (!batch) return;
+        for (let i = 0; i < batch.pending.length; i += 1) {
+            const item = batch.pending[i];
+            try {
+                if (item.vs) { gl.deleteShader(item.vs); item.vs = null; }
+                if (item.fs) { gl.deleteShader(item.fs); item.fs = null; }
+            } catch (_) {}
+        }
+        batch.pending.length = 0;
+    };
+    const finalizeProgram = (gl, item) => {
+        const { program, vs, fs, label, entry } = item;
+        const linked = gl.getProgramParameter(program, gl.LINK_STATUS);
+        if (!linked) {
+            let msg = '';
+            if (vs && !gl.getShaderParameter(vs, gl.COMPILE_STATUS)) msg = `[${label}] shader: ${gl.getShaderInfoLog(vs)}`;
+            else if (fs && !gl.getShaderParameter(fs, gl.COMPILE_STATUS)) msg = `[${label}] shader: ${gl.getShaderInfoLog(fs)}`;
+            else msg = `[${label}] link: ${gl.getProgramInfoLog(program)}`;
+            if (vs) { gl.deleteShader(vs); item.vs = null; }
+            if (fs) { gl.deleteShader(fs); item.fs = null; }
+            gl.deleteProgram(program);
+            throw new Error(msg);
+        }
+        if (vs) { gl.deleteShader(vs); item.vs = null; }
+        if (fs) { gl.deleteShader(fs); item.fs = null; }
+        const uniforms = entry.uniforms;
+        const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        for (let i = 0; i < count; i += 1) {
+            const info = gl.getActiveUniform(program, i);
+            if (!info) continue;
+            uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
+        }
+    };
+    const getProgramBatch = (gl) => {
+        let batch = programBatches.get(gl);
+        if (!batch) {
+            let ext = null;
+            try { ext = gl.getExtension?.('KHR_parallel_shader_compile') || null; } catch (_) {}
+            batch = {
+                ext: ext && typeof ext.COMPLETION_STATUS_KHR === 'number' ? ext : null,
+                pending: [],
+                failed: false,
+                pollId: 0,
+                pollKind: 0,
+                onReady: null,
+                onError: null
+            };
+            programBatches.set(gl, batch);
+        }
+        return batch;
+    };
+    const compileProgram = (gl, vert, frag, label = 'stage') => {
+        const batch = getProgramBatch(gl);
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vert);
+        gl.compileShader(vs);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, frag);
+        gl.compileShader(fs);
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        const entry = { program, uniforms: {} };
+        const item = { program, vs, fs, label, entry };
+        if (batch.ext) {
+            batch.pending.push(item);
+        } else {
+            finalizeProgram(gl, item);
+        }
+        return entry;
+    };
+    const cancelPrograms = (gl) => {
+        if (!gl) return;
+        const batch = programBatches.get(gl);
+        if (!batch) return;
+        cancelBatchPoll(batch);
+        deletePendingShaders(gl, batch);
+        batch.onReady = null;
+        batch.onError = null;
+        programBatches.delete(gl);
+    };
+    const programsReady = (gl, onReady, onError) => {
+        if (!gl) return false;
+        const batch = programBatches.get(gl);
+        if (!batch) return true;
+        if (batch.failed) return false;
+        if (!batch.pending.length) return true;
+        try {
+            if (gl.isContextLost?.()) { cancelPrograms(gl); return false; }
+        } catch (_) {
+            cancelPrograms(gl);
+            return false;
+        }
+        if (typeof onReady === 'function') batch.onReady = onReady;
+        if (typeof onError === 'function') batch.onError = onError;
+        const statusEnum = batch.ext.COMPLETION_STATUS_KHR;
+        let write = 0;
+        for (let i = 0; i < batch.pending.length; i += 1) {
+            const item = batch.pending[i];
+            if (gl.getProgramParameter(item.program, statusEnum)) {
+                try {
+                    finalizeProgram(gl, item);
+                } catch (error) {
+                    batch.failed = true;
+                    cancelBatchPoll(batch);
+                    for (let j = i + 1; j < batch.pending.length; j += 1) {
+                        const rest = batch.pending[j];
+                        try {
+                            if (rest.vs) { gl.deleteShader(rest.vs); rest.vs = null; }
+                            if (rest.fs) { gl.deleteShader(rest.fs); rest.fs = null; }
+                        } catch (_) {}
+                    }
+                    batch.pending.length = 0;
+                    console.error(error);
+                    try { batch.onError?.(error); } catch (_) {}
+                    return false;
+                }
+            } else {
+                batch.pending[write++] = item;
+            }
+        }
+        batch.pending.length = write;
+        if (!write) {
+            cancelBatchPoll(batch);
+            return true;
+        }
+        if (!batch.pollId) {
+            const tick = () => {
+                batch.pollId = 0;
+                batch.pollKind = 0;
+                if (programBatches.get(gl) !== batch) return;
+                if (programsReady(gl)) {
+                    const cb = batch.onReady;
+                    batch.onReady = null;
+                    try { cb?.(); } catch (_) {}
+                }
+            };
+            if (!global.document?.hidden && typeof global.requestAnimationFrame === 'function') {
+                batch.pollKind = 1;
+                batch.pollId = global.requestAnimationFrame(tick);
+            } else if (typeof global.setTimeout === 'function') {
+                batch.pollKind = 2;
+                batch.pollId = global.setTimeout(tick, 16);
+            }
+        }
+        return false;
+    };
+
     // Call after intentional in-place lyric edits; normal source replacement is
     // already tracked by array identity without hashing the whole song per frame.
     const invalidateLines = (lines) => {
@@ -1045,6 +1207,9 @@
     global.MusicStageRuntime = Object.freeze({
         ensurePixi,
         releaseWebGLContext,
+        compileProgram,
+        programsReady,
+        cancelPrograms,
         invalidateLines,
         isReducedMotion,
         finiteNumber,

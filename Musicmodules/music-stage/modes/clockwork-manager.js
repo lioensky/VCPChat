@@ -286,7 +286,8 @@ void main() {
         vec2 off = vec2(0.0, -uDrift * 0.004);
         vec3 lineCol = mix(uInk, uSteel, 0.5);
         float wl = 0.0;
-        for (int i = 0; i < 5; i++) {
+        int nWire = uRes.x > 0.0 ? 5 : 0;
+        for (int i = 0; i < nWire; i++) {
             float fi = float(i);
             vec2 c = hubC + off + vec2(0.62 + fi * 0.31 + sin(fi * 3.1) * 0.08, sin(fi * 2.3) * 0.36);
             if (i == 4) c = hubC + off + vec2(-0.05, 0.0);
@@ -345,10 +346,16 @@ void main() {
     // 落影
     {
         vec2 s = vec2(0.012, -0.016);
-        vec3 g1 = gear(p - hubC - s, 0.33, 72.0, 5.0, uGear, aa * 6.0);
-        vec3 g2 = gear(p - C2 - s, 0.17, 37.0, 4.0, A2, aa * 6.0);
-        vec3 g3 = gear(p - C3 - s, 0.095, 20.0, 3.0, A3, aa * 6.0);
-        float shadow = max(max(g1.x, g2.x), g3.x);
+        float shadow = 0.0;
+        int nSh = uRes.x > 0.0 ? 3 : 0;
+        for (int si = 0; si < nSh; si++) {
+            vec2 gc = si == 0 ? hubC : (si == 1 ? C2 : C3);
+            float gr = si == 0 ? 0.33 : (si == 1 ? 0.17 : 0.095);
+            float gt = si == 0 ? 72.0 : (si == 1 ? 37.0 : 20.0);
+            float gs = si == 0 ? 5.0 : (si == 1 ? 4.0 : 3.0);
+            float ga = si == 0 ? uGear : (si == 1 ? A2 : A3);
+            shadow = max(shadow, gear(p - gc - s, gr, gt, gs, ga, aa * 6.0).x);
+        }
         col *= 1.0 - shadow * mix(0.45, 0.18, uLight);
     }
 
@@ -359,16 +366,23 @@ void main() {
     vec2 lift = vec2(sin(uTilt.x), -sin(uTilt.y)) * uParallax;
     vec2 L1 = lift * 0.075, L2 = lift * 0.05, L3 = lift * 0.032;
     vec2 sp = p - vec2(aspect * 0.5, 0.5);
-    vec4 g3 = gearLit(uSteel, p + L3 - c3, 0.095, 20.0, 3.0, a3, aa, sp, 0.004);
-    col = mix(col, g3.rgb, g3.a);
-    vec4 g2 = gearLit(uBrass * vec3(0.97, 0.95, 0.92), p + L2 - c2, 0.17, 37.0, 4.0, a2, aa, sp, 0.005);
-    col = mix(col, g2.rgb, g2.a);
-    vec4 g1 = gearLit(uBrass, p + L1 - hubC, 0.33, 72.0, 5.0, uGear, aa, sp, 0.007);
-    col = mix(col, g1.rgb, g1.a);
+    int nG = uRes.x > 0.0 ? 3 : 0;
+    for (int gi = 0; gi < nG; gi++) {
+        vec3 gcol = gi == 0 ? uSteel : (gi == 1 ? uBrass * vec3(0.97, 0.95, 0.92) : uBrass);
+        vec2 gq = gi == 0 ? (p + L3 - c3) : (gi == 1 ? (p + L2 - c2) : (p + L1 - hubC));
+        float gr = gi == 0 ? 0.095 : (gi == 1 ? 0.17 : 0.33);
+        float gt = gi == 0 ? 20.0 : (gi == 1 ? 37.0 : 72.0);
+        float gs = gi == 0 ? 3.0 : (gi == 1 ? 4.0 : 5.0);
+        float ga = gi == 0 ? a3 : (gi == 1 ? a2 : uGear);
+        float gth = gi == 0 ? 0.004 : (gi == 1 ? 0.005 : 0.007);
+        vec4 g = gearLit(gcol, gq, gr, gt, gs, ga, aa, sp, gth);
+        col = mix(col, g.rgb, g.a);
+    }
 
     // 轴心宝石：嵌在一圈抛光的金套（chaton）里的红宝石轴承，中间一个穿轴的小孔。
     // 宝石是一颗低的圆顶：左上来的光在顶上一点白的高光，光穿过去在右下那边透出来（里面亮），边上暗。低音时亮。
-    for (int i = 0; i < 3; i++) {
+    int nJewel = uRes.x > 0.0 ? 3 : 0;
+    for (int i = 0; i < nJewel; i++) {
         vec2 c = i == 0 ? hubC - L1 - lift * 0.012 : (i == 1 ? c2 - L2 : c3 - L3);
         float rr = i == 0 ? 0.026 : 0.015;
         vec2 dv = p - c;
@@ -475,7 +489,8 @@ void main() {
         float cut = -STEP * 0.42;
         float rowH = uFont * ${(ROW_PX / 100).toFixed(2)};
         float L = rowH * ${(ATLAS_W / ROW_PX).toFixed(1)};
-        for (int kk = -3; kk <= 3; kk++) {
+        int kMax = uRes.x > 0.0 ? 3 : -4;
+        for (int kk = -3; kk <= kMax; kk++) {
             float k = float(kk);
             float th = uTurn - k * STEP;
             th -= uGap * step(th, cut);
@@ -548,33 +563,8 @@ void main() {
             premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'default'
         });
         if (!gl) return null;
-        const compile = (type, source) => {
-            const shader = gl.createShader(type);
-            gl.shaderSource(shader, source);
-            gl.compileShader(shader);
-            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`[clockwork] shader: ${gl.getShaderInfoLog(shader)}`);
-            return shader;
-        };
-        const link = (frag) => {
-            const program = gl.createProgram();
-            const vs = compile(gl.VERTEX_SHADER, VERT);
-            const fs = compile(gl.FRAGMENT_SHADER, frag);
-            gl.attachShader(program, vs);
-            gl.attachShader(program, fs);
-            gl.linkProgram(program);
-            gl.deleteShader(vs);
-            gl.deleteShader(fs);
-            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`[clockwork] link: ${gl.getProgramInfoLog(program)}`);
-            const uniforms = {};
-            const count = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-            for (let i = 0; i < count; i += 1) {
-                const info = gl.getActiveUniform(program, i);
-                uniforms[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(program, info.name);
-            }
-            return { program, uniforms };
-        };
-        const { program, uniforms } = link(FRAG);
-        const smoke = link(SMOKE_FRAG);
+        const { program, uniforms } = Utils.compileProgram(gl, VERT, FRAG, 'clockwork');
+        const smoke = Utils.compileProgram(gl, VERT, SMOKE_FRAG, 'clockwork:smoke');
         gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         const texture = (filter, mip) => {
@@ -903,7 +893,7 @@ void main() {
             const s = settings();
             ensureLines(frame);
             updateOverlay(frame, s);
-            if (!glState) return;
+            if (!glState || lostContext || !Runtime.programsReady(glState.gl, redraw)) return;
             const aim = 1000 / (FPS[s.quality] || 30);
             const now = frame.now ?? performance.now();
             if (now < lastDraw) lastDraw = -Infinity;
@@ -926,7 +916,7 @@ void main() {
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`
         });
 
-        const onLost = (event) => { event.preventDefault(); lostContext = true; };
+        const onLost = (event) => { event.preventDefault(); lostContext = true; Runtime.cancelPrograms(glState?.gl); };
         const onRestored = () => { try { glState = createGl(canvas); lostContext = false; redraw(); } catch (error) { console.error(error); } };
         canvas.addEventListener('webglcontextlost', onLost);
         canvas.addEventListener('webglcontextrestored', onRestored);
@@ -936,13 +926,14 @@ void main() {
             cancelIdle();
             if (glState) {
                 const { gl } = glState;
+                Runtime.cancelPrograms(gl);
                 glState.slots.forEach((slot) => { gl.deleteTexture(slot.text); gl.deleteTexture(slot.glyph); });
                 gl.deleteProgram(glState.program);
                 gl.deleteProgram(glState.smoke.program);
                 gl.deleteTexture(glState.smokeTex);
                 gl.deleteFramebuffer(glState.smokeFbo);
                 gl.deleteVertexArray(glState.vao);
-                gl.getExtension('WEBGL_lose_context')?.loseContext();
+                Runtime.releaseWebGLContext(gl);
             }
             glState = null;
             atlas.width = atlas.height = 0;
