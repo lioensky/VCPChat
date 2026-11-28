@@ -951,3 +951,111 @@ test('Batch 109: stats ignores idle paused music-queue-change ticks, musicTagTex
     const yrc = parser.parseYRC('[1000,2000](1000,1000,0)Hi(2000,1000,0)!', '[00:01.00]你好');
     assert.equal(yrc.lines[0].translation, '你好');
 });
+
+test('Batch 114: stats trackKeyCache & all-time summary fast path, stage-settings O(1) tuneMore toggle, and dupes folderOf', () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+
+    // 1. music-stats: WeakMap trackKeyCache invalidates when track.path mutates; summary({ days: 0 }) counts activeDays accurately
+    const store = new Map();
+    const seedStats = {
+        v: 1,
+        t: {
+            'c:/m/a.flac': [3, 1_700_000_000_000, 0, 1_699_000_000_000, 'C:\\M\\a.flac'],
+            'c:/m/b.flac': [5, 1_700_100_000_000, 1, 1_699_000_000_000, 'C:\\M\\b.flac']
+        }
+    };
+    const seedLog = {
+        v: 1,
+        d: {
+            '2026-10-01': { s: [30, ...new Array(23).fill(0)], p: { 'c:/m/a.flac': 1 } }, // <60s but 1 play -> active!
+            '2026-10-02': { s: [120, ...new Array(23).fill(0)], p: {} },                   // >=60s -> active!
+            '2026-10-03': { s: [10, ...new Array(23).fill(0)], p: {} }                     // <60s & 0 plays -> inactive
+        }
+    };
+    store.set('musicPlayStats', JSON.stringify(seedStats));
+    store.set('musicListenLog', JSON.stringify(seedLog));
+    const app = { playlist: [], currentTrackIndex: -1, isPlaying: false, isTrackLoading: false, playedSeconds: () => 0 };
+    const stats = setupMusicStats(app, {
+        storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) },
+        observe: false
+    });
+    const tr = { path: 'C:\\M\\a.flac' };
+    assert.equal(stats.has(tr), true);
+    assert.equal(stats.get(tr).plays, 3);
+    tr.path = 'C:\\M\\b.flac';
+    assert.equal(stats.get(tr).plays, 5, 'trackKeyCache refreshes when track.path changes in place');
+    const allSum = stats.summary({ days: 0 });
+    assert.equal(allSum.plays, 8, 'all-time summary totals plays from main table');
+    assert.equal(allSum.activeDays, 2, 'all-time summary counts activeDays including <60s days with a play');
+    assert.equal(allSum.tracks[0].path, 'C:\\M\\b.flac');
+
+    // 2. music-dock-stage-settings: clicking tuneMore toggles md-tune-all without re-querying tuning rows
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="music-stage">
+            <div class="music-stage-tuning-controls">
+                ${Array.from({ length: 10 }, (_, i) => `<div class="row"><span class="music-stage-tuning-label">项${i}（说明${i}）</span><input data-stage-config-key="k${i}"></div>`).join('')}
+            </div>
+        </div>
+        <div id="ext"><div id="tuneSec"><h4 id="tuneTitle"></h4><p id="tuneHint"></p><div id="tuneSlot"></div><button id="tuneMore"></button></div>
+        <div id="body2"></div><div class="md-adv"><button id="advToggle"></button><div id="advBody"><div id="advActs"></div></div></div></div>
+    </body>`, { runScripts: 'outside-only' });
+    try {
+        const w = dom.window;
+        const d = w.document;
+        w.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-dock/music-dock-stage-settings.js'), 'utf8'));
+        const state = { tuneAll: false };
+        const cleanups = [];
+        const el = {
+            ext: d.getElementById('ext'),
+            tuneSec: d.getElementById('tuneSec'),
+            tuneTitle: d.getElementById('tuneTitle'),
+            tuneHint: d.getElementById('tuneHint'),
+            tuneSlot: d.getElementById('tuneSlot'),
+            tuneMore: d.getElementById('tuneMore'),
+            commonSlot: d.createElement('div'),
+            arraySlot: d.createElement('div'),
+            advToggle: d.getElementById('advToggle'),
+            advBody: d.getElementById('advBody'),
+            advActs: d.getElementById('advActs'),
+            body2: d.getElementById('body2'),
+            body: d.createElement('div')
+        };
+        const api = w.MusicDockStageSettings.create({
+            state, el, cleanups,
+            listen: (node, ev, fn) => node.addEventListener(ev, fn),
+            openPanel() {},
+            stageActive: () => true,
+            currentStageMode: () => ({ id: 'custom', label: '测试舞台', description: '说明' }),
+            segment: () => '',
+            escapeHtml: (s) => String(s),
+            icon: () => '<svg></svg>'
+        });
+        api.renderExt(true);
+        const firstRow = el.tuneSlot.querySelector('.row');
+        let rowQueries = 0;
+        const origQs = firstRow.querySelector.bind(firstRow);
+        firstRow.querySelector = (...args) => { rowQueries += 1; return origQs(...args); };
+        el.tuneMore.click();
+        assert.equal(state.tuneAll, true);
+        assert.equal(el.tuneSlot.classList.contains('md-tune-all'), true);
+        assert.equal(el.tuneMore.getAttribute('aria-expanded'), 'true');
+        assert.equal(rowQueries, 0, 'toggling tuneMore uses O(1) syncTuneMoreUi without re-querying tuning rows');
+        el.tuneMore.click();
+        assert.equal(state.tuneAll, false);
+        assert.equal(el.tuneSlot.classList.contains('md-tune-all'), false);
+        assert.equal(rowQueries, 0);
+        for (const fn of cleanups) fn();
+    } finally {
+        dom.window.close();
+    }
+
+    // 3. music-dupes: findDuplicates & folderOf on mixed path separators
+    const dupes = require(path.join(__dirname, '../Musicmodules/music-dupes.js'));
+    const groups = dupes.findDuplicates([
+        { path: 'C:\\Music\\CD1\\Song.flac', title: 'Song.flac', artist: 'Band', lossless: true, bitsPerSample: 24 },
+        { path: '/mnt/backup/Song.mp3', title: 'Song.mp3', artist: 'Band', bitrate: 320000 }
+    ]);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].keep.path, 'C:\\Music\\CD1\\Song.flac');
+});

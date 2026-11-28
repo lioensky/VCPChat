@@ -220,3 +220,48 @@ test('stageMode 拒绝 Object.prototype 继承属性名', () => {
         assert.match(result.stderr, /Unknown stage mode/);
     }
 });
+
+test('Batch 114: single-pass escapeMarkdown & parallel sidecar .ttml/.lrc priority', async () => {
+    const os = require('node:os');
+    const { registerMusicLyricsHandlers } = require('../modules/ipc/musicLyricsHandlers');
+
+    // 1. Single-pass Markdown/HTML/newline escaping
+    const md = formatCurrentLyrics({
+        track: { title: 'A & B <C> *bold* [1]', artist: 'Line1\r\nLine2\nLine3', album: 'a_b`c~d|e' },
+        lines: [{ original: '1+2-3! (x) {y} #z\\', romanization: 'r1\rr2', translation: 't>1' }]
+    });
+    assert.ok(md.includes('A &amp; B &lt;C&gt; \\*bold\\* \\[1\\]'));
+    assert.ok(md.includes('Line1 Line2 Line3'));
+    assert.ok(md.includes('a\\_b\\`c\\~d\\|e'));
+    assert.ok(md.includes('1\\+2\\-3\\! \\(x\\) \\{y\\} \\#z\\\\'));
+    assert.ok(md.includes('r1 r2'));
+    assert.ok(md.includes('t&gt;1'));
+
+    // 2. Parallel sidecar stat preserves .ttml priority over .lrc and falls back to .lrc when .ttml is empty/invalid
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vmusic-sidecar-'));
+    const cacheDir = path.join(tmp, 'cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    try {
+        const handlers = new Map();
+        registerMusicLyricsHandlers({
+            ipcMain: { handle: (ch, fn) => handlers.set(ch, fn) },
+            lyricFetcher: {},
+            getLyricDir: () => cacheDir
+        });
+        const getLyrics = handlers.get('music-get-lyrics');
+        const trackA = path.join(tmp, 'both.flac');
+        fs.writeFileSync(path.join(tmp, 'both.ttml'), '<tt><body><p begin="00:01.000" end="00:03.000">TTML Line</p></body></tt>');
+        fs.writeFileSync(path.join(tmp, 'both.lrc'), '[00:01.00]LRC Line');
+        const resA = await getLyrics({}, { title: 'both', artist: 'A', path: trackA });
+        assert.equal(resA?.source, 'sidecar');
+        assert.equal(resA?.lines?.[0]?.fullText, 'TTML Line');
+
+        const trackB = path.join(tmp, 'fallback.flac');
+        fs.writeFileSync(path.join(tmp, 'fallback.ttml'), '<tt><body></body></tt>');
+        fs.writeFileSync(path.join(tmp, 'fallback.lrc'), '[00:02.00]Fallback LRC');
+        const resB = await getLyrics({}, { title: 'fallback', artist: 'B', path: trackB });
+        assert.equal(resB, '[00:02.00]Fallback LRC');
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});

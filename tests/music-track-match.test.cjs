@@ -109,3 +109,18 @@ test('Batch 104: untitled path basename extraction supports POSIX, Windows, and 
     // 3-part separated query does not false-match as 2-part pair
     assert.equal(findTrack(list, 'a - b - c'), null);
 });
+
+test('Batch 114: trackMatch tail-dot strip, space-norm fast path, repeated artist/album cache, and single-pass basename', () => {
+    const list = [
+        { path: 'D:\\Music\\Alb/01_Track_Name.aiff', title: '', artist: '  Shared   Artist  ', album: 'Vol. 2' },
+        { path: 'D:\\Music\\Alb\\No.5.opus', title: 'No.5.opus', artist: '  Shared   Artist  ', album: 'Vol. 2' },
+        { path: '/mnt/audio/Clean Title.flac', title: 'Clean Title.flac', artist: 'Plain', album: 'PlainAlb' },
+        { path: 'C:\\Mix\\Tab\tTitle.mp3', title: 'Tab\t\u3000Title.mp3', artist: 'Other', album: 'Other' }
+    ];
+    assert.equal(findTrack(list, '01 Track Name')?.path, list[0].path);
+    assert.equal(findTrack(list, 'No.5')?.path, list[1].path);
+    assert.equal(findTrack(list, 'Clean Title')?.path, list[2].path);
+    assert.equal(findTrack(list, 'Tab Title')?.path, list[3].path);
+    assert.equal(findTrack(list, 'No.5 - Shared Artist')?.path, list[1].path);
+    assert.equal(findTrack(list, 'Vol. 2')?.path, list[0].path);
+});

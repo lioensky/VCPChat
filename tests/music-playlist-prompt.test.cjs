@@ -98,3 +98,46 @@ test('Batch 90: playlist prompt caps shown list while preserving total count, an
     assert.equal(sent[0].payload.folderPath, null);
     assert.deepEqual(sent[0].payload.tracks.map((t) => t.path), ['C:\\Loose\\x.mp3']);
 });
+
+test('Batch 114: playlistPrompt fast tail-dot/ws normalization & libraryWatch AUDIO_EXTS filter', async () => {
+    const { createLibraryWatch } = require('../modules/musicLibraryWatch');
+    const text = formatPlaylistPrompt([
+        { title: 'Symphony No.5.aiff' },
+        { title: 'Symphony  No.5' },
+        { title: 'Clean Title.opus' },
+        { title: 'Tab\tName\u3000Here.flac' },
+        { title: 'Version 1.2' }
+    ]);
+    assert.equal(text, '[播放列表——\nSymphony No.5\nClean Title\nTab Name Here\nVersion 1.2\n]');
+
+    // fs.watch callback ignores non-audio files (.jpg/.lrc) and triggers debounce for audio (.flac) and directory events
+    let watchCb = null;
+    const debounced = [];
+    let scanCalls = 0;
+    const watcher = createLibraryWatch({
+        scan: async () => { scanCalls += 1; return { tracks: [], stats: { total: 0, failed: 0 } }; },
+        readKnown: async () => [],
+        readFolders: async () => ['C:\\Watched'],
+        writeFolders: async () => {},
+        send: () => {},
+        exists: async () => true,
+        watch: (_dir, cb) => { watchCb = cb; return { close() {} }; },
+        setTimer: (fn, ms) => { debounced.push({ fn, ms }); return debounced.length; },
+        clearTimer: () => {},
+        log: {}
+    });
+    watcher.start();
+    await debounced[0].fn();
+    await new Promise((r) => setTimeout(r, 15));
+    assert.equal(typeof watchCb, 'function');
+    const beforeWatch = debounced.length;
+    watchCb('change', 'cover.jpg');
+    watchCb('change', 'song.lrc');
+    assert.equal(debounced.length, beforeWatch, 'non-audio watcher events do not schedule rescan timer');
+    watchCb('rename', 'new_track.FLAC');
+    assert.equal(debounced.length, beforeWatch + 1, 'audio file watcher event schedules rescan timer');
+    watchCb('rename', 'NewAlbumFolder');
+    assert.equal(debounced.length, beforeWatch + 2, 'directory watcher event (no ext) schedules rescan timer');
+    watcher.stop();
+    assert.ok(scanCalls >= 1);
+});
