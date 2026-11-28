@@ -16,6 +16,7 @@
         if (!app || app.sleepTimer) return null;
         let mode = 'off';
         let endsAt = 0;
+        let picked = 0; // 选的是几分钟（界面据此点亮对应的选项；撤销恢复时也保留原来那一档）
         let timer = null;
         let fading = false;
 
@@ -35,7 +36,8 @@
         const state = () => ({
             mode,
             endsAt: mode === 'time' ? endsAt : 0,
-            remaining: mode === 'time' ? Math.max(0, Math.ceil((endsAt - now()) / 1000)) : 0
+            remaining: mode === 'time' ? Math.max(0, Math.ceil((endsAt - now()) / 1000)) : 0,
+            minutes: mode === 'time' ? picked : 0
         });
         const announce = () => {
             try { global.document?.dispatchEvent?.(new CustomEvent('music-sleep-change', { detail: state() })); } catch (e) { /* 旧内核 */ }
@@ -82,13 +84,14 @@
 
         const api = {
             state,
-            set(minutes, { quiet = false } = {}) {
+            set(minutes, { quiet = false, chosen } = {}) {
                 const m = Number(minutes);
                 if (!(m > 0)) { api.cancel({ quiet }); return state(); }
                 const before = state();
                 unfade();
                 mode = 'time';
                 endsAt = now() + m * 60000;
+                picked = Number(chosen) > 0 ? Number(chosen) : m;
                 start(1000);
                 announce();
                 if (!quiet) toast(`${Math.round(m)} 分钟后暂停播放`, () => restore(before));
@@ -117,7 +120,7 @@
             }
         };
         const restore = (s) => {
-            if (s.mode === 'time' && s.endsAt > now()) api.set((s.endsAt - now()) / 60000, { quiet: true });
+            if (s.mode === 'time' && s.endsAt > now()) api.set((s.endsAt - now()) / 60000, { quiet: true, chosen: s.minutes });
             else if (s.mode === 'track') api.setTrackEnd({ quiet: true });
             else api.cancel({ quiet: true });
         };

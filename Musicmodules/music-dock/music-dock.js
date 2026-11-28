@@ -653,11 +653,13 @@
             const st = sleepState();
             const on = st.mode !== 'off';
             return `<button class="md-tile${on ? ' md-lit' : ''}" type="button" data-act="sleep-pick" aria-expanded="${state.sleepOpen}" aria-controls="music-dock-sleep" aria-label="定时关闭：${on ? sleepText(st) : '关'}">`
-                + `<span class="md-ti">${icon('moon', 18)}</span><span class="md-slp-v">${sleepText(st)}</span></button>`;
+                + `<span class="md-ti">${icon('moon', 18)}</span><span class="md-tl md-slp-v">${sleepText(st)}</span><span class="md-tchev${state.sleepOpen ? ' md-up' : ''}">${icon('chevron-down', 14)}</span></button>`;
         };
+        // 选中的是哪一档：定时开着时按当初选的分钟数点亮（不是按剩余时间）
+        const sleepCurrent = (st) => st.mode === 'track' ? 'track' : st.mode === 'off' ? 'off' : String(st.minutes || '');
         const sleepChipsHtml = () => {
             const st = sleepState();
-            const cur = st.mode === 'track' ? 'track' : st.mode === 'off' ? 'off' : '';
+            const cur = sleepCurrent(st);
             return `<div class="md-slp" id="music-dock-sleep" role="group" aria-label="定时关闭">${SLEEP_CHOICES.map(([v, label]) => (
                 `<button class="md-chip${v === cur ? ' md-lit' : ''}" type="button" data-act="sleep-set" data-v="${v}" aria-pressed="${v === cur}">${label}</button>`
             )).join('')}</div>`;
@@ -682,9 +684,49 @@
             }
             const chips = el.body.querySelector('.md-slp');
             if (chips) {
-                const cur = st.mode === 'track' ? 'track' : st.mode === 'off' ? 'off' : '';
+                const cur = sleepCurrent(st);
                 chips.querySelectorAll('[data-v]').forEach((b) => { const lit = b.dataset.v === cur; b.classList.toggle('md-lit', lit); b.setAttribute('aria-pressed', String(lit)); });
             }
+        };
+        // 时长选项展开/收起：高度从 0 平滑撑开（下面的内容跟着让位，不再一下跳开），胶囊依次淡入；
+        // 收起时留一份不可点的影子缩回去，真实状态立刻就是收起的。降低动态/节能档直接切换。
+        const SLEEP_EASE = 'cubic-bezier(.2, .8, .2, 1)';
+        const sleepMotion = () => global.MusicFluid?.enabled?.() !== false && typeof el.body.animate === 'function';
+        const turnChevron = (open) => {
+            const chev = el.body.querySelector('[data-act="sleep-pick"] .md-tchev');
+            if (chev && sleepMotion()) chev.animate([{ transform: `rotate(${open ? 0 : 180}deg)` }, { transform: `rotate(${open ? 180 : 0}deg)` }], { duration: 220, easing: SLEEP_EASE });
+        };
+        const unfoldSleep = () => {
+            const chips = el.body.querySelector('.md-slp');
+            if (!chips || !sleepMotion()) return;
+            const h = chips.offsetHeight;
+            if (!h) return;
+            turnChevron(true);
+            chips.style.overflow = 'hidden';
+            chips.animate([{ height: '0px', opacity: 0 }, { height: `${h}px`, opacity: 1 }], { duration: 260, easing: SLEEP_EASE })
+                .finished.catch(() => {}).finally(() => { chips.style.overflow = ''; });
+            chips.querySelectorAll('.md-chip').forEach((b, i) => b.animate(
+                [{ opacity: 0, transform: 'translateY(-6px) scale(.96)' }, { opacity: 1, transform: 'none' }],
+                { duration: 220, delay: 40 + i * 16, easing: SLEEP_EASE, fill: 'backwards' }
+            ));
+        };
+        const foldSleep = (update) => {
+            const old = el.body.querySelector('.md-slp');
+            const h = old && sleepMotion() ? old.offsetHeight : 0;
+            const ghost = h ? old.cloneNode(true) : null;
+            update();
+            const tiles = ghost && el.body.querySelector('.md-tiles');
+            if (!tiles || el.body.querySelector('.md-slp')) return;
+            ghost.removeAttribute('id');
+            ghost.removeAttribute('role');
+            ghost.className = 'md-slp-ghost';
+            ghost.setAttribute('aria-hidden', 'true');
+            ghost.inert = true;
+            ghost.querySelectorAll('[data-act]').forEach((b) => { b.removeAttribute('data-act'); b.tabIndex = -1; });
+            tiles.after(ghost);
+            turnChevron(false);
+            ghost.animate([{ height: `${h}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 200, easing: SLEEP_EASE })
+                .finished.catch(() => {}).finally(() => ghost.remove());
         };
         if (el.sleep) {
             listen(document, 'music-sleep-change', paintSleep);
@@ -694,8 +736,7 @@
                 openPanel('控制');
                 state.sleepOpen = true;
                 renderBody();
-                const chips = el.body.querySelector('.md-slp');
-                if (chips) global.MusicFluid?.bud(chips, el.sleep, { duration: 460 });
+                unfoldSleep();
             });
         }
 
@@ -1188,8 +1229,8 @@
                 const sleepOn = sleepAvailable();
                 const tileCount = 1 + Number(inStage) + Number(sleepOn);
                 html += `<div class="md-tiles md-tiles-${tileCount}">`
-                    + `<button class="md-tile${mode !== 'repeat' ? ' md-lit' : ''}" type="button" data-act="mode"><span class="md-ti">${icon(MODE_ICONS[mode] || 'repeat', 18)}</span><span>${MODE_LABELS[mode] || '播放模式'}</span></button>`
-                    + (inStage ? `<button class="md-tile md-lit" type="button" data-act="stage" aria-pressed="true"><span class="md-ti">${icon('sparkle', 18)}</span><span>歌词舞台</span></button>` : '')
+                    + `<button class="md-tile${mode !== 'repeat' ? ' md-lit' : ''}" type="button" data-act="mode"><span class="md-ti">${icon(MODE_ICONS[mode] || 'repeat', 18)}</span><span class="md-tl">${MODE_LABELS[mode] || '播放模式'}</span></button>`
+                    + (inStage ? `<button class="md-tile md-lit" type="button" data-act="stage" aria-pressed="true"><span class="md-ti">${icon('sparkle', 18)}</span><span class="md-tl">歌词舞台</span></button>` : '')
                     + (sleepOn ? sleepTileHtml() : '')
                     + '</div>' + (sleepOn && state.sleepOpen ? sleepChipsHtml() : '');
                 if (scene) {
@@ -1397,19 +1438,16 @@
                 syncGlow();
                 renderBody();
             } else if (act === 'sleep-pick') {
-                state.sleepOpen = !state.sleepOpen;
-                renderBody();
-                const pick = el.body.querySelector('[data-act="sleep-pick"]');
-                pick?.focus({ preventScroll: true });
-                const chips = state.sleepOpen && el.body.querySelector('.md-slp');
-                if (chips && pick) global.MusicFluid?.bud(chips, pick, { duration: 400 });
+                if (state.sleepOpen) foldSleep(() => { state.sleepOpen = false; renderBody(); });
+                else { state.sleepOpen = true; renderBody(); unfoldSleep(); }
+                el.body.querySelector('[data-act="sleep-pick"]')?.focus({ preventScroll: true });
             } else if (act === 'sleep-set') {
                 const v = target.dataset.v;
+                // 先定下来（paintSleep 会把新选的那格点亮），收起的影子里就是新的选择
                 if (v === 'off') app.sleepTimer?.cancel?.();
                 else if (v === 'track') app.sleepTimer?.setTrackEnd?.();
                 else app.sleepTimer?.set?.(Number(v));
-                state.sleepOpen = false;
-                renderBody();
+                foldSleep(() => { state.sleepOpen = false; renderBody(); });
                 el.body.querySelector('[data-act="sleep-pick"]')?.focus({ preventScroll: true });
             } else if (act === 'scene-pick') {
                 state.scenesOpen = !state.scenesOpen;
@@ -1866,7 +1904,7 @@
         }, true);
         listen(document, 'keydown', (event) => {
             if (event.key !== 'Escape' || event.target?.closest?.('.md-cmd') || palette?.isOpen) return;
-            if (state.sleepOpen && !state.scenesOpen) { closePop(); renderBody(); el.body.querySelector('[data-act="sleep-pick"]')?.focus({ preventScroll: true }); event.stopPropagation(); }
+            if (state.sleepOpen && !state.scenesOpen) { foldSleep(() => { closePop(); renderBody(); }); el.body.querySelector('[data-act="sleep-pick"]')?.focus({ preventScroll: true }); event.stopPropagation(); }
             else if (state.scenesOpen) { closePop(); renderBody(); el.body.querySelector('[data-act="scene-pick"]')?.focus({ preventScroll: true }); event.stopPropagation(); }
             else if (state.panelOpen) { closePanel(); el.handle.focus(); event.stopPropagation(); }
         }, true);

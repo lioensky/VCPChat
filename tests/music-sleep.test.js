@@ -32,6 +32,7 @@ test('timed: fades the engine volume in the last 10 s, pauses, then restores the
     sleep.set(1);
     assert.equal(sleep.state().mode, 'time');
     assert.equal(sleep.state().remaining, 60);
+    assert.equal(sleep.state().minutes, 1, 'remembers which choice was picked');
     advance(55);
     assert.deepEqual(volumes, [0.4]);
     advance(5);
