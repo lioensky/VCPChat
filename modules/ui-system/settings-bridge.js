@@ -33,6 +33,7 @@ import {
     mountTypedAgentModelPicker,
     mountTypedGroupModelPicker,
     mountTypedTopicSummaryModelPicker,
+    mountTypedMermaidRepairModelPicker,
     cleanupDisconnectedAgentModelPickers,
     releaseAllAgentModelPickers,
 } from './settings/agent-model-picker.js';
@@ -322,6 +323,7 @@ function enhanceGlobalSettings(root, form) {
                 // M5-c pass2：步进器行结构已由渲染器直出，这里只激活行为。
                 mountGlobalSteppers(form, api(), scope());
                 mountTypedTopicSummaryModelPicker(form);
+                mountTypedMermaidRepairModelPicker(form);
             },
         },
         { name: 'forum-field-owner', run: () => mountTypedForumFieldOwner(root, form) },

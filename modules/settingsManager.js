@@ -31,6 +31,7 @@ const settingsManager = (() => {
     let promptManager = null; // PromptManager instance
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
+    let mermaidRepairModelInput, openMermaidRepairModelSelectBtn;
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider;
     let currentAgentTtsDirectorPrompts = [];
     const TTS_DIRECTOR_TEMPLATE = `【角色】
@@ -1182,9 +1183,14 @@ const settingsManager = (() => {
                 if (modalId === 'globalSettingsModal') {
                     topicSummaryModelInput = document.getElementById('topicSummaryModel');
                     openTopicSummaryModelSelectBtn = document.getElementById('openTopicSummaryModelSelectBtn');
+                    mermaidRepairModelInput = document.getElementById('mermaidRepairModel');
+                    openMermaidRepairModelSelectBtn = document.getElementById('openMermaidRepairModelSelectBtn');
 
                     if (openTopicSummaryModelSelectBtn) {
                         openTopicSummaryModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(topicSummaryModelInput));
+                    }
+                    if (openMermaidRepairModelSelectBtn) {
+                        openMermaidRepairModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(mermaidRepairModelInput));
                     }
                 }
             });
@@ -1192,12 +1198,26 @@ const settingsManager = (() => {
             if (!globalThis.vcpTopicSummaryClickDelegated) {
                 globalThis.vcpTopicSummaryClickDelegated = true;
                 document.addEventListener('click', (ev) => {
-                    const btn = ev.target?.closest?.('#openTopicSummaryModelSelectBtn');
-                    if (!btn) return;
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    const input = document.getElementById('topicSummaryModel');
-                    handleOpenModelSelect(input);
+                    const topicBtn = ev.target?.closest?.('#openTopicSummaryModelSelectBtn');
+                    if (topicBtn) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        handleOpenModelSelect(document.getElementById('topicSummaryModel'));
+                        return;
+                    }
+                    const mermaidBtn = ev.target?.closest?.('#openMermaidRepairModelSelectBtn');
+                    if (mermaidBtn) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        handleOpenModelSelect(document.getElementById('mermaidRepairModel'));
+                        return;
+                    }
+                    const refreshRowBtn = ev.target?.closest?.('#refreshTopicSummaryModelsBtn, #refreshMermaidRepairModelsBtn');
+                    if (refreshRowBtn && refreshRowBtn.dataset.vcpModelRefreshBound !== 'true') {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        void handleRefreshModels();
+                    }
                 });
             }
 

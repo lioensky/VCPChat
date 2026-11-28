@@ -10,6 +10,7 @@ import {
     collectClosedToolResultRanges,
 } from './renderer/toolResultRegions.js';
 import { parseJevToolUse } from './renderer/jevToolUse.js';
+import { normalizePeleSource } from './renderer/peleRepair.js';
 import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
 const emoticonFixer = createEmoticonUrlFixer();
@@ -1651,6 +1652,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const { svg } = window.pele.render(code);
                 diagramContainer.innerHTML = svg;
             } catch (error) {
+                const normalizedCode = normalizePeleSource(code);
+                if (normalizedCode !== code && window.pele && typeof window.pele.render === 'function' && normalizedCode.length <= 100000) {
+                    try {
+                        const { svg } = window.pele.render(normalizedCode);
+                        diagramContainer.innerHTML = svg;
+                        return;
+                    } catch {
+                        // Fall through to TextViewer error fallback.
+                    }
+                }
                 console.error('[TextViewer] Pele diagram rendering failed:', error);
                 diagramContainer.classList.add('mermaid-error');
                 const message = document.createElement('div');
