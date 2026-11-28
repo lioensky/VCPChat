@@ -543,3 +543,56 @@ test('Batch 124: musicScannerWorker safeCoverExtension uses null-proto maps and 
     assert.equal(ctx.safeCoverExtension('__proto__'), 'proto');
     assert.equal(ctx.safeCoverExtension(''), 'jpg');
 });
+
+test('Batch 132: collectAudioFiles walks subdirectories with bounded concurrency while preserving DFS order and abort', async () => {
+    const names = [
+        'root.flac',
+        'c/3.mp3',
+        'a/1.mp3',
+        'a/sub2/b.ogg',
+        'a/sub1/a.wav',
+        'b/2.flac',
+        'd/4.m4a',
+        'e/5.mp3'
+    ];
+    const lib = library(names);
+    const origReaddir = fs.promises.readdir;
+    let inFlight = 0;
+    let peak = 0;
+    fs.promises.readdir = async (dir, opts) => {
+        inFlight += 1;
+        if (inFlight > peak) peak = inFlight;
+        // Make 'a' finish much slower than 'b'..'e' to verify order does not depend on completion timing
+        const delay = path.basename(dir) === 'a' ? 25 : 2;
+        await new Promise((r) => setTimeout(r, delay));
+        try {
+            return await origReaddir.call(fs.promises, dir, opts);
+        } finally {
+            inFlight -= 1;
+        }
+    };
+    try {
+        const files = (await collectAudioFiles(lib.music, { concurrency: 3 }))
+            .map((f) => path.relative(lib.music, f).split(path.sep).join('/'));
+        assert.deepEqual(files, [
+            'root.flac',
+            'a/1.mp3',
+            'a/sub1/a.wav',
+            'a/sub2/b.ogg',
+            'b/2.flac',
+            'c/3.mp3',
+            'd/4.m4a',
+            'e/5.mp3'
+        ], 'DFS lexicographical order preserved even when earlier directories complete slower');
+        assert.ok(peak >= 2 && peak <= 3, `expected bounded concurrency in [2, 3], saw peak=${peak}`);
+
+        // Pre-aborted signal returns immediately with zero reads
+        const ac = new AbortController();
+        ac.abort();
+        const abortedFiles = await collectAudioFiles(lib.music, { signal: ac.signal, concurrency: 3 });
+        assert.deepEqual(abortedFiles, []);
+    } finally {
+        fs.promises.readdir = origReaddir;
+        fs.rmSync(lib.root, { recursive: true, force: true });
+    }
+});
