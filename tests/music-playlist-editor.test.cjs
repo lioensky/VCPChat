@@ -324,3 +324,12 @@ test('Batch 111: MusicTrackOrder.hasAlbumOrder skips albumCompare for unnumbered
     assert.equal(doc.querySelectorAll('.music-modal-song-item').length, 4);
     dom.window.close();
 });
+
+test('Batch 112: MusicTrackOrder single-pass lastSep resolves Windows, POSIX, mixed, and rootless paths accurately', () => {
+    const TrackOrder = require('../Musicmodules/music-track-order.js');
+    assert.deepEqual(TrackOrder.numberOf({ path: 'C:\\Music\\CD2\\03 Song.flac' }), { disc: 2, no: 3 });
+    assert.deepEqual(TrackOrder.numberOf({ path: '/mnt/audio/Disc 1/12 Finale.mp3' }), { disc: 1, no: 12 });
+    assert.deepEqual(TrackOrder.numberOf({ path: 'D:\\Albums/CD3\\07 Mix.flac' }), { disc: 3, no: 7 });
+    assert.deepEqual(TrackOrder.numberOf({ path: '05 Rootless.flac' }), { disc: 0, no: 5 });
+    assert.deepEqual(TrackOrder.numberOf({ path: 'PlainTitle.flac' }), { disc: 0, no: 0 });
+});

@@ -2605,3 +2605,106 @@ test('Batch 110: palette pre-bakes rowProto defaults & bindless cached playlists
         window.close();
     }
 });
+
+test('Batch 112: containment CSS, pre-baked queue .md-qdur hidden toggle & cachedQueueH, and fluid barSig short-circuit', () => {
+    // 1. CSS containment & .md-qdur[hidden]
+    const skinCss = read('Musicmodules/music-theme/music-skin.css');
+    const dockCss = read('Musicmodules/music-dock/music-dock.css');
+    const panelCss = read('Musicmodules/music-dock/music-dock-panel.css');
+    assert.match(skinCss, /\.sidebar-list-container\s*\{[^}]*contain:\s*layout style/);
+    assert.match(skinCss, /\.sidebar-playlist\s*\{[^}]*contain:\s*layout style/);
+    assert.match(dockCss, /\.md-dock\s*\{[^}]*contain:\s*layout style/);
+    assert.match(panelCss, /#music-dock-root\s+\.md-qdur\[hidden\]\s*\{\s*display:\s*none;/);
+
+    // 2. Queue pre-baked .md-qdur toggle (zero createElement/remove), duration formatting (<1h & >=1h), and cachedQueueH
+    const { window, doc, app, dock } = setup((a) => {
+        a.playlist.splice(0, a.playlist.length,
+            { path: 'C:/q0.flac', title: 'Now', artist: 'A', duration: 65 },
+            { path: 'C:/q1.flac', title: 'Long', artist: 'B', duration: 3661 },
+            { path: 'C:/q2.flac', title: 'NoDur', artist: 'C', duration: 0 },
+            ...Array.from({ length: 40 }, (_, i) => ({
+                path: `C:/q${i + 3}.flac`,
+                title: `Track ${i + 3}`,
+                artist: 'Art',
+                duration: i % 2 === 0 ? 125 : 0
+            }))
+        );
+        a.manualQueue = [a.playlist[1], a.playlist[2]];
+        a.getUpNext = () => ({ manual: a.manualQueue.slice(), context: a.playlist.slice(3) });
+        a.getHistory = () => [];
+    });
+    try {
+        dock.openPanel('播放列表');
+        const scroller = doc.querySelector('.md-ql');
+        assert.ok(scroller);
+        const manRows = [...scroller.querySelectorAll('.md-man')];
+        assert.equal(manRows.length, 2);
+        const longDur = manRows[0].querySelector('.md-qdur');
+        const emptyDur = manRows[1].querySelector('.md-qdur');
+        assert.equal(longDur.textContent, '1:01:01', 'formats >=3600s duration without padStart');
+        assert.equal(longDur.hidden, false);
+        assert.equal(emptyDur.hidden, true, 'zero-duration row hides pre-baked .md-qdur in-place');
+
+        let viewH = 260;
+        let chReads = 0;
+        Object.defineProperty(scroller, 'clientHeight', {
+            configurable: true,
+            get() { chReads += 1; return viewH; }
+        });
+        // Scroll reads clientHeight once to populate cachedQueueH, then reuses cache across subsequent scrolls
+        let spanCreates = 0;
+        const origCreate = doc.createElement.bind(doc);
+        doc.createElement = (tag, ...rest) => {
+            if (String(tag).toLowerCase() === 'span') spanCreates += 1;
+            return origCreate(tag, ...rest);
+        };
+        scroller.scrollTop = 480;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        assert.equal(chReads, 1, 'first scroll caches scroller.clientHeight');
+        scroller.scrollTop = 960;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        scroller.scrollTop = 1440;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        assert.equal(chReads, 1, 'subsequent scrolls reuse cachedQueueH without layout reads');
+        assert.equal(spanCreates, 0, 'scrolling between timed and untimed rows toggles .md-qdur.hidden without creating spans');
+        doc.createElement = origCreate;
+
+        // Resize invalidates cachedQueueH
+        viewH = 380;
+        window.dispatchEvent(new window.Event('resize'));
+        scroller.scrollTop = 1600;
+        scroller.dispatchEvent(new window.Event('scroll'));
+        assert.equal(chReads, 2, 'window resize invalidates cachedQueueH');
+        dock.closePanel();
+
+        // 3. music-dock-fluid: unchanged barSig short-circuits before playBtn/volBtn getBoundingClientRect
+        const fHost = doc.createElement('div');
+        const fBar = doc.createElement('div');
+        const playBtn = doc.createElement('button');
+        const volBtn = doc.createElement('button');
+        playBtn.setAttribute('data-md', 'play');
+        volBtn.setAttribute('data-md', 'vol');
+        fBar.append(playBtn, volBtn);
+        fHost.appendChild(fBar);
+        doc.body.appendChild(fHost);
+        let playRectReads = 0;
+        let volRectReads = 0;
+        fBar.getBoundingClientRect = () => ({ left: 100, right: 500, top: 600, bottom: 656, width: 400, height: 56 });
+        playBtn.getBoundingClientRect = () => { playRectReads += 1; return { left: 120, right: 152, top: 612, bottom: 644, width: 32, height: 32 }; };
+        volBtn.getBoundingClientRect = () => { volRectReads += 1; return { left: 440, right: 472, top: 612, bottom: 644, width: 32, height: 32 }; };
+        const fl = window.createMusicDockFluid({ host: fHost, bar: fBar, reduced: () => true });
+        assert.equal(fl.layout(), true);
+        assert.equal(playRectReads, 1);
+        assert.equal(volRectReads, 1);
+        assert.equal(fl.layout(), true);
+        assert.equal(playRectReads, 1, 'unchanged barSig skips playBtn getBoundingClientRect');
+        assert.equal(volRectReads, 1, 'unchanged barSig skips volBtn getBoundingClientRect');
+        fHost.classList.add('md-squeeze');
+        assert.equal(fl.layout(), true);
+        assert.equal(playRectReads, 2, 'md-squeeze class change busts barSig');
+        fl.destroy();
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

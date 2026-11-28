@@ -105,3 +105,23 @@ test('Batch 104: smart evaluate handles single-term fast path and multi-term whi
     assert.deepEqual(Smart.evaluate(lib, '喜欢   aki   x', ctx).map((t) => t.path), ['/a']);
     assert.deepEqual(Smart.evaluate(lib, '晴天   不存在的词', ctx), []);
 });
+
+test('Batch 112: length-gated EXACT_RULES & CMP_CHAR_RE handle boundary-length tokens and full-width comparisons', () => {
+    // 1-char and >9-char tokens bypass EXACT_RULES cleanly as plain text
+    assert.deepEqual(Smart.parse('a'), { preds: [], text: 'a' });
+    assert.deepEqual(Smart.parse('verylongword'), { preds: [], text: 'verylongword' });
+    // Exact boundary lengths 2 ('喜欢') and 9 ('forgotten') still match EXACT_RULES
+    const liked = Smart.parse('喜欢');
+    assert.deepEqual(liked.preds.map((p) => p.word), ['喜欢']);
+    assert.equal(liked.text, '');
+    const forgotten = Smart.parse('FORGOTTEN');
+    assert.deepEqual(forgotten.preds.map((p) => p.word), ['很久没听']);
+    assert.equal(forgotten.text, '');
+    // Multi-token with full-width comparison and mixed plain/rule words
+    const p1 = Smart.parse('喜欢 次数＞5 晴天');
+    assert.deepEqual(p1.preds.map((p) => p.word), ['喜欢', '次数>5']);
+    assert.equal(p1.text, '晴天');
+    const p2 = Smart.parse('＜4m a verylongword');
+    assert.deepEqual(p2.preds.map((p) => p.word), ['<4分钟']);
+    assert.equal(p2.text, 'a verylongword');
+});

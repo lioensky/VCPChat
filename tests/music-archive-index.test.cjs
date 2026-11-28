@@ -653,3 +653,36 @@ test('Batch 110: alnumMask bitmask pruning matches exact scoring across 0-hit, m
         assert.ok(res.length > 0, `digit ${d} finds matching tracks`);
     }
 });
+
+test('Batch 112: tail-dot extension stripping preserves mid-title dots and listRows(album) handles untrimmed names & _hasOrd flag', () => {
+    const Model = require('../Musicmodules/music-archive/archive-model.js');
+    const TrackOrder = require('../Musicmodules/music-track-order.js');
+    global.MusicTrackOrder = TrackOrder;
+
+    // 1. 5-char tail dot scan strips audio extensions (.mp3/.flac/.aiff/.opus) while preserving non-audio dots
+    assert.equal(Model.stripExtension('Song v1.2.flac'), 'Song v1.2');
+    assert.equal(Model.stripExtension('Track.aiff'), 'Track');
+    assert.equal(Model.stripExtension('Symphony No.5'), 'Symphony No.5');
+    assert.equal(Model.stripExtension('Long.Name.Without.AudioExt'), 'Long.Name.Without.AudioExt');
+    assert.equal(Model.stripExtension('Dr. Dre - Still.MP3'), 'Dr. Dre - Still');
+
+    // 2. archive-index stripExt + listRows(album) fast-trimmed check & bucket._hasOrd
+    const tracks = [
+        { path: 'C:\\Music\\CD2\\02 Finale.flac', title: 'Track v2.0.flac', artist: '  Singer A  ', album: '  Deluxe  ' },
+        { path: 'C:\\Music\\CD1\\01 Intro.aiff', title: 'Intro v1.0.aiff', artist: 'Singer A', album: 'Deluxe' },
+        { path: 'C:\\Music\\Plain\\B.mp3', title: 'B.mp3', artist: 'Singer B', album: 'Plain' },
+        { path: 'C:\\Music\\Plain\\A.mp3', title: 'A.mp3', artist: 'Singer B', album: 'Plain' }
+    ];
+    const idx = Index.createIndex(tracks);
+    assert.deepEqual(idx.query('v2.0'), [0], 'stripped title retains non-audio version dot');
+    assert.deepEqual(idx.query('aiff'), [], '4-char audio extension stripped before indexing');
+    const sp = Index.sortSpec(idx, { mode: 'title', tracks });
+    const albRes = Index.listRows({ tracks, index: idx, kind: 'album', spec: sp });
+    const deluxeIdx = albRes.rows.findIndex((r) => r.type === 'head' && r.label === 'Deluxe');
+    assert.ok(deluxeIdx >= 0, 'untrimmed album name merges into trimmed Deluxe bucket');
+    assert.equal(albRes.rows[deluxeIdx + 1].i, 1, 'Deluxe bucket sorts CD1/01 before CD2/02');
+    assert.equal(albRes.rows[deluxeIdx + 2].i, 0);
+    const artRes = Index.listRows({ tracks, index: idx, kind: 'artist', spec: sp });
+    const singerAHeads = artRes.rows.filter((r) => r.type === 'head' && r.label === 'Singer A');
+    assert.equal(singerAHeads.length, 1, 'untrimmed artist name merges into single Singer A bucket');
+});
