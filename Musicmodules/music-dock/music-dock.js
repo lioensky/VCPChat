@@ -61,7 +61,8 @@
         let bootAccentRaw = null;
         let bootAccentLight = false;
         try {
-            bootAccentRaw = getComputedStyle(document.documentElement).getPropertyValue('--highlight-text');
+            // 浅色那一版的 --highlight-text 写在 body.light-theme 上，要从 body 读；从根节点读永远拿到深色那一版
+            bootAccentRaw = getComputedStyle(document.body).getPropertyValue('--highlight-text');
             bootAccentLight = document.body.classList.contains('light-theme');
         } catch (_) { bootAccentRaw = null; }
 
@@ -308,11 +309,11 @@
             return [hex(a), hex(mix(a, [70, 64, 59], 0.68)), hex(mix(a, [64, 63, 62], 0.92))];
         };
         const themeAccent = () => {
-            const stageRoot = document.getElementById('music-stage');
-            if (stageActive() && stageRoot?.classList.contains('stage-theme-custom')) {
+            // 「主题」选了自定义主题：首页、舞台都取那份主题的强调色
+            const custom = readRgb(app.stageHost?.themeAccent?.() || '');
+            if (custom) {
                 bootAccentRaw = null;
-                const custom = readRgb(getComputedStyle(stageRoot).getPropertyValue('--highlight-text'));
-                if (custom) return custom;
+                return custom;
             }
             if (bootAccentRaw !== null) {
                 const raw = bootAccentRaw;
@@ -321,7 +322,7 @@
                     return readRgb(raw);
                 }
             }
-            return readRgb(getComputedStyle(document.documentElement).getPropertyValue('--highlight-text'));
+            return readRgb(getComputedStyle(document.body).getPropertyValue('--highlight-text'));
         };
         const dockLight = () => {
             const classes = document.body.classList;
@@ -1844,7 +1845,7 @@
         // 控制页自上而下：音量 → 播放模式 / 歌词舞台 → 舞台（原地展开全部舞台）→ 这个舞台的设置 → 显示（所有舞台共用）→ 更多。
         // 这一段的代码在 music-dock-stage-settings.js。
         const stageSettings = global.MusicDockStageSettings.create({
-            state, el, cleanups, listen, openPanel,
+            app, state, el, cleanups, listen, openPanel,
             stageActive, currentStageMode, segment, escapeHtml, icon
         });
         const { renderExt, openStageSettings } = stageSettings;
@@ -2256,6 +2257,8 @@
                 syncFluid();
             }));
         }
+        // 主题列表是异步读进来的，读完或换了主题，舞台宿主会发这个事件：重取一次播放条的颜色
+        listen(global, 'music-theme-change', () => { if (!state.destroyed) syncFluid(); });
         // 启动首帧再读取真实胶囊位置，避免 DOMContentLoaded 里强制同步排版。
         bootRaf = requestAnimationFrame(() => { bootRaf = 0; if (!state.destroyed) { cachedRange = null; layoutFluid(); } });
         // 预热抽屉：窗口空下来以后，在藏着的抽屉里把当前页签画一遍。第一次打开时样式规则和排版都已经算过一回，

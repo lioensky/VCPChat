@@ -664,6 +664,42 @@
             }
 
             updateTheme();
+            try { global.dispatchEvent(new CustomEvent('music-theme-change')); } catch (_) { /* 只是提示刷新 */ }
+        };
+
+        // 「主题」全窗口共用（首页、底栏、舞台），控件在底栏控制页「显示」组（music-dock-stage-settings.js）。
+        const themeChoices = () => {
+            const list = [{ value: 'global', label: '跟随全局主题' }];
+            state.themeCatalog.forEach((theme) => {
+                const name = theme.name || theme.fileName.replace(/^themes/, '').replace(/\.css$/i, '');
+                ['light', 'dark'].forEach((variant) => {
+                    if (theme.variables?.[variant] && Object.keys(theme.variables[variant]).length) {
+                        list.push({ value: `custom:${theme.fileName}:${variant}`, label: `${name} ${variant === 'light' ? '明' : '暗'}` });
+                    }
+                });
+            });
+            const config = state.config;
+            const current = config.themeMode === 'custom' ? `custom:${config.themeFile}:${config.themeVariant}` : 'global';
+            return { list, value: list.some(item => item.value === current) ? current : 'global' };
+        };
+        const setThemeChoice = (value) => {
+            const [kind, fileName, variant] = String(value || '').split(':');
+            Config.update(kind === 'custom'
+                ? { themeMode: 'custom', themeFile: fileName, themeVariant: variant }
+                : { themeMode: 'global', themeFile: '' });
+            // 选「某主题 明/暗」时窗口明暗跟过去
+            if (kind === 'custom' && typeof app.applyTheme === 'function'
+                && document.body.classList.contains('light-theme') !== (variant === 'light')) {
+                app.applyTheme(variant === 'light' ? 'light' : 'dark');
+            }
+        };
+        // 自定义主题当前那一版的强调色；跟随全局时为空。
+        const themeAccent = () => {
+            const config = state.config;
+            if (config.themeMode !== 'custom') return '';
+            const selected = state.themeCatalog.find(theme => theme.fileName === config.themeFile);
+            const value = selected?.variables?.[config.themeVariant]?.['--highlight-text'];
+            return value ? String(resolveThemeAssetValue(value)).trim() : '';
         };
 
         const loadThemeCatalog = async () => {
@@ -826,52 +862,6 @@
             elements.degradeNote = degradeNote;
             state.lastDegradeNote = null;
             commonFragment.append(qualityRow, degradeNote, intensityRow);
-
-            const themeSelect = createElement('select', 'music-stage-common-select', {
-                'aria-label': '舞台主题'
-            });
-            themeSelect.appendChild(createElement('option', '', {
-                value: 'global',
-                text: '跟随全局主题'
-            }));
-            state.themeCatalog.forEach((theme) => {
-                const name = theme.name || theme.fileName.replace(/^themes/, '').replace(/\.css$/i, '');
-                if (theme.variables?.light && Object.keys(theme.variables.light).length) {
-                    themeSelect.appendChild(createElement('option', '', {
-                        value: `custom:${theme.fileName}:light`,
-                        text: `${name} 明`
-                    }));
-                }
-                if (theme.variables?.dark && Object.keys(theme.variables.dark).length) {
-                    themeSelect.appendChild(createElement('option', '', {
-                        value: `custom:${theme.fileName}:dark`,
-                        text: `${name} 暗`
-                    }));
-                }
-            });
-            themeSelect.value = state.config.themeMode === 'custom'
-                ? `custom:${state.config.themeFile}:${state.config.themeVariant}`
-                : 'global';
-            if (![...themeSelect.options].some(option => option.value === themeSelect.value)) {
-                themeSelect.value = 'global';
-            }
-            themeSelect.addEventListener('change', () => {
-                const [kind, fileName, variant] = themeSelect.value.split(':');
-                editingSettings = true;
-                try {
-                    Config.update(kind === 'custom'
-                        ? { themeMode: 'custom', themeFile: fileName, themeVariant: variant }
-                        : { themeMode: 'global', themeFile: '' });
-                } finally {
-                    editingSettings = false;
-                }
-            });
-            const themeRow = createElement('label', 'music-stage-tuning-row');
-            themeRow.append(
-                createElement('span', 'music-stage-tuning-label', '舞台主题'),
-                themeSelect
-            );
-            commonFragment.appendChild(themeRow);
 
             elements.commonControls.replaceChildren(commonFragment);
         };
@@ -1465,10 +1455,10 @@
         };
 
         // 舞台选了自定义主题时，舞台和它上面的底栏、面板、标题栏按这份主题自己的明/暗取色，
-        // 全局的「外观」亮暗切换原来对它不起作用（切了只有部分画面变）。在舞台里切亮暗时，
+        // 全局的「外观」亮暗切换原来对它不起作用（切了只有部分画面变）。切亮暗时（首页和舞台都算），
         // 自定义主题也换到同名主题的明/暗那一版；这份主题没有那一版就照旧。
         const followGlobalTheme = (theme) => {
-            if (!state.active || state.destroyed || state.config.themeMode !== 'custom') return;
+            if (state.destroyed || state.config.themeMode !== 'custom') return;
             const variant = theme === 'light' ? 'light' : 'dark';
             if (state.config.themeVariant === variant) return;
             const selected = state.themeCatalog.find(item => item.fileName === state.config.themeFile);
@@ -1915,6 +1905,9 @@
             updateTrack,
             updateTheme,
             followGlobalTheme,
+            themeChoices,
+            setThemeChoice,
+            themeAccent,
             get active() { return state.active; },
             get modeId() { return state.modeId; },
             getDebugSnapshot() {

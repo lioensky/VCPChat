@@ -1246,6 +1246,26 @@
         const unwrapAmbient = global.MusicAppHooks.wrap(app, 'createAmbientPixi', 'archive', (base) => (...args) => (app.isArchiveActive ? undefined : base(...args)));
 
         // ---------- 场景与渲染循环 ----------
+        /* 底栏控制页「主题」选了自定义主题时，首页的强调色（3D 卡上的高亮、浮字里的强调色）换成那份主题的；跟随全局时用首页自己的 */
+        const customAccent = () => {
+            try { return String(app.stageHost?.themeAccent?.() || '').trim(); } catch (_) { return ''; }
+        };
+        let lastAccentKey = '';
+        const syncAccentVars = () => {
+            const accent = customAccent();
+            const light = document.body.classList.contains('light-theme');
+            const key = accent ? `${accent}|${light}` : '';
+            if (key === lastAccentKey) return;
+            lastAccentKey = key;
+            if (!accent) {
+                root.style.removeProperty('--ar-accent');
+                root.style.removeProperty('--ar-accent-text');
+                return;
+            }
+            root.style.setProperty('--ar-accent', accent);
+            // 当文字用时浅色纸面上要压暗一点才看得清
+            root.style.setProperty('--ar-accent-text', light ? `color-mix(in srgb, ${accent} 70%, #000)` : accent);
+        };
         const readTheme = () => {
             const cs = getComputedStyle(document.body);
             const v = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
@@ -1256,7 +1276,7 @@
                     floor: v('--ar-floor', '#192125'),
                     badge: v('--ar-badge', '#5d676b'),
                     groove: v('--ar-groove', '#4a5559'),
-                    accent: v('--ar-accent', '#c8a15a'),
+                    accent: customAccent() || v('--ar-accent', '#c8a15a'),
                     font: v('--mt-font-archive', 'sans-serif')
                 },
                 dark: !document.body.classList.contains('light-theme')
@@ -2146,6 +2166,7 @@
             const enteringChanged = cls.includes('music-stage-entering') !== lastBodyClass.includes('music-stage-entering');
             lastBodyClass = cls;
             if (themeChanged) {
+                syncAccentVars();
                 applyTheme({ wave: true });
                 syncGrain();
                 if (light !== modeLight) {
@@ -2183,6 +2204,9 @@
             });
         }) : null;
         drawerObserver?.observe(drawerEl || dockRoot, drawerEl ? watchPnl : { childList: true });
+        const onThemeChange = () => { syncAccentVars(); applyTheme({ wave: true }); };
+        global.addEventListener('music-theme-change', onThemeChange);
+        syncAccentVars();
         const unsubscribeQuality = stageConfig && stageConfig.subscribe ? stageConfig.subscribe(() => { if (isShown()) { ensureScene(); kick(); } }) : null;
         const onMotion = () => {
             syncMotionClass();
@@ -2244,6 +2268,7 @@
             global.removeEventListener('resize', onResize);
             bodyObserver.disconnect();
             if (typeof unsubscribeQuality === 'function') unsubscribeQuality();
+            global.removeEventListener('music-theme-change', onThemeChange);
             if (typeof offMotion === 'function') offMotion();
             reducedQuery?.removeEventListener?.('change', onMotion);
             state.scene?.dispose();

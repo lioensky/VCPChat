@@ -31,7 +31,7 @@
 
     function create(ctx) {
         const {
-            state, el, cleanups, listen, openPanel,
+            app, state, el, cleanups, listen, openPanel,
             stageActive, currentStageMode, segment, escapeHtml, icon
         } = ctx;
 
@@ -174,13 +174,21 @@
             const light = document.body.classList.contains('light-theme');
             const motion = global.MusicMotion;
             const hasMotion = Boolean(motion && Array.isArray(motion.PREFERENCES));
-            const extKey = `${light ? 1 : 0}|${hasMotion ? motion.preference : ''}`;
+            // 「主题」：首页和舞台共用的一份（原来只在舞台的「全局输出」里叫「舞台主题」），选项由舞台宿主给
+            const themes = app?.stageHost?.themeChoices?.() || null;
+            const themeKey = themes ? `${themes.value}|${themes.list.map((t) => t.value).join(',')}` : '';
+            const extKey = `${light ? 1 : 0}|${hasMotion ? motion.preference : ''}|${themeKey}`;
             if (extKey !== lastExtKey || !el.body2.firstChild) {
                 lastExtKey = extKey;
                 let html = '<div class="md-grp-h"><b>显示</b></div>'
                     + `<div class="md-nrow"><span class="md-lb">外观</span><span class="md-r">`
                     + segment('data-act="theme"', [{ html: icon('sun', 15), aria: '浅色' }, { html: icon('moon', 15), aria: '深色' }], light ? 0 : 1, 'md-inline')
                     + '</span></div>';
+                if (themes) {
+                    html += `<div class="md-nrow md-theme-row"><span class="md-lb">主题</span><span class="md-r"><select class="md-theme-sel" data-md-theme aria-label="主题">`
+                        + themes.list.map((t) => `<option value="${escapeHtml(t.value)}"${t.value === themes.value ? ' selected' : ''}>${escapeHtml(t.label)}</option>`).join('')
+                        + '</select></span></div>';
+                }
                 if (hasMotion) {
                     const prefs = motion.PREFERENCES;
                     const at = Math.max(0, prefs.findIndex((p) => p.value === motion.preference));
@@ -189,6 +197,8 @@
                         + '</span></div>';
                 }
                 el.body2.innerHTML = html;
+                const themeSel = el.body2.querySelector('select[data-md-theme]');
+                if (themeSel) global.MusicFluidSelect?.dress?.(themeSel);
             }
             const hasIntro = typeof global.MusicIntro?.replay === 'function';
             const hideAdv = !hasIntro && !stageActive();
@@ -202,6 +212,12 @@
                 introBtn = null;
             }
         }
+        listen(el.body2, 'change', (event) => {
+            const sel = event.target;
+            if (sel && sel.matches && sel.matches('select[data-md-theme]')) app?.stageHost?.setThemeChoice?.(sel.value);
+        });
+        // 主题目录读完、或在别处换了主题：控制页开着就把这一行重画
+        listen(global, 'music-theme-change', () => { if (!el.ext.hidden) renderExt(true); });
         // 以前这里是「舞台调制」子页；现在只是打开控制页并滚到舞台那一段。
         function openStageSettings() {
             openPanel('控制');

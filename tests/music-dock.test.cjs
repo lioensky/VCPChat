@@ -719,7 +719,7 @@ test('fluid colours follow the theme accent, keep scene colours on themed stages
             const h = max === r ? (g - b) / d : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
             return ((h * 60) + 360) % 360;
         };
-        doc.documentElement.style.setProperty('--highlight-text', '#2f6fd0');
+        doc.body.style.setProperty('--highlight-text', '#2f6fd0');
         const blue = dock.glowColors;
         assert.ok(Math.abs(hue(blue[0]) - 216) < 6, `blue theme gives a blue glow (${blue[0]})`);
         doc.body.classList.add('light-theme');
@@ -727,7 +727,7 @@ test('fluid colours follow the theme accent, keep scene colours on themed stages
         assert.equal(blueLight[2], '#ffffff', 'light glow fades to white');
         assert.ok(Math.abs(hue(blueLight[0]) - 216) < 6);
 
-        doc.documentElement.style.setProperty('--highlight-text', '#808080');
+        doc.body.style.setProperty('--highlight-text', '#808080');
         assert.ok(Math.abs(hue(dock.glowColors[0]) - 22) < 6, 'grey accent falls back to the warm default');
 
         // 有自己色调的舞台用自己的颜色
@@ -742,6 +742,48 @@ test('fluid colours follow the theme accent, keep scene colours on themed stages
         // 节能档的实色进度底也跟着强调色
         await new Promise((r) => setTimeout(r, 0));
         assert.ok(doc.getElementById('music-dock-root').style.getPropertyValue('--md-fl-low-fill'), 'low tier fill is tinted');
+    } finally { dock.destroy(); }
+});
+
+test('light theme reads the accent from body, and the shared 主题 choice (home + stage) tints the dock and lives in the 控制 page', async () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        // 浅色那一版写在 body.light-theme 上：根节点上的深色值不该再被读到
+        doc.documentElement.style.setProperty('--highlight-text', '#f2a900');
+        doc.body.style.setProperty('--highlight-text', '#b94832');
+        doc.body.classList.add('light-theme');
+        const toHue = (hex) => {
+            const n = parseInt(hex.slice(1), 16);
+            const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+            const h = max === r ? (g - b) / d : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+            return ((h * 60) + 360) % 360;
+        };
+        assert.ok(toHue(dock.glowColors[0]) < 20, `light theme glow uses the light accent (${dock.glowColors[0]})`);
+
+        // 自定义主题：不在舞台里也取那份主题的强调色
+        const chosen = [];
+        let accent = '#2f6fd0';
+        app.stageHost = {
+            ...(app.stageHost || {}),
+            themeAccent: () => accent,
+            themeChoices: () => ({ list: [{ value: 'global', label: '跟随全局主题' }, { value: 'custom:themesSea.css:light', label: '海 明' }], value: accent ? 'custom:themesSea.css:light' : 'global' }),
+            setThemeChoice: (v) => chosen.push(v)
+        };
+        assert.ok(Math.abs(toHue(dock.glowColors[0]) - 216) < 6, 'custom theme accent tints the dock on the home page');
+
+        dock.openPanel('控制');
+        const sel = doc.querySelector('[data-md="body2"] select[data-md-theme]');
+        assert.ok(sel, '主题 row sits in the 显示 group on the home page');
+        assert.equal(sel.closest('.md-nrow').querySelector('.md-lb').textContent, '主题');
+        assert.deepEqual([...sel.options].map((o) => o.textContent), ['跟随全局主题', '海 明']);
+        assert.equal(sel.value, 'custom:themesSea.css:light');
+        sel.value = 'global';
+        sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+        assert.deepEqual(chosen, ['global']);
+        accent = '';
+        window.dispatchEvent(new window.CustomEvent('music-theme-change'));
+        assert.equal(doc.querySelector('[data-md="body2"] select[data-md-theme]').value, 'global', 'row redraws after a theme change');
     } finally { dock.destroy(); }
 });
 
@@ -2303,7 +2345,8 @@ test('Batch 97: dock ignores non-theme head/body mutations for syncGlow, palette
         let rootStyleCalls = 0;
         const origCS = window.getComputedStyle.bind(window);
         window.getComputedStyle = (el, ...rest) => {
-            if (el === doc.documentElement) rootStyleCalls += 1;
+            // 底栏从 body 读强调色（浅色那一版写在 body.light-theme 上）
+            if (el === doc.body) rootStyleCalls += 1;
             return origCS(el, ...rest);
         };
 

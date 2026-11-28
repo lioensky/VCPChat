@@ -2711,3 +2711,17 @@ test('r136: archive 3D pauses as soon as mi-stage-hold-enter covers the screen d
         f.close();
     }
 });
+
+test('底栏「主题」选了自定义主题时，首页强调色跟着那份主题；回到跟随全局就撤掉', () => {
+    const f = fixture();
+    const root = f.w.document.getElementById('music-archive-view');
+    let accent = '#2f6fd0';
+    f.app.stageHost = { ...(f.app.stageHost || {}), themeAccent: () => accent };
+    f.w.dispatchEvent(new f.w.CustomEvent('music-theme-change'));
+    assert.equal(root.style.getPropertyValue('--ar-accent'), '#2f6fd0');
+    assert.equal(root.style.getPropertyValue('--ar-accent-text'), '#2f6fd0');
+    accent = '';
+    f.w.dispatchEvent(new f.w.CustomEvent('music-theme-change'));
+    assert.equal(root.style.getPropertyValue('--ar-accent'), '');
+    f.close();
+});
