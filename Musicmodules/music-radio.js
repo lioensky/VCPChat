@@ -54,9 +54,13 @@
     const HTTP_SCHEME_RE = /^https?:\/\//i;
     const LOSSLESS_PATH_RE = /\.(flac|wav|ape|wv|aiff?|alac|dsf|dff)$/i;
     const BSLASH_RE = /\\/g;
+    const stripAudioExt = (raw) => {
+        const s = String(raw || '');
+        return s.lastIndexOf('.') >= 0 ? s.replace(AUDIO_EXT, '') : s;
+    };
     const recordingKey = (t) => {
         const artist = norm(t && t.artist);
-        const title = norm(String((t && t.title) || '').replace(AUDIO_EXT, ''));
+        const title = norm(stripAudioExt(t && t.title));
         return artist && title ? title + '\n' + artist : '';
     };
     // 同一首里放哪份：本机文件 > 网络；无损 > 有损；位深、采样率、码率高的优先。
@@ -67,18 +71,22 @@
         const c0 = p.charCodeAt(0);
         return (c0 === 104 || c0 === 72) && HTTP_SCHEME_RE.test(p);
     };
-    const versionRank = (t) => (isRemote(t) ? 0 : 1e9)
-        + (t.lossless === true || LOSSLESS_PATH_RE.test(String(t.path || '')) ? 1e8 : 0)
-        + (Number(t.bitsPerSample) || 0) * 1e6
-        + Math.min(999, Math.round((Number(t.sampleRate) || 0) / 1000)) * 1e3
-        + Math.min(999, Math.round((Number(t.bitrate) || 0) / 1000));
+    const versionRank = (t) => {
+        const p = String(t.path || '');
+        const isLossless = t.lossless === true || (p.lastIndexOf('.') >= 0 && LOSSLESS_PATH_RE.test(p));
+        return (isRemote(t) ? 0 : 1e9)
+            + (isLossless ? 1e8 : 0)
+            + (Number(t.bitsPerSample) || 0) * 1e6
+            + Math.min(999, Math.round((Number(t.sampleRate) || 0) / 1000)) * 1e3
+            + Math.min(999, Math.round((Number(t.bitrate) || 0) / 1000));
+    };
     // 伴奏 / 纯音乐版 / 卡拉 OK：电台和推荐里往后放（种子本身是伴奏时不降）
     const INSTRUMENTAL = /instrumental|\binst\.?(?=\s*[)\]）】]|$)|off[\s-]?vocal|karaoke|backing track|伴奏|纯音乐版|純音樂|カラオケ|オフボーカル/i;
     // 无 /i、无词边界/前瞻的纯字面量预筛，对 99% 普通曲名走 V8 线性快路径；命中后再走精确匹配
     const INSTRUMENTAL_HINT = /inst|off|karaoke|backing|伴奏|纯音乐版|純音樂|カラオケ|オフボーカル/;
     const INSTRUMENTAL_LOWER = /instrumental|\binst\.?(?=\s*[)\]）】]|$)|off[\s-]?vocal|karaoke|backing track|伴奏|纯音乐版|純音樂|カラオケ|オフボーカル/;
     const isInstrumentalLower = (lowTitle) => Boolean(lowTitle) && INSTRUMENTAL_HINT.test(lowTitle) && INSTRUMENTAL_LOWER.test(lowTitle);
-    const isInstrumental = (t) => isInstrumentalLower(norm(String((t && t.title) || '').replace(AUDIO_EXT, '')));
+    const isInstrumental = (t) => isInstrumentalLower(norm(stripAudioExt(t && t.title)));
 
     /*
      * 从曲库里挑和种子相近的歌。seeds 是最近放的几首（越靠后越重要），exclude 是不要的（刚放过、已在队列里）。
@@ -282,7 +290,10 @@
 
         const toast = (message, action) => { try { global.MusicToast?.show?.({ message, action, duration: action ? 8000 : undefined }); } catch (e) { /* 没有提示层 */ } };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
-        const normSlashPath = (p) => norm(String(p || '').replace(BSLASH_RE, '/'));
+        const normSlashPath = (p) => {
+            const s = typeof p === 'string' ? p : String(p || '');
+            return norm(s.indexOf('\\') !== -1 ? s.replace(BSLASH_RE, '/') : s);
+        };
         const recentSet = (list) => {
             const set = new Set(list);
             // 最近放过的 30 首（档案页记的最近播放）先不放
@@ -366,13 +377,15 @@
 
         // ---- 从一首歌开电台 ----
         app.startRadio = (ref) => {
-            const track = typeof ref === 'number' ? app.playlist?.[ref] : ref;
-            if (!track || !(app.playlist || []).includes(track)) return false;
+            const pl = Array.isArray(app.playlist) ? app.playlist : [];
+            const track = typeof ref === 'number' ? pl[ref] : ref;
+            const idx = track ? pl.indexOf(track) : -1;
+            if (idx < 0) return false;
             const exclude = recentSet([track]);
             const list = [track, ...pick([track], exclude)];
             if (list.length < 2) { toast('曲库里没有能接着放的歌'); return false; }
             app.radio = { seed: track, label: `「${title(track)}」电台`, list };
-            app.playFromContext(list, app.playlist.indexOf(track), { origin: 'radio', render: false });
+            app.playFromContext(list, idx, { origin: 'radio', render: false });
             toast(`已开始${app.radio.label}：${list.length} 首，快放完时会自己续上`);
             return true;
         };
@@ -381,7 +394,7 @@
         //      大约三分之一是还没听过的歌。没有听歌记录时用最近播放；都没有就随机。
         const seeded = (seedText) => {
             let h = 2166136261;
-            for (const ch of seedText) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+            for (let i = 0; i < seedText.length; i += 1) h = Math.imul(h ^ seedText.charCodeAt(i), 16777619);
             return () => { h += 0x6D2B79F5; let x = h; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
         };
         const byPaths = (paths, sharedMap) => {
@@ -609,7 +622,10 @@
         if (sw) {
             sw.checked = enabled;
             const onSwitchChange = () => { app.autoplay.enabled = sw.checked; };
-            const onAutoplayChange = (e) => { sw.checked = Boolean(e.detail?.enabled); };
+            const onAutoplayChange = (e) => {
+                const next = Boolean(e.detail?.enabled);
+                if (sw.checked !== next) sw.checked = next;
+            };
             sw.addEventListener('change', onSwitchChange);
             doc.addEventListener('music-autoplay-change', onAutoplayChange);
             global.addEventListener?.('beforeunload', () => {

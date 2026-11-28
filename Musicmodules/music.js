@@ -783,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.lyricsFetchSearchBtn.disabled = false;
             setLyricsFetchStatus('');
             app.lyricsFetchModal.classList.add('visible');
-            app.lyricsFetchTitle.focus();
+            app.lyricsFetchTitle.focus({ preventScroll: true });
         };
 
         app.lyricsFetchSearchBtn.onclick = searchLyricsCandidates;
@@ -1066,7 +1066,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return Array.from(app.playlistEl.children, li => app.playlist[Number(li.dataset.index)]).filter(Boolean);
         };
         app.playlistEl.addEventListener('click', (e) => {
-            const li = e.target.closest?.('li');
+            const li = e.target?.closest?.('li');
             if (!li || !app.playlistEl.contains(li)) return;
             const index = parseInt(li.dataset.index, 10);
             // 从经典列表点播：上下文就是看到的这一组、按看到的顺序。
@@ -1075,7 +1075,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else app.loadTrack(index);
         });
         app.playlistEl.addEventListener('contextmenu', (e) => {
-            const li = e.target.closest?.('li');
+            const li = e.target?.closest?.('li');
             if (li && app.playlistEl.contains(li)) {
                 e.preventDefault(); app.contextMenuTrackIndex = parseInt(li.dataset.index, 10);
                 app.showContextMenu(e.clientX, e.clientY);
@@ -1108,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const modal = app.playlistEditModal;
             const ret = modal?._returnFocus;
             if (modal) modal._returnFocus = null;
-            if (ret && ret !== document.body && ret.isConnected && !modal.contains(ret)) ret.focus?.({ preventScroll: true });
+            if (ret && ret !== document.body && ret.isConnected && !modal.contains(ret) && !ret.closest?.('[inert], [hidden]')) ret.focus?.({ preventScroll: true });
             else if (modal?.contains(document.activeElement)) document.activeElement?.blur?.();
             modal.classList.remove('visible');
             if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists');
@@ -1125,13 +1125,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 120);
         };
 
-        addManagedListener(document, 'click', (e) => { if (!app.contextMenu.contains(e.target)) app.contextMenu.classList.remove('visible'); });
+        addManagedListener(document, 'click', (e) => {
+            const t = e.target;
+            if (!(t && typeof t.nodeType === 'number' && app.contextMenu.contains(t))) app.contextMenu.classList.remove('visible');
+        });
         addManagedListener(document, 'keydown', (e) => {
             if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
             if (document.querySelector('.dialog-overlay.music-dialog.visible:not([data-closing])')) return;
             if (app.playlistDialog?.classList.contains('visible')) { app.hidePlaylistDialog(); e.preventDefault(); return; }
             if (app.playlistEditModal?.classList.contains('visible')) { closePlaylistEditModal(); e.preventDefault(); return; }
-            if (e.key === 'Escape' && !e.isComposing && app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
+            if (app.lyricsFetchModal?.classList.contains('visible')) { closeLyricsFetchModal(); e.preventDefault(); }
         });
         // ── 右键菜单的作用范围 ──
         // 「从列表中移除」要按右键时所在的视图决定删哪里，而不是按上一次从哪里点播。
@@ -1753,12 +1756,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }, 1000);
-    };
-
-    const initializeTheme = async () => {
-        if (app.api?.getCurrentTheme) {
-            app.applyTheme(await app.api.getCurrentTheme());
-        }
     };
 
     // 启动中途出错就别让开窗底色层继续盖着；错误照常往外抛

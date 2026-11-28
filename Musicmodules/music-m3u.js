@@ -20,7 +20,12 @@
     };
     // 和主进程扫描器（musicLibraryScanner SUPPORTED_FORMATS）一致
     const SUPPORTED = new Set(['mp3', 'wav', 'ogg', 'flac', 'm4a']);
-    const extOf = (name) => { const m = EXT_RE.exec(String(name || '')); return m ? m[1].toLowerCase() : ''; };
+    const extOf = (name) => {
+        const s = String(name || '');
+        if (s.indexOf('.') === -1) return '';
+        const m = EXT_RE.exec(s);
+        return m ? m[1].toLowerCase() : '';
+    };
 
     // entries: [{ path, exists }]，library: [{ path }] → { paths, toAdd, missing }
     const matchEntries = (entries, library) => {
@@ -226,7 +231,14 @@
                     hint = doc.createElement('div');
                     hint.className = 'music-drop-hint';
                     hint.setAttribute('aria-hidden', 'true');
-                    hint.innerHTML = '<div class="music-drop-hint-card"><b>松开，加进曲库</b><span>歌曲和文件夹加进曲库；.m3u / .m3u8 歌单导入成新歌单</span></div>';
+                    const card = doc.createElement('div');
+                    card.className = 'music-drop-hint-card';
+                    const b = doc.createElement('b');
+                    b.textContent = '松开，加进曲库';
+                    const span = doc.createElement('span');
+                    span.textContent = '歌曲和文件夹加进曲库；.m3u / .m3u8 歌单导入成新歌单';
+                    card.append(b, span);
+                    hint.appendChild(card);
                     doc.body.appendChild(hint);
                 }
                 if (hintRaf) global.cancelAnimationFrame?.(hintRaf);
@@ -277,7 +289,8 @@
                 if (!rawFiles || !rawFiles.length) return;
                 for (let i = 0; i < rawFiles.length; i += 1) {
                     const f = rawFiles[i];
-                    if (!f || !M3U_NAME_RE.test(f.name || '')) continue;
+                    const name = f && f.name ? String(f.name) : '';
+                    if (!name || name.indexOf('.') === -1 || !M3U_NAME_RE.test(name)) continue;
                     let p = '';
                     try { p = api().getPathForFile(f); } catch (e) { p = ''; }
                     if (p) importFile(p);

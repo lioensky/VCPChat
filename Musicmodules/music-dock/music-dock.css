@@ -372,11 +372,14 @@ body.music-dock-on .music-player .controls {
   background: var(--md-handle-bg);
   color: var(--md-handle-fg);
 }
+#music-dock-root .md-hdl.md-open button,
+#music-dock-root.md-fl-low .md-hdl button {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 #music-dock-root .md-hdl.md-open button {
   background: var(--md-handle-open-bg);
   color: var(--md-handle-open-fg);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 .md-sw {
   position: absolute;

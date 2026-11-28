@@ -27,7 +27,7 @@ function registerMusicLyricsHandlers({ ipcMain, lyricFetcher, getLyricDir }) {
     };
     const readSidecarLyrics = async (trackPath) => {
         const p = typeof trackPath === 'string' ? trackPath : '';
-        if (!p || URL_SCHEME_RE.test(p) || !path.isAbsolute(p)) return null;
+        if (!p || (p.indexOf('://') !== -1 && URL_SCHEME_RE.test(p)) || !path.isAbsolute(p)) return null;
         const base = p.slice(0, p.length - path.extname(p).length);
         if (!base || base === p) return null;
         // 并行探测同目录 .ttml 与 .lrc，仍严格按 .ttml 优先的顺序读取与解析

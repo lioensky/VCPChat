@@ -310,7 +310,8 @@
             const back = previousFocus;
             previousFocus = null;
             if (!isImmediate) {
-                if (back && back !== doc.body && back.isConnected && !o.contains(back) && typeof back.focus === 'function') {
+                if (back && back !== doc.body && back.isConnected && !o.contains(back)
+                    && !back.closest?.('[inert], [hidden]') && typeof back.focus === 'function') {
                     try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
                 } else {
                     const active = doc.activeElement;
@@ -414,7 +415,8 @@
             if (overlay !== cur) return;
             const sampleRate = audio.sampleRate;
             const cutoff = findCutoff(result.average, sampleRate);
-            const lossless = track.lossless === true || LOSSLESS_EXT.test(String(track.path || ''));
+            const rawPathStr = String(track.path || '');
+            const lossless = track.lossless === true || (rawPathStr.indexOf('.') !== -1 && LOSSLESS_EXT.test(rawPathStr));
             const v = verdict({ cutoff, sampleRate, lossless });
             const body = cur.querySelector('.mspec-body');
             const frag = doc.createDocumentFragment();
@@ -467,7 +469,8 @@
             const track = ref && typeof ref === 'object' ? ref : app.playlist?.[typeof ref === 'number' ? ref : app.currentTrackIndex];
             const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
             if (!track || !track.path) { toast('先放一首歌再看频谱'); return; }
-            if (REMOTE_SCHEME_RE.test(String(track.path))) { toast('网络上的歌没法看频谱'); return; }
+            const openPathStr = String(track.path);
+            if (openPathStr.indexOf('://') !== -1 && REMOTE_SCHEME_RE.test(openPathStr)) { toast('网络上的歌没法看频谱'); return; }
             flushClosing();
             previousFocus = doc.activeElement;
             const cur = el('div', 'dialog-overlay music-stats-dialog');

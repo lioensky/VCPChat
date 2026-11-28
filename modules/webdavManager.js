@@ -14,7 +14,6 @@ let serversLoaded = false;
 const WEBDAV_ID_RE = /^webdav_(\d+)$/;
 const TRAIL_SLASH_RE = /\/$/;
 const TRAIL_SLASHES_RE = /\/+$/;
-const EXT_STRIP_RE = /\.[^.]+$/;
 const HTTP_SCHEME_RE = /^https?:\/\//i;
 
 function findMatchingServer(fileUrl) {
@@ -467,7 +466,7 @@ function credentialsForTrack({ serverId, path: trackPath } = {}) {
     const byId = serverId ? getServerCredentials(serverId) : null;
     if (byId) return byId;
     const url = String(trackPath || '');
-    if (!HTTP_SCHEME_RE.test(url)) return null;
+    if (url.indexOf('://') === -1 || !HTTP_SCHEME_RE.test(url)) return null;
     const server = findMatchingServer(url);
     return server ? getServerCredentials(server.id) : null;
 }

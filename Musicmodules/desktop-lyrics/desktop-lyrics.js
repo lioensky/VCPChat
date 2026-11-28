@@ -187,7 +187,7 @@
 
     // ---- 交互 ----
     document.addEventListener('click', (e) => {
-        const b = e.target.closest('button[data-cmd]');
+        const b = e.target?.closest?.('button[data-cmd]');
         if (!b) return;
         const cmd = b.dataset.cmd;
         if (cmd === 'toggle') send(snap && snap.playing ? 'pause' : 'play');

@@ -143,9 +143,6 @@
     left: 32px;
     align-items: flex-start;
     max-width: min(34vw, 420px);
-}
-
-.music-stage-id3 {
     padding: 14px 16px 12px;
     border: 1px solid var(--ms-glass-edge);
     border-radius: 2px;
@@ -871,10 +868,6 @@ body.music-stage-active #custom-title-bar button {
 
 @keyframes music-stage-mode-menu-in {
     from { opacity: 0; transform: translateY(-4px) scale(.98); }
-}
-
-body.music-reduce-motion .music-stage-mode-menu {
-    animation: none;
 }
 
 .music-stage-mode-menu-item {

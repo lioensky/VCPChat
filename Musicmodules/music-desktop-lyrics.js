@@ -235,7 +235,7 @@
             sw.checked = state.on;
             onDeskSwitchChange = () => app.desktopLyrics.toggle(sw.checked);
             sw.addEventListener('change', onDeskSwitchChange);
-            onDeskSwitchSync = () => { sw.checked = state.on; };
+            onDeskSwitchSync = () => { if (sw.checked !== state.on) sw.checked = state.on; };
             doc.addEventListener('music-desktop-lyrics-change', onDeskSwitchSync);
         }
         const unsubChanged = api?.onDesktopLyricsChanged?.(apply);

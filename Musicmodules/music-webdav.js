@@ -11,7 +11,6 @@ function setupWebDav(app) {
     const NET_ERR_RE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|getaddrinfo|socket hang up|fetch failed/i;
     const CJK_RE = /[\u4e00-\u9fff]/;
     const TRAIL_SLASH_RE = /\/$/;
-    const ROOT_SLASH_RE = /^\/$/;
     const esc = (s) => String(s ?? '').replace(ESC_RE, (c) => ESC_MAP[c]);
     // 引擎和主进程回的是「HTTP error: Server returned 401 Unauthorized」这类英文：换成一句能看懂的原因。
     const webdavReason = (error, fallback, notFound = '服务器上没有这个文件夹') => {
@@ -41,7 +40,8 @@ function setupWebDav(app) {
     const restoreModalFocus = (prev, container) => {
         if (typeof document === 'undefined') return;
         const contains = typeof container?.contains === 'function' ? (n) => container.contains(n) : () => false;
-        if (prev && prev !== document.body && prev.isConnected && !contains(prev) && typeof prev.focus === 'function') {
+        if (prev && prev !== document.body && prev.isConnected && !contains(prev)
+            && !prev.closest?.('[inert], [hidden]') && typeof prev.focus === 'function') {
             try { prev.focus({ preventScroll: true }); } catch (e) { /* 归还不了就算了 */ }
             return;
         }
@@ -104,14 +104,14 @@ function setupWebDav(app) {
         if (!list || boundLists.has(list)) return;
         boundLists.add(list);
         list.addEventListener('click', (e) => {
-            const removeBtn = e.target.closest?.('.webdav-server-remove');
+            const removeBtn = e.target?.closest?.('.webdav-server-remove');
             if (removeBtn && list.contains(removeBtn)) {
                 e.stopPropagation();
                 const server = findServerById(removeBtn.dataset.id);
                 if (server) removeServerItem(server, removeBtn);
                 return;
             }
-            const nameEl = e.target.closest?.('.webdav-server-name');
+            const nameEl = e.target?.closest?.('.webdav-server-name');
             if (!nameEl || !list.contains(nameEl)) return;
             const row = nameEl.closest('.webdav-server-item');
             const server = row ? findServerById(row.dataset.serverId) : null;
@@ -124,7 +124,7 @@ function setupWebDav(app) {
         if (!list || boundLists.has(list)) return;
         boundLists.add(list);
         list.addEventListener('dblclick', (e) => {
-            const row = e.target.closest?.('.webdav-file-item');
+            const row = e.target?.closest?.('.webdav-file-item');
             if (!row || !list.contains(row)) return;
             const entry = currentEntries[Number(row.dataset.entryIdx)];
             if (!entry) return;
@@ -148,7 +148,7 @@ function setupWebDav(app) {
         if (!bar || boundLists.has(bar)) return;
         boundLists.add(bar);
         bar.addEventListener('click', (e) => {
-            const crumb = e.target.closest?.('.webdav-crumb');
+            const crumb = e.target?.closest?.('.webdav-crumb');
             if (!crumb || !bar.contains(crumb)) return;
             const targetPath = crumb.dataset.path;
             if (targetPath) app.browseWebDav(targetPath);
@@ -264,7 +264,8 @@ function setupWebDav(app) {
 
     app.renderWebDavBreadcrumb = (dirPath) => {
         bindBreadcrumb();
-        const rawParts = String(dirPath || '').replace(ROOT_SLASH_RE, '').split('/');
+        const rawDir = String(dirPath || '');
+        const rawParts = (rawDir === '/' ? '' : rawDir).split('/');
         const frag = document.createDocumentFragment();
         const root = document.createElement('span');
         root.className = 'webdav-crumb';
@@ -293,7 +294,7 @@ function setupWebDav(app) {
         if (!app.activeWebDavServer || !app.api?.loadWebdavTrack) return;
         const rawName = String(entry.name || '');
         const track = {
-            title: rawName.replace(AUDIO_EXT_RE, ''),
+            title: rawName.indexOf('.') !== -1 ? rawName.replace(AUDIO_EXT_RE, '') : rawName,
             artist: '',
             album: '',
             path: entry.url,
@@ -342,7 +343,7 @@ function setupWebDav(app) {
             app.webdavDialogStatus.style.color = '';
             app.webdavDialogStatus.textContent = '';
             app.webdavServerDialog.classList.add('active');
-            nameInput?.focus?.();
+            nameInput?.focus?.({ preventScroll: true });
         });
         let testReqId = 0;
         const closeServerDialog = () => {

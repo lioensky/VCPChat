@@ -53,7 +53,7 @@ function inferredDirs(tracks) {
     for (let i = 0; i < list.length; i += 1) {
         const t = list[i];
         const p = t && t.path;
-        if (typeof p !== 'string' || t.isRemote || URL_SCHEME_RE.test(p)) continue;
+        if (typeof p !== 'string' || t.isRemote || (p.indexOf('://') !== -1 && URL_SCHEME_RE.test(p))) continue;
         const d = path.dirname(p);
         let k = dirNormCache.get(d);
         if (k === undefined) {
@@ -81,7 +81,7 @@ function changedSince(known, scanned, root) {
     for (let i = 0; i < knownList.length; i += 1) {
         const t = knownList[i];
         const tp = t && t.path;
-        if (typeof tp !== 'string' || t.isRemote || URL_SCHEME_RE.test(tp)) continue;
+        if (typeof tp !== 'string' || t.isRemote || (tp.indexOf('://') !== -1 && URL_SCHEME_RE.test(tp))) continue;
         let under;
         if (!tp.includes('..')) {
             const d = path.dirname(tp);
@@ -321,7 +321,7 @@ function createLibraryWatch({
             if (Array.isArray(prev)) {
                 for (let i = 0; i < prev.length && toCheck.length < 5000; i += 1) {
                     const p = prev[i] && prev[i].path;
-                    if (typeof p === 'string' && !nextPaths.has(p) && !URL_SCHEME_RE.test(p) && !set.has(p)) {
+                    if (typeof p === 'string' && !nextPaths.has(p) && (p.indexOf('://') === -1 || !URL_SCHEME_RE.test(p)) && !set.has(p)) {
                         toCheck.push(p);
                     }
                 }

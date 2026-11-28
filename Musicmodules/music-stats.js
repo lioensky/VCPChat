@@ -44,6 +44,7 @@
     } = {}) {
         if (!app || app.musicStats) return app && app.musicStats;
 
+        const hasOwn = Object.prototype.hasOwnProperty;
         // 存成 { v: 1, t: { 路径(小写、正斜杠): [次数, 上次时间, 跳过, 第一次时间, 原路径] } }，紧凑一些，两万首也不大
         let table = {};
         try {
@@ -85,7 +86,7 @@
         };
         const dayKey = (t) => { syncHourCache(t); return cachedHourDayKey; };
         const dayOfKey = (k) => {
-            let day = log[k];
+            let day = hasOwn.call(log, k) ? log[k] : null;
             if (!day) {
                 day = { s: new Array(24).fill(0), p: {} };
                 log[k] = day;
@@ -132,13 +133,13 @@
         const bump = (path, kind) => {
             const k = normPath(path);
             if (!k) return;
-            let e = table[k];
+            let e = hasOwn.call(table, k) ? table[k] : null;
             if (!e) { e = [0, 0, 0, 0, String(path)]; table[k] = e; tableCount++; }
             const t = now();
             if (kind === 'play') {
                 e[0]++; e[1] = t; if (!e[3]) e[3] = t;
                 const day = dayOf(t);
-                day.p[k] = (day.p[k] || 0) + 1;
+                day.p[k] = (hasOwn.call(day.p, k) ? day.p[k] : 0) + 1;
             }
             else e[2]++;
             save();
@@ -225,7 +226,6 @@
         }
 
         // ---- 查询 ----
-        const hasOwn = Object.prototype.hasOwnProperty;
         const trackKeyCache = new WeakMap();
         const keyOfInput = (input) => {
             if (input && typeof input === 'object') {
@@ -241,7 +241,8 @@
         };
         const lookupEntry = (input) => {
             if (!tableCount) return null;
-            return table[keyOfInput(input)] || null;
+            const k = keyOfInput(input);
+            return k && hasOwn.call(table, k) ? table[k] : null;
         };
         const extractPaths = (list, limit) => {
             const cap = limit < list.length ? limit : list.length;
@@ -376,7 +377,7 @@
                 }
                 const tracks = [];
                 for (const [k, n] of plays) {
-                    const e = table[k];
+                    const e = hasOwn.call(table, k) ? table[k] : null;
                     tracks.push({ path: e ? e[4] : k, plays: n, last: e ? e[1] : 0 });
                 }
                 tracks.sort((a, b) => b.plays - a.plays || b.last - a.last);

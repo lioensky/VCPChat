@@ -742,7 +742,9 @@ body.music-archive-on.music-archive-drawer-lyrics:not(.music-stage-active) #musi
 body.music-fl-low .md-drbg,
 #music-dock-root.md-fl-low .md-drbg,
 body.music-fl-low .md-hdl-tip,
-#music-dock-root.md-fl-low .md-hdl-tip {
+#music-dock-root.md-fl-low .md-hdl-tip,
+body.music-fl-low .md-cmd-scrim,
+#music-dock-root.md-fl-low .md-cmd-scrim {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }

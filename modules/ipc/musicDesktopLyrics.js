@@ -60,6 +60,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
                     await fs.promises.rename(tmp, stateFile);
                     if (gen === saveGen) pendingWrite = false;
                 } catch (err) {
+                    if (err && err.code === 'ENOENT') dirEnsured = false;
                     await fs.promises.unlink(tmp).catch(() => {});
                     if (gen === saveGen) pendingWrite = false;
                     throw err;

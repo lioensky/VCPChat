@@ -99,7 +99,7 @@ async function fillFolderCovers(tracks, readdir = (dir) => fsp.readdir(dir)) {
     const uniqueDirs = [];
     const seenDirs = new Set();
     for (const t of tracks) {
-        if (!t || t.albumArt || typeof t.path !== 'string' || URL_SCHEME_RE.test(t.path)) continue;
+        if (!t || t.albumArt || typeof t.path !== 'string' || (t.path.indexOf('://') !== -1 && URL_SCHEME_RE.test(t.path))) continue;
         const dir = path.dirname(t.path);
         candidates.push({ track: t, dir });
         if (!seenDirs.has(dir)) {
