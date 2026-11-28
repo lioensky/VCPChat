@@ -366,3 +366,201 @@ test('Batch 110: MusicToast caches SVG icon markup across repeated toasts withou
         window.close();
     }
 });
+
+test('Batch 116: toast DOM build, desktop-lyrics playing poll skip, webdav collator/type=button, output device-sig/fallbackSeq, fluid-marker, modal-focus & likes', async () => {
+    // 1. MusicToast renders via cached SVG clones & direct DOM construction without innerHTML on toast element
+    {
+        const { window, doc, toast } = setup();
+        try {
+            let innerWrites = 0;
+            const desc = Object.getOwnPropertyDescriptor(window.Element.prototype, 'innerHTML');
+            Object.defineProperty(window.Element.prototype, 'innerHTML', {
+                configurable: true,
+                get() { return desc.get.call(this); },
+                set(v) {
+                    if (this.classList && this.classList.contains('mtst')) innerWrites += 1;
+                    return desc.set.call(this, v);
+                }
+            });
+            try {
+                toast.show({ id: 'b116', kind: 'progress', message: '缓存图标', progress: 0.25, action: { label: '取消', run() {} } });
+                assert.equal(innerWrites, 0, 'toast render builds DOM via cached SVG clones without innerHTML on toast root');
+                const root = doc.querySelector('[data-key="b116"]');
+                assert.ok(root.querySelector('.mtst-ic svg.mtst-i'));
+                assert.ok(root.querySelector('.mtst-x svg.mtst-i'));
+                assert.equal(root.querySelector('.mtst-act').textContent, '取消');
+                assert.match(root.querySelector('.mtst-bar > span').style.transform, /scaleX\(0\.25\)/);
+            } finally {
+                Object.defineProperty(window.Element.prototype, 'innerHTML', desc);
+            }
+        } finally {
+            window.close();
+        }
+    }
+
+    // 2. music-desktop-lyrics playing poll skips snapshot/publish on same line within RESYNC_MS, publishes on line advance
+    {
+        const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' });
+        const { window } = dom;
+        try {
+            let nowMs = 10000;
+            let pollFn = null;
+            const sent = [];
+            window.Date.now = () => nowMs;
+            window.setInterval = (fn) => { pollFn = fn; return 1; };
+            window.clearInterval = () => {};
+            window.eval(read('Musicmodules/music-desktop-lyrics.js'));
+            const lines = [
+                { time: 0, text: 'Line 1', translation: '行一' },
+                { time: 5, text: 'Line 2', translation: '行二' }
+            ];
+            const app = {
+                playlist: [{ path: 'C:\\a.flac', title: 'A', artist: 'X' }],
+                currentTrackIndex: 0,
+                isPlaying: true,
+                lastKnownCurrentTime: 1,
+                lastStateUpdateTime: nowMs,
+                currentLyrics: lines,
+                lyricsTranslation: true,
+                api: {
+                    toggleDesktopLyrics: async (v) => v,
+                    publishDesktopLyrics: (snap) => sent.push(snap)
+                }
+            };
+            window.setupMusicDesktopLyrics(app);
+            await app.desktopLyrics.toggle(true);
+            assert.equal(sent.length, 1);
+            assert.equal(sent[0].index, 0);
+            // Advance 500ms within same line -> fast-path skips publish
+            nowMs += 500;
+            pollFn();
+            assert.equal(sent.length, 1, 'same-line playing poll skips redundant snapshot & IPC');
+            // Advance to t=5.5s (Line 2) -> publishes line change
+            nowMs += 4000;
+            pollFn();
+            assert.equal(sent.length, 2, 'line advance breaks out of fast-path and publishes');
+            assert.equal(sent[1].index, 1);
+            window.dispatchEvent(new window.Event('beforeunload'));
+        } finally {
+            window.close();
+        }
+    }
+
+    // 3. music-output skips DOM rebuild when device signature unchanged & drops stale fallback check
+    {
+        const dom = new JSDOM('<!doctype html><body><select id="dev"></select><p id="output-fallback-note" hidden></p></body>', { runScripts: 'outside-only' });
+        const { window } = dom;
+        try {
+            window.eval(read('Musicmodules/music-output.js'));
+            const sel = window.document.getElementById('dev');
+            const app = {
+                deviceSelect: sel,
+                currentDeviceId: 3,
+                wasapiSwitch: { checked: true },
+                api: {
+                    getMusicDevices: async () => ({ status: 'success', devices: { preferred: [{ id: 3, name: 'DAC' }], other: [] } }),
+                    getMusicState: null
+                }
+            };
+            window.setupOutput(app);
+            await app.populateDeviceList();
+            const firstOpt = sel.options[1];
+            assert.equal(sel.value, '3');
+            await app.populateDeviceList();
+            assert.equal(sel.options[1], firstOpt, 'unchanged device list preserves existing <option> DOM nodes');
+
+            // Stale checkOutputFallbackSoon reply ignored
+            const pending = [];
+            app.api.getMusicState = () => new Promise((r) => pending.push(r));
+            app.checkOutputFallbackSoon(0);
+            await new Promise((r) => setTimeout(r, 15));
+            app.checkOutputFallbackSoon(0);
+            await new Promise((r) => setTimeout(r, 15));
+            assert.equal(pending.length, 2);
+            pending[1]({ status: 'success', state: { output_fallback: [] } });
+            await new Promise((r) => setTimeout(r, 0));
+            pending[0]({ status: 'success', state: { output_fallback: ['device'] } });
+            await new Promise((r) => setTimeout(r, 0));
+            assert.equal(window.document.getElementById('output-fallback-note').hidden, true, 'stale fallback response ignored');
+            window.dispatchEvent(new window.Event('beforeunload'));
+        } finally {
+            window.close();
+        }
+    }
+
+    // 4. music-webdav button type="button" + safe prefix strip + collator sort
+    {
+        const dom = new JSDOM('<!doctype html><body><div id="s"></div><div id="f"></div><div id="b"></div></body>', { runScripts: 'outside-only' });
+        const { window } = dom;
+        try {
+            window.eval(read('Musicmodules/music-webdav.js'));
+            const browsed = [];
+            const app = {
+                webdavServerList: window.document.getElementById('s'),
+                webdavFileList: window.document.getElementById('f'),
+                webdavBreadcrumb: window.document.getElementById('b'),
+                webdavServers: [{ id: '1', name: 'NAS', url: 'https://nas.local' }],
+                activeWebDavServer: { id: '1', name: 'NAS', url: 'https://nas.local' },
+                api: {
+                    listWebdavDirectory: async () => ({
+                        status: 'success',
+                        entries: [
+                            { name: 'b.flac', href: '/b.flac', isDir: false },
+                            { name: 'a.flac', href: '/a.flac', isDir: false },
+                            { name: 'Dir', href: 'https://nas.local/Dir/', isDir: true }
+                        ]
+                    })
+                }
+            };
+            window.setupWebDav(app);
+            app.renderWebDavServerList();
+            assert.equal(window.document.querySelector('.webdav-server-remove').getAttribute('type'), 'button');
+            await app.browseWebDav('/');
+            const names = [...window.document.querySelectorAll('.webdav-file-name')].map((n) => n.textContent);
+            assert.deepEqual(names, ['Dir', 'a.flac', 'b.flac']);
+            const origBrowse = app.browseWebDav;
+            app.browseWebDav = (p) => browsed.push(p);
+            window.document.querySelector('.webdav-file-item.is-dir').dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+            assert.deepEqual(browsed, ['/Dir']);
+            app.browseWebDav = origBrowse;
+        } finally {
+            window.close();
+        }
+    }
+
+    // 5. music-fluid-marker skips redundant cross-axis setAttribute across glides; music-likes toggles without mutating cached Set
+    {
+        const dom = new JSDOM('<!doctype html><body><div id="bar"></div></body>', { runScripts: 'outside-only' });
+        const { window } = dom;
+        try {
+            window.eval(read('Musicmodules/music-dock/music-fluid-marker.js'));
+            const bar = window.document.getElementById('bar');
+            Object.defineProperty(bar, 'clientHeight', { value: 36, configurable: true });
+            Object.defineProperty(bar, 'scrollWidth', { value: 400, configurable: true });
+            const marker = window.createMusicFluidMarker(bar, { axis: 'x', thickness: 4 });
+            const svg = bar.querySelector('svg.mfm');
+            let heightWrites = 0;
+            const origSetAttr = svg.setAttribute.bind(svg);
+            svg.setAttribute = (k, v) => { if (k === 'height') heightWrites += 1; return origSetAttr(k, v); };
+            marker.moveTo({ start: 10, end: 80 }, { instant: true });
+            marker.moveTo({ start: 120, end: 210 }, { instant: true });
+            marker.moveTo({ start: 230, end: 310 }, { instant: true });
+            assert.equal(heightWrites, 1, 'x-axis marker writes unchanged cross-axis height attribute only once');
+            marker.destroy();
+
+            window.eval(read('Musicmodules/music-likes.js'));
+            const t1 = { path: 'C:\\1.flac', title: '1' };
+            const t2 = { path: 'C:\\2.flac', title: '2' };
+            const lApp = { playlist: [t1, t2], customPlaylists: [] };
+            window.setupMusicLikes(lApp);
+            assert.equal(lApp.toggleLike(t1, { quiet: true }), true);
+            assert.equal(lApp.isLiked(t1), true);
+            assert.equal(lApp.toggleLike([t1, t2, t2], { quiet: true }), true);
+            assert.deepEqual(Array.from(lApp.likedPlaylist().tracks), ['C:\\2.flac', 'C:\\1.flac']);
+            assert.equal(lApp.toggleLike(t1, { quiet: true }), false);
+            assert.deepEqual(Array.from(lApp.likedPlaylist().tracks), ['C:\\2.flac']);
+        } finally {
+            window.close();
+        }
+    }
+});
