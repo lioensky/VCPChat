@@ -711,7 +711,8 @@ void main() {
         mode.resume = () => { paused = false; lastT = null; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
-            initialized: Boolean(glState), draws: stats.draws, pulses: stats.pulses, buffer: `${canvas.width}x${canvas.height}`
+            initialized: Boolean(glState), ready: !glState || lostContext || stats.draws > 0 || Runtime.programsFailed(glState.gl),
+            draws: stats.draws, pulses: stats.pulses, buffer: `${canvas.width}x${canvas.height}`
         });
 
         const onLost = (event) => { event.preventDefault(); lostContext = true; Runtime.cancelPrograms(glState?.gl); };

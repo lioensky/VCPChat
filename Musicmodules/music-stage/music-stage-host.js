@@ -1535,6 +1535,7 @@
             if (!instance || instance.destroyed) return true;
             const snapshot = instance.getDebugSnapshot?.();
             if (!snapshot || !('initialized' in snapshot)) return true;
+            if (snapshot.ready === false && !snapshot.fallbackMode) return false;
             return Boolean(snapshot.initialized || snapshot.fallbackMode);
         };
 

@@ -2184,15 +2184,12 @@
                 // seat and the driver on it (the leading end only), the cabinet opposite,
                 // and the bulkhead whose glazed door shows the lit saloon.
                 const float FRONT=${(TIP + 0.26).toFixed(3)},CF=${CAR.floor.toFixed(3)},BACK=${(TIP + 1.35).toFixed(3)};
-                float hitBox(vec3 o,vec3 d,vec3 lo,vec3 hi,inout float best,inout vec3 n){
-                    vec3 inv=1.0/d,t0=(lo-o)*inv,t1=(hi-o)*inv,tn=min(t0,t1),tf=max(t0,t1);
+                void hitBox(vec3 o,vec3 inv,vec3 sgn,vec3 lo,vec3 hi,float id,inout float best,inout vec3 n,inout float what){
+                    vec3 t0=(lo-o)*inv,t1=(hi-o)*inv,tn=min(t0,t1),tf=max(t0,t1);
                     float near=max(max(tn.x,tn.y),tn.z),far=min(min(tf.x,tf.y),tf.z);
-                    if(near<far&&near>0.0&&near<best){
-                        best=near;
-                        n=near==tn.x?vec3(-sign(d.x),0,0):near==tn.y?vec3(0,-sign(d.y),0):vec3(0,0,-sign(d.z));
-                        return 1.0;
-                    }
-                    return 0.0;
+                    float h=(near<far&&near>0.0&&near<best)?1.0:0.0;
+                    vec3 bn=near==tn.x?vec3(-sgn.x,0.0,0.0):near==tn.y?vec3(0.0,-sgn.y,0.0):vec3(0.0,0.0,-sgn.z);
+                    best=mix(best,near,h);n=mix(n,bn,h);what=mix(what,id,h);
                 }
                 float hitBall(vec3 o,vec3 d,vec3 c,float r,inout float best,inout vec3 n){
                     vec3 oc=o-c;float b=dot(oc,d),q=dot(oc,oc)-r*r,h=b*b-q;
@@ -2203,38 +2200,39 @@
                 }
                 vec3 cab(vec3 cabin,vec3 ray,float tail){
                     vec3 o=vPos,d=ray;
-                    d.x=abs(d.x)<0.0001?0.0001:d.x;d.y=abs(d.y)<0.0001?0.0001:d.y;
+                    d.x=abs(d.x)<0.0001?0.0001:d.x;d.y=abs(d.y)<0.0001?0.0001:d.y;d.z=abs(d.z)<0.0001?0.0001:d.z;
                     // The room: walls, floor, ceiling and the bulkhead.
                     float dz=max(d.z,0.045);
                     float back=(BACK-o.z)/dz,wall=(1.23-o.x*sign(d.x))/abs(d.x);
                     float ceiling=d.y>0.0?(3.317-o.y)/d.y:100.0,floorHit=d.y<0.0?(o.y-CF)/(-d.y):100.0;
                     float best=min(min(back,wall),min(ceiling,floorHit));
-                    vec3 n=best==back?vec3(0,0,-1):best==wall?vec3(-sign(d.x),0,0):best==ceiling?vec3(0,-1,0):vec3(0,1,0);
+                    vec3 invD=1.0/d,sgnD=sign(d);
+                    vec3 n=best==back?vec3(0.0,0.0,-1.0):best==wall?vec3(-sgnD.x,0.0,0.0):best==ceiling?vec3(0.0,-1.0,0.0):vec3(0.0,1.0,0.0);
                     float what=0.0;
                     // 1 desk, 2 cowl, 3 handles, 4 seat, 5 driver, 6 cabinet.
-                    if(hitBox(o,d,vec3(-1.22,CF,FRONT-0.05),vec3(-0.36,2.02,FRONT+0.44),best,n)>0.0)what=1.0;
-                    if(hitBox(o,d,vec3(-1.12,2.02,FRONT-0.05),vec3(-0.5,2.2,FRONT+0.16),best,n)>0.0)what=2.0;
-                    if(hitBox(o,d,vec3(-1.12,2.02,FRONT+0.26),vec3(-1.04,2.2,FRONT+0.34),best,n)>0.0)what=3.0;
-                    if(hitBox(o,d,vec3(-0.56,2.02,FRONT+0.26),vec3(-0.48,2.14,FRONT+0.34),best,n)>0.0)what=3.0;
-                    if(hitBox(o,d,vec3(-1.0,CF+0.36,FRONT+0.62),vec3(-0.6,CF+0.5,FRONT+1.02),best,n)>0.0)what=4.0;
-                    if(hitBox(o,d,vec3(-1.0,CF+0.5,FRONT+0.98),vec3(-0.6,CF+1.12,FRONT+1.08),best,n)>0.0)what=4.0;
+                    hitBox(o,invD,sgnD,vec3(-1.22,CF,FRONT-0.05),vec3(-0.36,2.02,FRONT+0.44),1.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.12,2.02,FRONT-0.05),vec3(-0.5,2.2,FRONT+0.16),2.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.12,2.02,FRONT+0.26),vec3(-1.04,2.2,FRONT+0.34),3.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-0.56,2.02,FRONT+0.26),vec3(-0.48,2.14,FRONT+0.34),3.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.0,CF+0.36,FRONT+0.62),vec3(-0.6,CF+0.5,FRONT+1.02),4.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.0,CF+0.5,FRONT+0.98),vec3(-0.6,CF+1.12,FRONT+1.08),4.0,best,n,what);
                     if(tail<0.5){
-                        if(hitBox(o,d,vec3(-0.98,CF+0.5,FRONT+0.7),vec3(-0.62,CF+1.16,FRONT+0.97),best,n)>0.0)what=5.0;
+                        hitBox(o,invD,sgnD,vec3(-0.98,CF+0.5,FRONT+0.7),vec3(-0.62,CF+1.16,FRONT+0.97),5.0,best,n,what);
                         if(hitBall(o,d,vec3(-0.8,CF+1.31,FRONT+0.84),0.115,best,n)>0.0)what=5.0;
-                        if(hitBox(o,d,vec3(-0.94,CF+1.38,FRONT+0.68),vec3(-0.66,CF+1.43,FRONT+0.98),best,n)>0.0)what=5.0;
-                        if(hitBox(o,d,vec3(-0.98,CF+0.9,FRONT+0.4),vec3(-0.9,CF+1.02,FRONT+0.78),best,n)>0.0)what=5.0;
+                        hitBox(o,invD,sgnD,vec3(-0.94,CF+1.38,FRONT+0.68),vec3(-0.66,CF+1.43,FRONT+0.98),5.0,best,n,what);
+                        hitBox(o,invD,sgnD,vec3(-0.98,CF+0.9,FRONT+0.4),vec3(-0.9,CF+1.02,FRONT+0.78),5.0,best,n,what);
                     }
-                    if(hitBox(o,d,vec3(0.42,CF,FRONT-0.05),vec3(1.22,CF+0.78,FRONT+0.5),best,n)>0.0)what=6.0;
+                    hitBox(o,invD,sgnD,vec3(0.42,CF,FRONT-0.05),vec3(1.22,CF+0.78,FRONT+0.5),6.0,best,n,what);
                     // 7 chrome knobs on the handles, 8 the roller blind, 9 the radio set on the cabinet,
                     // 10 the extinguisher by the bulkhead, 11 a grab pole, 12 the ceiling fan.
                     if(hitBall(o,d,vec3(-1.08,2.23,FRONT+0.3),0.035,best,n)>0.0)what=7.0;
                     if(hitBall(o,d,vec3(-0.52,2.16,FRONT+0.3),0.03,best,n)>0.0)what=7.0;
-                    if(hitBox(o,d,vec3(-1.22,3.12,FRONT-0.02),vec3(1.22,3.28,FRONT+0.07),best,n)>0.0)what=8.0;
-                    if(hitBox(o,d,vec3(-1.18,2.88,FRONT-0.01),vec3(-0.42,3.12,FRONT+0.01),best,n)>0.0)what=8.0;
-                    if(hitBox(o,d,vec3(0.55,CF+0.78,FRONT+0.05),vec3(0.98,CF+0.98,FRONT+0.34),best,n)>0.0)what=9.0;
-                    if(hitBox(o,d,vec3(0.86,CF,BACK-0.2),vec3(1.0,CF+0.5,BACK-0.06),best,n)>0.0)what=10.0;
-                    if(hitBox(o,d,vec3(0.36,CF,FRONT+0.6),vec3(0.4,3.317,FRONT+0.64),best,n)>0.0)what=11.0;
-                    if(hitBox(o,d,vec3(0.12,3.25,FRONT+0.5),vec3(0.48,3.317,FRONT+0.86),best,n)>0.0)what=12.0;
+                    hitBox(o,invD,sgnD,vec3(-1.22,3.12,FRONT-0.02),vec3(1.22,3.28,FRONT+0.07),8.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(-1.18,2.88,FRONT-0.01),vec3(-0.42,3.12,FRONT+0.01),8.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.55,CF+0.78,FRONT+0.05),vec3(0.98,CF+0.98,FRONT+0.34),9.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.86,CF,BACK-0.2),vec3(1.0,CF+0.5,BACK-0.06),10.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.36,CF,FRONT+0.6),vec3(0.4,3.317,FRONT+0.64),11.0,best,n,what);
+                    hitBox(o,invD,sgnD,vec3(0.12,3.25,FRONT+0.5),vec3(0.48,3.317,FRONT+0.86),12.0,best,n,what);
                     vec3 hit=o+d*best;
                     // Painted grey-green fittings, a darker floor, a pale ceiling.
                     vec3 paint=mix(vec3(0.165,0.2,0.18),vec3(0.86,0.83,0.74),day*0.8);

@@ -817,7 +817,8 @@ void main() {
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { cachedFamily = ''; readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
-            initialized: Boolean(glState), lines: sung.length, index: stats.index, glyphs: stats.glyphs,
+            initialized: Boolean(glState), ready: !glState || lostContext || stats.draws > 0 || Runtime.programsFailed(glState.gl),
+            lines: sung.length, index: stats.index, glyphs: stats.glyphs,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`
         });
 

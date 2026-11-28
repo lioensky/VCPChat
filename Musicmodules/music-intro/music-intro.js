@@ -744,6 +744,7 @@
             if (!snap.hasModeInstance) return false;
             const mode = snap.mode;
             if (!mode || !('initialized' in mode)) return true;
+            if (mode.ready === false && !mode.fallbackMode) return false;
             return Boolean(mode.initialized || mode.fallbackMode);
         };
         // 退出时舞台 0.38 秒后才拆 3D 场景并把根节点藏起来；拆完再揭开，卡顿留在白场后面。

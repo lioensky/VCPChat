@@ -1630,7 +1630,8 @@ vec2 home(vec2 t) {
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { cachedFamily = ''; readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
-            initialized: Boolean(glState), cues: cues.length, cue: stats.cue, bursts: stats.bursts, active: stats.active,
+            initialized: Boolean(glState), ready: !glState || lostContext || stats.draws > 0 || Runtime.programsFailed(glState.gl),
+            cues: cues.length, cue: stats.cue, bursts: stats.bursts, active: stats.active,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`, effects: `${low[0]}x${low[1]}`
         });
 

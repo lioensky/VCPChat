@@ -1487,7 +1487,8 @@ void main() {
         mode.resume = () => { paused = false; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); redraw(); };
         mode.getDebugSnapshot = () => ({
-            initialized: Boolean(glState), lines: plan.length, visible: stats.visible,
+            initialized: Boolean(glState), ready: !glState || lostContext || stats.draws > 0 || Runtime.programsFailed(glState.gl),
+            lines: plan.length, visible: stats.visible,
             builds: stats.builds, buildMs: stats.buildMs, draws: stats.draws, buffer: `${canvas.width}x${canvas.height}`
         });
 

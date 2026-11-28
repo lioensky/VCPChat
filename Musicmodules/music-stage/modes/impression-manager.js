@@ -858,7 +858,10 @@ void main() {
         mode.suspend = () => { paused = true; mode.root.classList.add('is-suspended'); };
         mode.resume = () => { paused = false; lastT = null; mode.root.classList.remove('is-suspended'); redraw(); };
         mode.updateTheme = () => { readColours(); coverUrl = null; redraw(); };
-        mode.getDebugSnapshot = () => ({ initialized: Boolean(glState), draws: stats.draws, paints: stats.paints, buffer: `${canvas.width}x${canvas.height}` });
+        mode.getDebugSnapshot = () => ({
+            initialized: Boolean(glState), ready: !glState || lostContext || stats.draws > 0 || Runtime.programsFailed(glState.gl),
+            draws: stats.draws, paints: stats.paints, buffer: `${canvas.width}x${canvas.height}`
+        });
 
         const onLost = (event) => { event.preventDefault(); lostContext = true; pendingCover = null; Runtime.cancelPrograms(glState?.gl); };
         const onRestored = () => {

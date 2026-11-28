@@ -1164,17 +1164,15 @@
 
         // ---------- 视图切换（档案页 / 经典视图） ----------
         const isShown = () => state.mode === 'archive';
-        // 进播放页的过场里（music-stage-entering，最多 1.1 秒）舞台还没盖上来，继续画让选中卡的上浮看得见；
-        // 开场动画（music-intro-playing）是一层不透明全屏层，期间不画
-        let enteringSince = 0;
-        let layoutJob = null;     // 换视图过场里「盖上」那一段：{ layout }，盖满时换成它（见 sweepToLayout）
+        // 进舞台前过场（music-stage-entering，最多 1.1s）保持绘制以显选中卡上浮；盖严（mi-stage-hold-enter）或开场动画期间停绘
+        let enteringSince = 0, enteringHeld = false, layoutJob = null;
         const renderAllowed = () => {
-            // 换视图的纸正在盖上来时，3D 阵列停在最后一帧不再画，把这几帧让给过场
             if (!isShown() || state.destroyed || document.hidden || state.layout !== 'array' || layoutJob) return false;
             const body = document.body.classList;
             if (body.contains('music-intro-playing')) return false;
             if (!body.contains('music-stage-active')) return true;
-            return body.contains('music-stage-entering') && performance.now() - enteringSince < 1100;
+            if (body.contains('mi-stage-hold-enter')) { enteringHeld = true; return false; }
+            return !enteringHeld && body.contains('music-stage-entering') && performance.now() - enteringSince < 1100;
         };
         const shouldRender = () => Boolean(state.scene) && renderAllowed();
 
@@ -1258,7 +1256,7 @@
         const raise = (amount) => { state.scene?.raise(amount); kick(); };
         const syncEntering = () => {
             const on = document.body.classList.contains('music-stage-entering');
-            if (on) enteringSince = performance.now();
+            if (on) { enteringSince = performance.now(); enteringHeld = false; }
             raise(on ? 0.9 : undefined);
         };
 

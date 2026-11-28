@@ -957,7 +957,9 @@
         return pixiLoadPromise;
     };
 
+    const MAX_PENDING_WEBGL_RELEASES = 2;
     const pendingWebGLReleases = new Set();
+    const abortedProgramContexts = new WeakSet();
     let webglReleaseUnloadBound = false;
     const flushPendingWebGLReleases = () => {
         for (const finish of Array.from(pendingWebGLReleases)) finish();
@@ -965,6 +967,10 @@
     const releaseWebGLContext = (target, { immediate = false } = {}) => {
         if (!target) return false;
         const gl = typeof target.getContext === 'function' ? target.getContext() : target;
+        if (gl && abortedProgramContexts.has(gl)) {
+            abortedProgramContexts.delete(gl);
+            immediate = true;
+        }
         const forceSync = () => {
             try {
                 if (typeof target.forceContextLoss === 'function') target.forceContextLoss();
@@ -985,6 +991,11 @@
         if (immediate || doc?.hidden || typeof gl.fenceSync !== 'function' || typeof global.setTimeout !== 'function') {
             forceSync();
             return true;
+        }
+        while (pendingWebGLReleases.size >= MAX_PENDING_WEBGL_RELEASES) {
+            const oldest = pendingWebGLReleases.values().next().value;
+            if (!oldest) break;
+            oldest();
         }
         if (!webglReleaseUnloadBound && typeof global.addEventListener === 'function') {
             webglReleaseUnloadBound = true;
@@ -1125,12 +1136,14 @@
         if (!gl) return;
         const batch = programBatches.get(gl);
         if (!batch) return;
+        if (batch.pending.length) abortedProgramContexts.add(gl);
         cancelBatchPoll(batch);
         deletePendingShaders(gl, batch);
         batch.onReady = null;
         batch.onError = null;
         programBatches.delete(gl);
     };
+    const programsFailed = (gl) => Boolean(gl && programBatches.get(gl)?.failed);
     const programsReady = (gl, onReady, onError) => {
         if (!gl) return false;
         const batch = programBatches.get(gl);
@@ -1420,6 +1433,7 @@
         releaseWebGLContext,
         compileProgram,
         programsReady,
+        programsFailed,
         cancelPrograms,
         warmPrograms,
         breathe,
