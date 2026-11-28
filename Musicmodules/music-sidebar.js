@@ -3,7 +3,13 @@
 
 function setupSidebar(app) {
     // 曲名、歌手、专辑来自文件标签，歌单名、服务器名、WebDAV 文件名来自用户或远端：拼进 HTML 前都要转义。
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const ESC_RE = /[&<>"']/g;
+    const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const UNKNOWN_PREFIX_RE = /^原因不明：/;
+    const BSLASH_RE = /\\/g;
+    const CSS_URL_ESC_RE = /["\\)]/g;
+    const CSS_URL_ESC_MAP = { '"': '%22', '\\': '%5C', ')': '%29' };
+    const esc = (s) => String(s ?? '').replace(ESC_RE, (c) => ESC_MAP[c]);
     app.loadCustomPlaylists = async () => {
         if (app.api?.getCustomPlaylists) {
             app.customPlaylists = await app.api.getCustomPlaylists() || [];
@@ -14,7 +20,7 @@ function setupSidebar(app) {
     // 现在弹一条提示，同一类失败只留一条。
     const reportSaveFailure = (what, error) => {
         const reason = (globalThis.MusicErrorText || ((m, f) => f))(error, '原因不明');
-        const message = `${what}没能存盘（${reason.replace(/^原因不明：/, '')}），这次的改动重开播放器后会丢失。`;
+        const message = `${what}没能存盘（${reason.replace(UNKNOWN_PREFIX_RE, '')}），这次的改动重开播放器后会丢失。`;
         console.error(`[Music] Saving ${what} failed:`, error);
         try { globalThis.MusicToast?.show?.({ id: `save-${what}`, kind: 'error', message }); } catch (e) { /* 没有提示层就只记日志 */ }
     };
@@ -35,7 +41,7 @@ function setupSidebar(app) {
         return checkedSave('曲库', () => app.api.saveMusicPlaylist(app.playlist));
     };
 
-    const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
+    const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
     let cachedNormList = null;
     let cachedNormLen = -1;
     let cachedNormFirst = null;
@@ -245,8 +251,8 @@ function setupSidebar(app) {
                 const g = groups[i];
                 let styleAttr = '';
                 if (g.art) {
-                    const artUrl = app.fileUrl ? app.fileUrl(g.art) : `file://${encodeURI(g.art.replace(/\\/g, '/'))}`;
-                    const safeUrl = String(artUrl).replace(/["\\)]/g, (ch) => ({ '"': '%22', '\\': '%5C', ')': '%29' }[ch]));
+                    const artUrl = app.fileUrl ? app.fileUrl(g.art) : `file://${encodeURI(g.art.replace(BSLASH_RE, '/'))}`;
+                    const safeUrl = String(artUrl).replace(CSS_URL_ESC_RE, (ch) => CSS_URL_ESC_MAP[ch]);
                     styleAttr = ` style="background-image:url(&quot;${esc(safeUrl)}&quot;)"`;
                 }
                 parts[i] = `<div class="category-item" data-cat-idx="${i}">`

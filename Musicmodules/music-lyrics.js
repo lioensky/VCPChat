@@ -280,6 +280,7 @@ function setupLyrics(app) {
     const HAN_RE = /[\u3400-\u9fff\uf900-\ufaff]/;
     const LATIN_RE = /[a-z]/i;
     const BRACKET_STRIP_RE = /\[[^\]]*\]/g;
+    const TIME_TAG_RE = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
 
     /**
      * 增强型传统 LRC 解析器：完美兼容单语、同时间戳双语、微小时差双语以及前后分段式双语歌词
@@ -288,7 +289,6 @@ function setupLyrics(app) {
         if (!lrcContent || typeof lrcContent !== 'string') return [];
 
         const lines = lrcContent.replace(BOM_RE, '').split(LINE_SPLIT_RE);
-        const timeRegex = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
         const rawEntries = [];
         // 只有时间戳、没有字的行是「这一句到这里结束」（间奏开始），记下来用来算每句的结束时间。
         const breaks = [];
@@ -310,16 +310,17 @@ function setupLyrics(app) {
             // 忽略头部元数据（如 [ti:...], [ar:...], [offset:...] 等）
             if (META_TAG_RE.test(trimmedLine)) continue;
 
-            const text = trimmedLine.replace(timeRegex, '').trim();
+            TIME_TAG_RE.lastIndex = 0;
+            const text = trimmedLine.replace(TIME_TAG_RE, '').trim();
             let match;
-            timeRegex.lastIndex = 0;
+            TIME_TAG_RE.lastIndex = 0;
             if (!text) {
-                while ((match = timeRegex.exec(trimmedLine)) !== null) breaks.push(stamp(match));
+                while ((match = TIME_TAG_RE.exec(trimmedLine)) !== null) breaks.push(stamp(match));
                 continue;
             }
             if (text === '//') continue;
 
-            while ((match = timeRegex.exec(trimmedLine)) !== null) {
+            while ((match = TIME_TAG_RE.exec(trimmedLine)) !== null) {
                 rawEntries.push({
                     time: stamp(match),
                     text
@@ -708,12 +709,18 @@ function setupLyrics(app) {
                     li._lyricWordState = 'active';
                     if (hasWords) {
                         const wordEls = li._wbywBox ? li._wbywBox.children : li.querySelectorAll('.lyric-word');
-                        layout.wordSpans = Array.from(wordEls, span => ({
-                            span,
-                            start: parseFloat(span.dataset.start),
-                            end: parseFloat(span.dataset.end),
-                            state: ''
-                        }));
+                        const wordSpans = new Array(wordEls.length);
+                        for (let wi = 0; wi < wordEls.length; wi += 1) {
+                            const span = wordEls[wi];
+                            wordSpans[wi] = {
+                                span,
+                                start: parseFloat(span.dataset.start),
+                                end: parseFloat(span.dataset.end),
+                                state: '',
+                                pct: ''
+                            };
+                        }
+                        layout.wordSpans = wordSpans;
                     }
                     continue;
                 }
@@ -754,7 +761,9 @@ function setupLyrics(app) {
 
         // 逐字 (Word-by-Word) 流光：每帧只动当前行，而且只写状态真的变了的字。
         if (layout.wordSpans) {
-            for (const word of layout.wordSpans) {
+            const wordSpans = layout.wordSpans;
+            for (let wi = 0; wi < wordSpans.length; wi += 1) {
+                const word = wordSpans[wi];
                 if (estimatedTime >= word.end) {
                     if (word.state === 'finished') continue;
                     word.state = 'finished';
@@ -787,13 +796,17 @@ function setupLyrics(app) {
         const gap = app.lyricInterlude(estimatedTime, app.currentLyrics, rawLyricIndex);
         const gapIndex = gap ? gap.index : -1;
         if (layout.gapIndex !== gapIndex || layout.gapHead !== allLi[0]) {
-            for (const li of layout.gapMarked || []) li.classList.remove('gap-on', 'gap-rest');
-            layout.gapMarked = [];
+            const prevGapMarked = layout.gapMarked;
+            if (prevGapMarked && prevGapMarked.length) {
+                for (let gi = 0; gi < prevGapMarked.length; gi += 1) prevGapMarked[gi].classList.remove('gap-on', 'gap-rest');
+                prevGapMarked.length = 0;
+            }
             if (gap) {
+                const marked = prevGapMarked || (layout.gapMarked = []);
                 const on = allLi[gap.index];
                 const rest = allLi[gap.index - 1];
-                if (on) { on.classList.add('gap-on'); layout.gapMarked.push(on); }
-                if (rest) { rest.classList.add('gap-rest'); layout.gapMarked.push(rest); }
+                if (on) { on.classList.add('gap-on'); marked.push(on); }
+                if (rest) { rest.classList.add('gap-rest'); marked.push(rest); }
             }
             layout.gapIndex = gapIndex;
             layout.gapHead = allLi[0];

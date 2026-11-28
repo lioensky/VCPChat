@@ -40,6 +40,9 @@
     // 同一首歌的不同文件（flac 和 mp3、专辑版和合辑里的同一首、本机和 WebDAV 各一份）：歌名去掉扩展名 + 完整歌手相同就算一首。
     // 没有歌手的不合并：没标签时歌名常是「01」之类的文件名，会把不相干的歌并到一起。
     const AUDIO_EXT = /\.(flac|mp3|wav|m4a|aac|ogg|opus|ape|wv|alac|aiff?|dsf|dff|wma)$/i;
+    const HTTP_SCHEME_RE = /^https?:\/\//i;
+    const LOSSLESS_PATH_RE = /\.(flac|wav|ape|wv|aiff?|alac|dsf|dff)$/i;
+    const BSLASH_RE = /\\/g;
     const recordingKey = (t) => {
         const artist = norm(t && t.artist);
         const title = norm(String((t && t.title) || '').replace(AUDIO_EXT, ''));
@@ -51,10 +54,10 @@
         if (t.isRemote) return true;
         const p = String(t.path || '');
         const c0 = p.charCodeAt(0);
-        return (c0 === 104 || c0 === 72) && /^https?:\/\//i.test(p);
+        return (c0 === 104 || c0 === 72) && HTTP_SCHEME_RE.test(p);
     };
     const versionRank = (t) => (isRemote(t) ? 0 : 1e9)
-        + (t.lossless === true || /\.(flac|wav|ape|wv|aiff?|alac|dsf|dff)$/i.test(String(t.path || '')) ? 1e8 : 0)
+        + (t.lossless === true || LOSSLESS_PATH_RE.test(String(t.path || '')) ? 1e8 : 0)
         + (Number(t.bitsPerSample) || 0) * 1e6
         + Math.min(999, Math.round((Number(t.sampleRate) || 0) / 1000)) * 1e3
         + Math.min(999, Math.round((Number(t.bitrate) || 0) / 1000));
@@ -140,6 +143,10 @@
             }
         }
         const scored = [];
+        // 歌手拆分与种子匹配、专辑/流派归一化按唯一字符串缓存，5000 曲库下仅算 ~100–300 次而非 5000 次
+        const artistScoreCache = new Map();
+        const albumNormCache = new Map();
+        const genreHitCache = hasSeedGenres ? new Map() : null;
         for (let i = 0; i < n; i += 1) {
             if (!ok[i]) continue;
             const t = library[i];
@@ -149,25 +156,45 @@
             const normArtist = normArtists[i];
             let firstArtist = '';
             if (normArtist) {
-                const parts = normArtist.split(ARTIST_SPLIT);
-                let artistHit = 0;
-                for (let p = 0; p < parts.length; p += 1) {
-                    const a = parts[p];
-                    if (!a) continue;
-                    if (!firstArtist) firstArtist = a;
-                    if (hasSeedArtists) {
-                        const hit = seedArtists.get(a) || 0;
-                        if (hit > artistHit) artistHit = hit;
+                let cachedArtist = artistScoreCache.get(normArtist);
+                if (cachedArtist === undefined) {
+                    const parts = normArtist.split(ARTIST_SPLIT);
+                    let artistHit = 0;
+                    let fa = '';
+                    for (let p = 0; p < parts.length; p += 1) {
+                        const a = parts[p];
+                        if (!a) continue;
+                        if (!fa) fa = a;
+                        if (hasSeedArtists) {
+                            const hit = seedArtists.get(a) || 0;
+                            if (hit > artistHit) artistHit = hit;
+                        }
                     }
+                    cachedArtist = [fa, hasSeedArtists ? 3 * artistHit : 0];
+                    artistScoreCache.set(normArtist, cachedArtist);
                 }
-                if (hasSeedArtists) s += 3 * artistHit;
+                firstArtist = cachedArtist[0];
+                s += cachedArtist[1];
             }
-            const normAlbum = norm(t.album);
+            const rawAlbum = t.album;
+            let normAlbum = '';
+            if (rawAlbum) {
+                normAlbum = albumNormCache.get(rawAlbum);
+                if (normAlbum === undefined) {
+                    normAlbum = norm(rawAlbum);
+                    albumNormCache.set(rawAlbum, normAlbum);
+                }
+            }
             const albumKey = normAlbum ? normAlbum + '\n' + normArtist : '';
             if (hasSeedAlbums && albumKey && seedAlbums.has(albumKey)) s += 1.5;
-            if (hasSeedGenres) {
-                const g = norm(t.genre);
-                if (g && seedGenres.has(g)) s += 1;
+            if (hasSeedGenres && t.genre) {
+                let gHit = genreHitCache.get(t.genre);
+                if (gHit === undefined) {
+                    const g = norm(t.genre);
+                    gHit = (g && seedGenres.has(g)) ? 1 : 0;
+                    genreHitCache.set(t.genre, gHit);
+                }
+                s += gHit;
             }
             s += 2 * affinity(t);
             if (liked(t)) s += 1.5;
@@ -227,17 +254,23 @@
 
         const toast = (message, action) => { try { global.MusicToast?.show?.({ message, action, duration: action ? 8000 : undefined }); } catch (e) { /* 没有提示层 */ } };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
+        const normSlashPath = (p) => norm(String(p || '').replace(BSLASH_RE, '/'));
         const recentSet = (list) => {
             const set = new Set(list);
             // 最近放过的 30 首（档案页记的最近播放）先不放
             let paths = [];
             try { paths = JSON.parse(global.localStorage?.getItem('musicArchiveRecent') || '[]'); } catch (e) { paths = []; }
-            const want = new Set(paths.slice(0, 30).map((p) => norm(String(p).replace(/\\/g, '/'))).filter(Boolean));
+            const want = new Set();
+            const cap = Math.min(30, paths.length);
+            for (let i = 0; i < cap; i += 1) {
+                const k = normSlashPath(paths[i]);
+                if (k) want.add(k);
+            }
             if (want.size) {
                 const lib = app.playlist || [];
                 for (let i = 0; i < lib.length; i += 1) {
                     const t = lib[i];
-                    if (t && t.path && want.has(norm(String(t.path).replace(/\\/g, '/')))) set.add(t);
+                    if (t && t.path && want.has(normSlashPath(t.path))) set.add(t);
                 }
             }
             return set;
@@ -306,7 +339,6 @@
             for (const ch of seedText) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
             return () => { h += 0x6D2B79F5; let x = h; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
         };
-        const normSlashPath = (p) => norm(String(p || '').replace(/\\/g, '/'));
         const byPaths = (paths, sharedMap) => {
             if (!paths || !paths.length) return [];
             const lib = app.playlist || [];
@@ -361,7 +393,7 @@
             } catch (e) { return []; }
         };
         const writeSeen = (batches) => { try { storage?.setItem(SEEN_KEY, JSON.stringify({ v: 1, b: batches })); } catch (e) { /* 存不下就算了 */ } };
-        const pathKey = (t) => norm(String(t && t.path || '').replace(/\\/g, '/'));
+        const pathKey = (t) => normSlashPath(t && t.path);
         let mixCache = { key: '', list: [] };
         app.dailyMixKey = () => today() + '#' + readShuffle();
         app.dailyMix = ({ size = 30 } = {}) => {

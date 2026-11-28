@@ -178,7 +178,30 @@
         return best ? Math.round(hz(best)) : 0;
     }
 
-    const kHz = (f) => (f / 1000).toFixed(f >= 10000 ? 1 : 2).replace(/\.0+$/, '') + ' kHz';
+    const KHZ_ZERO_RE = /\.0+$/;
+    const ALNUM_END_RE = /[a-z0-9]$/i;
+    const REMOTE_SCHEME_RE = /^[a-z][a-z0-9+.-]{2,}:\/\//i;
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
+    let cachedRowLutBins = 0;
+    let cachedK0Lut = null;
+    let cachedK1Lut = null;
+    const getRowLuts = (bins) => {
+        if (cachedRowLutBins === bins && cachedK0Lut && cachedK1Lut) return { k0Lut: cachedK0Lut, k1Lut: cachedK1Lut };
+        const k0Lut = new Int32Array(ROWS);
+        const k1Lut = new Int32Array(ROWS);
+        for (let y = 0; y < ROWS; y++) {
+            const k0 = Math.floor(((ROWS - 1 - y) / ROWS) * bins);
+            const k1 = Math.min(bins, Math.max(k0 + 1, Math.floor(((ROWS - y) / ROWS) * bins)));
+            k0Lut[y] = k0;
+            k1Lut[y] = k1;
+        }
+        cachedRowLutBins = bins;
+        cachedK0Lut = k0Lut;
+        cachedK1Lut = k1Lut;
+        return { k0Lut, k1Lut };
+    };
+
+    const kHz = (f) => (f / 1000).toFixed(f >= 10000 ? 1 : 2).replace(KHZ_ZERO_RE, '') + ' kHz';
 
     // 按切口和文件规格给一句话结论；level: good / warn / info。
     // 常见编码器的低通：128 kbps 约 16–17 kHz，192 kbps 约 18.5–19 kHz，256 kbps 约 19.5–20 kHz，320 kbps 约 20–20.5 kHz
@@ -190,7 +213,7 @@
             return { level: 'info', text: cutoff ? `这是有损文件，频谱到 ${kHz(cutoff)} 为止，属于正常。` : `这是有损文件，频谱一直到 ${kHz(nyquist)}。` };
         }
         const guess = cutoff ? LOSSY_GUESS.find(([limit]) => cutoff < limit) : null;
-        if (guess) return { level: 'warn', text: `频谱在 ${kHz(cutoff)} 处被齐刷刷切掉，像是 ${guess[1]}${/[a-z0-9]$/i.test(guess[1]) ? ' ' : ''}的有损文件转成的${sampleRate > 50000 ? '高采样率文件' : '无损'}。` };
+        if (guess) return { level: 'warn', text: `频谱在 ${kHz(cutoff)} 处被齐刷刷切掉，像是 ${guess[1]}${ALNUM_END_RE.test(guess[1]) ? ' ' : ''}的有损文件转成的${sampleRate > 50000 ? '高采样率文件' : '无损'}。` };
         if (sampleRate > 50000) {
             if (cutoff && cutoff < 24500) return { level: 'warn', text: `标的是 ${kHz(sampleRate)} 高采样率，但 ${kHz(cutoff)} 以上几乎没有内容，像是从 CD 规格（44.1/48 kHz）升上来的。` };
             return { level: 'good', text: cutoff ? `频谱到 ${kHz(cutoff)}，高于 CD 规格，看着是真的高解析度。` : `频谱一直到 ${kHz(nyquist)}，看着是真的高解析度。` };
@@ -207,7 +230,11 @@
                 const [a, ca] = STOPS[i - 1];
                 const [b, cb] = STOPS[i];
                 const u = (x - a) / (b - a);
-                return [0, 1, 2].map((j) => Math.round(ca[j] + (cb[j] - ca[j]) * u));
+                return [
+                    Math.round(ca[0] + (cb[0] - ca[0]) * u),
+                    Math.round(ca[1] + (cb[1] - ca[1]) * u),
+                    Math.round(ca[2] + (cb[2] - ca[2]) * u)
+                ];
             }
         }
         return STOPS[STOPS.length - 1][1];
@@ -230,7 +257,6 @@
         let openRaf = 0;
         let closeTimer = 0;
         let closingOverlay = null;
-        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => {
             const n = doc.createElement(tag);
             if (cls) n.className = cls;
@@ -296,10 +322,9 @@
             if (s) s.textContent = text;
         };
 
-        const draw = (canvas, result, sampleRate) => {
+        const draw = (canvas, result) => {
             const { columns } = result;
             const bins = columns[0].length;
-            const nyquist = sampleRate / 2;
             const w = columns.length;
             canvas.width = w;
             canvas.height = ROWS;
@@ -307,18 +332,14 @@
             const img = ctx.createImageData(w, ROWS);
             // 颜色范围：取整首的最大值往下 100 dB
             let top = -200;
-            for (const col of columns) for (let k = 4; k < bins; k++) if (col[k] > top) top = col[k];
+            for (let x = 0; x < w; x++) {
+                const col = columns[x];
+                for (let k = 4; k < bins; k++) if (col[k] > top) top = col[k];
+            }
             const floor = top - 100;
             const invRange = 255 / (top - floor);
             const data = img.data;
-            const k0Lut = new Int32Array(ROWS);
-            const k1Lut = new Int32Array(ROWS);
-            for (let y = 0; y < ROWS; y++) {
-                const k0 = Math.floor(((ROWS - 1 - y) / ROWS) * bins);
-                const k1 = Math.min(bins, Math.max(k0 + 1, Math.floor(((ROWS - y) / ROWS) * bins)));
-                k0Lut[y] = k0;
-                k1Lut[y] = k1;
-            }
+            const { k0Lut, k1Lut } = getRowLuts(bins);
             for (let x = 0; x < w; x++) {
                 const col = columns[x];
                 for (let y = 0; y < ROWS; y++) {
@@ -394,7 +415,7 @@
             const spec = [String(track.path || '').split('.').pop().toUpperCase(), `${(sampleRate / 1000).toFixed(sampleRate % 1000 ? 1 : 0)} kHz`, track.bitsPerSample ? `${track.bitsPerSample} bit` : '', track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '', `${mins}:${secs}`].filter(Boolean).join(' · ');
             body.appendChild(el('p', 'mspec-spec', spec));
             body.appendChild(el('p', 'mstats-note', '只是按频谱估计：老录音、某些母带本身高频就少，也会显示成被切掉。'));
-            draw(canvas, result, sampleRate);
+            draw(canvas, result);
         };
 
         app.openSpectrum = async (ref) => {
@@ -402,7 +423,7 @@
             const track = ref && typeof ref === 'object' ? ref : app.playlist?.[typeof ref === 'number' ? ref : app.currentTrackIndex];
             const toast = (message) => { try { global.MusicToast?.show?.({ message }); } catch (e) { /* 没有提示层 */ } };
             if (!track || !track.path) { toast('先放一首歌再看频谱'); return; }
-            if (/^[a-z][a-z0-9+.-]{2,}:\/\//i.test(String(track.path))) { toast('网络上的歌没法看频谱'); return; }
+            if (REMOTE_SCHEME_RE.test(String(track.path))) { toast('网络上的歌没法看频谱'); return; }
             flushClosing();
             previousFocus = doc.activeElement;
             const cur = el('div', 'dialog-overlay music-stats-dialog');

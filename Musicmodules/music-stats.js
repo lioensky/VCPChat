@@ -24,7 +24,8 @@
     const UNKNOWN_LEN = 60;      // 不知道时长时听满 60 秒算一次
     const DAY = 86400000;
 
-    const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
+    const BSLASH_RE = /\\/g;
+    const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
     const playedEnough = (sec, duration) => {
         const d = Number(duration);
         const need = d > 0 ? Math.min(MAX_FULL, Math.max(d / 2, Math.min(d, SKIP_BEFORE))) : UNKNOWN_LEN;
@@ -256,7 +257,10 @@
                 }
                 if (!track) {
                     const k = normPath(raw);
-                    track = list.find((t) => normPath(t && t.path) === k) || null;
+                    for (let i = 0; i < list.length; i += 1) {
+                        const t = list[i];
+                        if (t && normPath(t.path) === k) { track = t; break; }
+                    }
                 }
                 return track ? { track, position: resume.position, at: resume.at } : null;
             },
@@ -266,16 +270,35 @@
                 let seconds = 0;
                 let activeDays = 0;
                 let count = 0;
+                let firstDay = '';
                 const daily = {}; // 每天听了几秒（听歌日历用）
                 const from = days > 0 ? dayKey(now() - (days - 1) * DAY) : '';
-                for (const [k, day] of Object.entries(log)) {
+                for (const k in log) {
+                    if (!Object.prototype.hasOwnProperty.call(log, k)) continue;
+                    if (!firstDay || k < firstDay) firstDay = k;
                     if (from && k < from) continue;
+                    const day = log[k];
                     let daySeconds = 0;
-                    (day.s || []).forEach((v, h) => { hours[h] += v; daySeconds += v; });
+                    const dayHours = day && day.s;
+                    if (dayHours) {
+                        for (let h = 0; h < dayHours.length; h += 1) {
+                            const v = dayHours[h];
+                            hours[h] += v;
+                            daySeconds += v;
+                        }
+                    }
                     seconds += daySeconds;
                     if (daySeconds > 0) daily[k] = Math.round(daySeconds);
                     let dayPlays = 0;
-                    for (const [p, n] of Object.entries(day.p || {})) { plays.set(p, (plays.get(p) || 0) + n); dayPlays += n; }
+                    const dayP = day && day.p;
+                    if (dayP) {
+                        for (const p in dayP) {
+                            if (!Object.prototype.hasOwnProperty.call(dayP, p)) continue;
+                            const n = dayP[p];
+                            plays.set(p, (plays.get(p) || 0) + n);
+                            dayPlays += n;
+                        }
+                    }
                     count += dayPlays;
                     if (daySeconds >= 60 || dayPlays > 0) activeDays++;
                 }
@@ -283,14 +306,20 @@
                 if (!(days > 0)) {
                     plays.clear();
                     count = 0;
-                    for (const [k, e] of Object.entries(table)) if (e[0] > 0) { plays.set(k, e[0]); count += e[0]; }
+                    for (const k in table) {
+                        if (!Object.prototype.hasOwnProperty.call(table, k)) continue;
+                        const e = table[k];
+                        if (e[0] > 0) { plays.set(k, e[0]); count += e[0]; }
+                    }
                 }
-                const tracks = [...plays.entries()]
-                    .map(([k, n]) => ({ path: table[k] ? table[k][4] : k, plays: n, last: table[k] ? table[k][1] : 0 }))
-                    .sort((a, b) => b.plays - a.plays || b.last - a.last);
-                let firstDay = '';
-                for (const k of Object.keys(log)) if (!firstDay || k < firstDay) firstDay = k;
-                return { seconds: Math.round(seconds), plays: count, activeDays, hours: hours.map(Math.round), tracks, since: firstDay, daily };
+                const tracks = [];
+                plays.forEach((n, k) => {
+                    const e = table[k];
+                    tracks.push({ path: e ? e[4] : k, plays: n, last: e ? e[1] : 0 });
+                });
+                tracks.sort((a, b) => b.plays - a.plays || b.last - a.last);
+                for (let h = 0; h < 24; h += 1) hours[h] = Math.round(hours[h]);
+                return { seconds: Math.round(seconds), plays: count, activeDays, hours, tracks, since: firstDay, daily };
             },
             tick,
             sync,

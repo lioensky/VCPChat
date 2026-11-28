@@ -3,18 +3,27 @@
 
 function setupWebDav(app) {
     // 曲名、歌手、专辑来自文件标签，歌单名、服务器名、WebDAV 文件名来自用户或远端：拼进 HTML 前都要转义。
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const ESC_RE = /[&<>"']/g;
+    const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const INVOKE_PREFIX_RE = /^Error invoking remote method '[^']*':\s*/i;
+    const HTTP_PREFIX_RE = /^HTTP error:\s*/i;
+    const ERR_404_RE = /\b404\b/;
+    const NET_ERR_RE = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|getaddrinfo|socket hang up|fetch failed/i;
+    const CJK_RE = /[\u4e00-\u9fff]/;
+    const TRAIL_SLASH_RE = /\/$/;
+    const ROOT_SLASH_RE = /^\/$/;
+    const esc = (s) => String(s ?? '').replace(ESC_RE, (c) => ESC_MAP[c]);
     // 引擎和主进程回的是「HTTP error: Server returned 401 Unauthorized」这类英文：换成一句能看懂的原因。
     const webdavReason = (error, fallback, notFound = '服务器上没有这个文件夹') => {
         const raw = String((error && error.message) || error || '')
-            .replace(/^Error invoking remote method '[^']*':\s*/i, '')
-            .replace(/^HTTP error:\s*/i, '').trim();
+            .replace(INVOKE_PREFIX_RE, '')
+            .replace(HTTP_PREFIX_RE, '').trim();
         if (!raw) return fallback;
-        if (/\b404\b/.test(raw)) return notFound;
+        if (ERR_404_RE.test(raw)) return notFound;
         // 主进程连 WebDAV 时 Node 抛的网络错误（connect ECONNREFUSED 等）：以前落到通用说明，拼出「服务器没有响应：连不上服务」
-        if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|getaddrinfo|socket hang up|fetch failed/i.test(raw)) return '连不上服务器，检查网络或 WebDAV 地址';
+        if (NET_ERR_RE.test(raw)) return '连不上服务器，检查网络或 WebDAV 地址';
         const described = typeof describeEngineError === 'function' ? describeEngineError(raw) : raw;
-        if (/[\u4e00-\u9fff]/.test(described)) return described;
+        if (CJK_RE.test(described)) return described;
         return window.MusicErrorText ? window.MusicErrorText(raw, fallback) : fallback;
     };
     app.webdavReason = webdavReason;
@@ -100,8 +109,8 @@ function setupWebDav(app) {
             if (!entry) return;
             if (entry.isDir) {
                 if (!app.activeWebDavServer) return;
-                const href = String(entry.href || '').replace(/\/$/, '');
-                const base = String(app.activeWebDavServer.url || '').replace(/\/$/, '');
+                const href = String(entry.href || '').replace(TRAIL_SLASH_RE, '');
+                const base = String(app.activeWebDavServer.url || '').replace(TRAIL_SLASH_RE, '');
                 const originMatch = ORIGIN_RE.exec(base);
                 const origin = originMatch ? originMatch[0] : base;
                 let newPath = href.replace(origin, '');
@@ -195,11 +204,11 @@ function setupWebDav(app) {
             app.webdavFileList.firstElementChild.appendChild(retry);
             return;
         }
-        const currentPath = safeDecode(dirPath.replace(/\/$/, ''));
+        const currentPath = safeDecode(dirPath.replace(TRAIL_SLASH_RE, ''));
         const rawEntries = Array.isArray(result.entries) ? result.entries : [];
         const entries = rawEntries.filter((entry) => {
             if (!entry || !entry.isDir) return Boolean(entry);
-            const entryPath = safeDecode(String(entry.href || '').replace(/\/$/, ''));
+            const entryPath = safeDecode(String(entry.href || '').replace(TRAIL_SLASH_RE, ''));
             return currentPath ? entryPath !== currentPath : entryPath !== '';
         });
         if (entries.length === 0) {
@@ -225,7 +234,7 @@ function setupWebDav(app) {
     app.renderWebDavBreadcrumb = (dirPath) => {
         bindBreadcrumb();
         app.webdavBreadcrumb.innerHTML = '';
-        const parts = dirPath.replace(/^\/$/, '').split('/').filter(Boolean);
+        const parts = dirPath.replace(ROOT_SLASH_RE, '').split('/').filter(Boolean);
         const frag = document.createDocumentFragment();
         const root = document.createElement('span');
         root.className = 'webdav-crumb';
@@ -233,7 +242,8 @@ function setupWebDav(app) {
         root.textContent = app.activeWebDavServer ? app.activeWebDavServer.name : '根目录';
         frag.appendChild(root);
         let cumPath = '';
-        parts.forEach((part) => {
+        for (let i = 0; i < parts.length; i += 1) {
+            const part = parts[i];
             cumPath += '/' + part;
             const sep = document.createElement('span');
             sep.textContent = ' / ';
@@ -242,11 +252,9 @@ function setupWebDav(app) {
             const span = document.createElement('span');
             span.className = 'webdav-crumb';
             span.dataset.path = cumPath;
-            let decodedPart = part;
-            try { decodedPart = decodeURIComponent(part); } catch { /* raw */ }
-            span.textContent = decodedPart;
+            span.textContent = safeDecode(part);
             frag.appendChild(span);
-        });
+        }
         app.webdavBreadcrumb.appendChild(frag);
     };
 
@@ -430,10 +438,20 @@ function setupWebDav(app) {
         app.webdavImportBtn?.addEventListener('click', () => {
             if (!app.activeWebDavServer || app.webdavScannedTracks.length === 0) return;
             // 按地址去重：同名不同曲（各张专辑的 Intro）、本地已有同名歌，都不该把远程曲目挡掉；同一首导入两次才算重复。
-            const known = new Set(app.playlist.map((p) => p && p.path).filter(Boolean));
-            const newTracks = app.webdavScannedTracks
-                .filter((rt) => rt && rt.path && !known.has(rt.path) && known.add(rt.path))
-                .map((t) => ({ ...t, serverId: app.activeWebDavServer.id, isRemote: true }));
+            const known = new Set();
+            for (let i = 0; i < app.playlist.length; i += 1) {
+                const p = app.playlist[i];
+                if (p && p.path) known.add(p.path);
+            }
+            const serverId = app.activeWebDavServer.id;
+            const newTracks = [];
+            for (let i = 0; i < app.webdavScannedTracks.length; i += 1) {
+                const rt = app.webdavScannedTracks[i];
+                if (rt && rt.path && !known.has(rt.path)) {
+                    known.add(rt.path);
+                    newTracks.push({ ...rt, serverId, isRemote: true });
+                }
+            }
             if (newTracks.length > 0) {
                 app.playlist.push(...newTracks);
                 app.currentFilteredTracks = null;

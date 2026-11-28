@@ -20,8 +20,19 @@
         function saveQueueAsPlaylist() {
             const current = currentTrack();
             const up = typeof app.getUpNext === 'function' ? app.getUpNext(2000) : { manual: [], context: [] };
-            const list = [current, ...up.manual, ...(app.currentFilteredTracks ? up.context : [])].filter((t) => t && t.path);
-            const paths = [...new Set(list.map((t) => t.path))];
+            const seen = new Set();
+            const paths = [];
+            const addTrack = (t) => {
+                if (t && t.path && !seen.has(t.path)) {
+                    seen.add(t.path);
+                    paths.push(t.path);
+                }
+            };
+            addTrack(current);
+            for (let i = 0; i < up.manual.length; i += 1) addTrack(up.manual[i]);
+            if (app.currentFilteredTracks) {
+                for (let i = 0; i < up.context.length; i += 1) addTrack(up.context[i]);
+            }
             if (!paths.length) return;
             const d = new Date();
             const pad = (n) => String(n).padStart(2, '0');
@@ -52,14 +63,14 @@
             const history = typeof app.getHistory === 'function' ? app.getHistory(30) : [];
             if (history.length && current) {
                 push({ type: 'head', label: '播放过的', count: history.length }, QUEUE_HEAD_H);
-                history.forEach((track) => push({ type: 'hist', track }, QUEUE_ROW_H));
+                for (let i = 0; i < history.length; i += 1) push({ type: 'hist', track: history[i] }, QUEUE_ROW_H);
             }
             if (current) push({ type: 'now', track: current }, QUEUE_ROW_H);
             rows.nowTop = current ? y - QUEUE_ROW_H : 0;
             if (up.manual.length) {
                 push({ type: 'head', label: '接下来播放', count: up.manual.length, clear: true }, QUEUE_HEAD_H);
                 rows.manualStart = rows.length;
-                up.manual.forEach((track, i) => push({ type: 'manual', i, track }, QUEUE_ROW_H));
+                for (let i = 0; i < up.manual.length; i += 1) push({ type: 'manual', i, track: up.manual[i] }, QUEUE_ROW_H);
                 rows.manualEnd = rows.length;
             } else {
                 rows.manualStart = rows.manualEnd = 0;
@@ -70,7 +81,7 @@
                 const name = radio || (app.playbackSourceName ? app.playbackSourceName() : app.filteredPlaylistSource?.name) || (app.currentFilteredTracks ? '当前列表' : '全部曲目');
                 const label = mode === 'shuffle' ? `随机 · ${name}` : mode === 'repeat-one' ? '单曲循环' : `接着播放 · ${name}`;
                 push({ type: 'head', label, count: up.context.length }, QUEUE_HEAD_H);
-                up.context.forEach((track) => push({ type: 'ctx', track }, QUEUE_ROW_H));
+                for (let i = 0; i < up.context.length; i += 1) push({ type: 'ctx', track: up.context[i] }, QUEUE_ROW_H);
             }
             rows.total = y;
             rows.upcoming = up.manual.length + up.context.length;
@@ -78,7 +89,7 @@
             return rows;
         }
 
-        // 复用队列行 DOM 节点与 SVG 图标模板，避免滚动或队列增删时经 innerHTML 拆建整批行与 SVG 节点
+        // 复用队列行 DOM 节点与原型模板（含内置 SVG 图标），避免首次打开或滚动时重复建树与解析 SVG
         const iconTplCache = new Map();
         const cloneIconInto = (target, name, size) => {
             const k = `${name}:${size}`;
@@ -90,6 +101,61 @@
             }
             target.textContent = '';
             for (let n = tpl.firstChild; n; n = n.nextSibling) target.appendChild(n.cloneNode(true));
+        };
+        let manualProto = null;
+        let trackProto = null;
+        const getManualProto = () => {
+            if (manualProto) return manualProto;
+            const root = document.createElement('div');
+            root.setAttribute('role', 'listitem');
+            root.className = 'md-qi md-man';
+            const gripEl = document.createElement('span');
+            gripEl.className = 'md-qgrip';
+            gripEl.title = '拖动排序';
+            gripEl.setAttribute('aria-hidden', 'true');
+            cloneIconInto(gripEl, 'grip-vertical', 14);
+            const tx = document.createElement('span');
+            tx.className = 'md-qi-tx';
+            tx.append(document.createElement('b'), document.createElement('span'));
+            const playBtn = document.createElement('button');
+            playBtn.className = 'md-qplay';
+            playBtn.type = 'button';
+            playBtn.dataset.qact = 'play';
+            playBtn.appendChild(tx);
+            const actBtn = document.createElement('button');
+            actBtn.className = 'md-qx';
+            actBtn.type = 'button';
+            actBtn.dataset.qact = 'remove';
+            actBtn.setAttribute('aria-label', '从队列移除');
+            actBtn.title = '从队列移除';
+            cloneIconInto(actBtn, 'x', 14);
+            root.append(gripEl, playBtn, actBtn);
+            manualProto = root;
+            return root;
+        };
+        const getTrackProto = () => {
+            if (trackProto) return trackProto;
+            const root = document.createElement('div');
+            root.setAttribute('role', 'listitem');
+            root.className = 'md-qi';
+            const tx = document.createElement('span');
+            tx.className = 'md-qi-tx';
+            tx.append(document.createElement('b'), document.createElement('span'));
+            const playBtn = document.createElement('button');
+            playBtn.className = 'md-qplay';
+            playBtn.type = 'button';
+            playBtn.dataset.qact = 'play';
+            playBtn.appendChild(tx);
+            const actBtn = document.createElement('button');
+            actBtn.className = 'md-qx md-qnext';
+            actBtn.type = 'button';
+            actBtn.dataset.qact = 'next';
+            actBtn.setAttribute('aria-label', '下一首播放');
+            actBtn.title = '下一首播放';
+            cloneIconInto(actBtn, 'list-plus', 15);
+            root.append(playBtn, actBtn);
+            trackProto = root;
+            return root;
         };
         const POOL_MAX = 64;
         const pools = { head: [], now: [], manual: [], track: [] };
@@ -111,15 +177,15 @@
                 root.append(labelEl, countEl);
                 return { kind, el: root, labelEl, countEl, spacerEl, clearBtn, hasClear: false, lastTop: NaN, lastH: NaN, lastLabel: null, lastCount: null, k: -1 };
             }
-            const root = document.createElement('div');
-            root.setAttribute('role', 'listitem');
-            const tx = document.createElement('span');
-            tx.className = 'md-qi-tx';
-            const titleEl = document.createElement('b');
-            const artistEl = document.createElement('span');
-            tx.append(titleEl, artistEl);
             if (kind === 'now') {
+                const root = document.createElement('div');
+                root.setAttribute('role', 'listitem');
                 root.className = 'md-qi md-cur md-now';
+                const tx = document.createElement('span');
+                tx.className = 'md-qi-tx';
+                const titleEl = document.createElement('b');
+                const artistEl = document.createElement('span');
+                tx.append(titleEl, artistEl);
                 const spacerEl = document.createElement('span');
                 spacerEl.className = 'md-g';
                 const tagEl = document.createElement('span');
@@ -128,40 +194,16 @@
                 root.append(tx, spacerEl, tagEl);
                 return { kind, el: root, titleEl, artistEl, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, k: -1 };
             }
-            const durEl = document.createElement('span');
-            durEl.className = 'md-qdur';
-            const playBtn = document.createElement('button');
-            playBtn.className = 'md-qplay';
-            playBtn.type = 'button';
-            playBtn.dataset.qact = 'play';
-            playBtn.appendChild(tx);
             if (kind === 'manual') {
-                root.className = 'md-qi md-man';
-                const gripEl = document.createElement('span');
-                gripEl.className = 'md-qgrip';
-                gripEl.title = '拖动排序';
-                gripEl.setAttribute('aria-hidden', 'true');
-                cloneIconInto(gripEl, 'grip-vertical', 14);
-                const actBtn = document.createElement('button');
-                actBtn.className = 'md-qx';
-                actBtn.type = 'button';
-                actBtn.dataset.qact = 'remove';
-                actBtn.setAttribute('aria-label', '从队列移除');
-                actBtn.title = '从队列移除';
-                cloneIconInto(actBtn, 'x', 14);
-                root.append(gripEl, playBtn, actBtn);
-                return { kind, el: root, playBtn, titleEl, artistEl, durEl, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastQi: '', k: -1 };
+                const root = getManualProto().cloneNode(true);
+                const playBtn = root.children[1];
+                const tx = playBtn.firstChild;
+                return { kind, el: root, playBtn, titleEl: tx.firstChild, artistEl: tx.lastChild, durEl: null, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastQi: '', k: -1 };
             }
-            root.className = 'md-qi';
-            const actBtn = document.createElement('button');
-            actBtn.className = 'md-qx md-qnext';
-            actBtn.type = 'button';
-            actBtn.dataset.qact = 'next';
-            actBtn.setAttribute('aria-label', '下一首播放');
-            actBtn.title = '下一首播放';
-            cloneIconInto(actBtn, 'list-plus', 15);
-            root.append(playBtn, actBtn);
-            return { kind, el: root, playBtn, titleEl, artistEl, durEl, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastCls: 'md-qi', k: -1 };
+            const root = getTrackProto().cloneNode(true);
+            const playBtn = root.children[0];
+            const tx = playBtn.firstChild;
+            return { kind, el: root, playBtn, titleEl: tx.firstChild, artistEl: tx.lastChild, durEl: null, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastCls: 'md-qi', k: -1 };
         };
         const acquireSlot = (kind) => (pools[kind].length ? pools[kind].pop() : createSlot(kind));
         const releaseSlot = (slot) => {
@@ -208,6 +250,11 @@
             if (slot.lastK !== kStr) { slot.lastK = kStr; slot.el.dataset.k = kStr; }
             const dur = queueDuration(row.track);
             if (dur) {
+                if (!slot.durEl) {
+                    const durEl = document.createElement('span');
+                    durEl.className = 'md-qdur';
+                    slot.durEl = durEl;
+                }
                 if (slot.lastDur !== dur) { slot.lastDur = dur; slot.durEl.textContent = dur; }
                 if (!slot.hasDur) { slot.playBtn.appendChild(slot.durEl); slot.hasDur = true; }
             } else if (slot.hasDur) {
@@ -232,6 +279,8 @@
         };
         cleanups.push(() => {
             iconTplCache.clear();
+            manualProto = null;
+            trackProto = null;
             pools.head.length = 0;
             pools.now.length = 0;
             pools.manual.length = 0;
