@@ -23,6 +23,7 @@ function setup(patch) {
     window.eval(read('Musicmodules/music-dock/music-dock-fluid.js'));
     window.eval(read('Musicmodules/music-dock/music-dock-queue.js'));
     window.eval(read('Musicmodules/music-dock/music-dock-stage-settings.js'));
+    window.eval(read('Musicmodules/music-dock/music-dock-drawer-width.js'));
     window.eval(read('Musicmodules/music-dock/music-dock.js'));
     const doc = window.document;
     const calls = [];
@@ -496,7 +497,8 @@ test('hovering the title edges keeps the title; prev / next are plain buttons wi
 });
 
 test('panel closed: the ring is the playhead; panel open: the ring is the close button and the progress strip seeks', () => {
-    const { window, doc, app, dock, calls } = setup();
+    // 抽屉按 400 宽算（打开面板时播放条要收窄，进度区间按下面假的位置重新量）
+    const { window, doc, app, dock, calls } = setup((_app, w) => { w.localStorage.setItem('musicDockDrawerWidth', '400'); });
     try {
         const cap = doc.querySelector('.md-cap');
         const trk = doc.querySelector('.md-trk');
@@ -2995,4 +2997,31 @@ test('Batch 128: initMusicDock defers initial capsule getBoundingClientRect meas
         dock.destroy();
         window.close();
     }
+});
+
+test('the settings drawer width follows the window by default, drags within 320..520 (and 45% of the window), remembers it and resets on double click', async () => {
+    const { window, doc, dock } = setup();
+    try {
+        const pnl = doc.querySelector('.md-pnl');
+        const grip = pnl.querySelector('.md-drw-grip');
+        assert.ok(grip, 'grip on the drawer edge');
+        assert.equal(pnl.style.getPropertyValue('--md-drawer-w'), '340px', '1024px window: default is the narrow end (340)');
+        assert.equal(window.MusicDockDrawerWidth.defaultWidth(1920), 400);
+        assert.equal(window.MusicDockDrawerWidth.defaultWidth(1600), 352);
+        const ev = (type, x) => { const e = new window.MouseEvent(type, { bubbles: true, clientX: x, button: 0 }); e.pointerId = 1; return e; };
+        grip.dispatchEvent(ev('pointerdown', 600));
+        grip.dispatchEvent(ev('pointermove', 560));
+        assert.equal(pnl.style.getPropertyValue('--md-drawer-w'), '380px', 'dragging left widens');
+        grip.dispatchEvent(ev('pointermove', 100));
+        assert.equal(pnl.style.getPropertyValue('--md-drawer-w'), '461px', 'capped at 45% of a 1024px window');
+        grip.dispatchEvent(ev('pointermove', 900));
+        assert.equal(pnl.style.getPropertyValue('--md-drawer-w'), '320px', 'never below 320');
+        grip.dispatchEvent(ev('pointerup', 900));
+        assert.equal(window.localStorage.getItem('musicDockDrawerWidth'), '320');
+        dock.openPanel('控制');
+        assert.equal(dock.roomRight, 320, 'the home page makes room for the chosen width');
+        grip.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+        assert.equal(pnl.style.getPropertyValue('--md-drawer-w'), '340px');
+        assert.equal(window.localStorage.getItem('musicDockDrawerWidth'), null);
+    } finally { dock.destroy(); }
 });

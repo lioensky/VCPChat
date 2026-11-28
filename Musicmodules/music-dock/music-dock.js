@@ -1512,7 +1512,19 @@
         });
 
         // 目录和歌词同时打开时，播放条与中间卡片共用一条中线。只有目录或抽屉时，仍按它的边界让位。
-        const DRAWER_W = 400;
+        // 抽屉宽度可拖动调整（music-dock-drawer-width.js），没有那个模块时固定 400
+        let relayoutRaf = 0;
+        const drawerCtl = global.MusicDockDrawerWidth?.create?.({
+            pnl: el.pnl,
+            listen,
+            // 改宽时让播放条和首页一起重排（首页、底栏都听 resize）
+            onChange: () => {
+                if (relayoutRaf || state.destroyed) return;
+                relayoutRaf = requestAnimationFrame(() => { relayoutRaf = 0; if (!state.destroyed) global.dispatchEvent(new Event('resize')); });
+            }
+        }) || null;
+        cleanups.push(() => { cancelAnimationFrame(relayoutRaf); drawerCtl?.destroy(); });
+        const drawerW = () => (drawerCtl ? drawerCtl.width : 400);
         const LIST_BAR_MAX = 600;   // 目录开着时播放条最长到这里，比平时短一截
         const LIST_GAP = 24;        // 和目录右缘之间留的空
         const BETWEEN_MIN = 480;    // 目录和歌词中间放得下这么宽才夹在中间，否则从歌词栏下面过
@@ -1607,7 +1619,7 @@
             const betweenPanes = listRight > 0 && lyricsLeft > listRight;
             const lo = edge ? edge + LIST_GAP : 12;
             const lyricsClearance = open ? DRAWER_LYRICS_GAP : LIST_GAP;
-            const drawerEdge = open ? vw - DRAWER_W - LIST_GAP : vw - (edge ? LIST_GAP : 12);
+            const drawerEdge = open ? vw - drawerW() - LIST_GAP : vw - (edge ? LIST_GAP : 12);
             // 分栏较紧时，让播放条稍往左，避免整条歌词栏为它让出底部空间。
             let room = open && lyricsLeft ? Math.min(drawerEdge, lyricsLeft - lyricsClearance) : drawerEdge;
             // 目录和抽屉都开着、中间连最短的播放条（280）都放不下（如 960 宽）：抽屉底边抬到播放条上面，
@@ -1660,7 +1672,7 @@
                 fluid?.setMistPad?.(mistPad);
             }
             // 首页按抽屉占掉的宽度重排（archive-view 的 resize 读 roomRight），区块让开，不被抽屉盖住
-            roomRight = open ? DRAWER_W : 0;
+            roomRight = open ? drawerW() : 0;
             document.body.classList.toggle('music-drawer-open', open);
             const shift = vw > 0 && barW ? left - (vw / 2 - barW / 2) : 0;
             // 直接把 --md-shift 写到实际平移的 4 个元素上（而非 #music-dock-root），避免继承链触发抽屉/音效/命令面板 365+ 节点样式重算
@@ -1673,7 +1685,7 @@
             if (mistChanged) scheduleFluidLayout();
             // 提示层挂在 body 上：跟着播放条的中心走，宽度不伸进抽屉。
             const cx = vw / 2 + shift;
-            const rightLimit = (open ? vw - DRAWER_W : vw) - 8;
+            const rightLimit = (open ? vw - drawerW() : vw) - 8;
             const maxW = Math.max(200, 2 * Math.min(cx - 8, rightLimit - cx));
             if (vw > 0) placeToasts(Math.round(cx), Math.round(maxW));
         };
@@ -2051,6 +2063,7 @@
         listen(global, 'blur', syncPower);
         listen(global, 'focus', syncPower);
         listen(global, 'resize', () => {
+            drawerCtl?.refresh();
             cachedRange = null;
             syncShift();
             animateCapsule();

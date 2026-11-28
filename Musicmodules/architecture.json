@@ -534,6 +534,7 @@
     "customPlaylists": [
       "Musicmodules/music-archive/archive-list.js",
       "Musicmodules/music-dock/music-dock-queue.js",
+      "Musicmodules/music-dock/music-dock-drawer-width.js",
       "Musicmodules/music-dupes.js",
       "Musicmodules/music-likes.js",
       "Musicmodules/music-m3u.js",

@@ -5,7 +5,7 @@
   top: 40px;
   right: 0;
   bottom: var(--music-dock-safe-bottom, 96px);
-  width: 400px;
+  width: var(--md-drawer-w, 400px);
   max-width: 100vw;
   max-height: none;
   margin: 0;
@@ -772,3 +772,19 @@ body.music-fl-low .mtst::before { display: none; }
 #music-dock-root.md-narrow .md-slots > :is([data-md="mode"], [data-md="stage"]) { display: none; }
 #music-dock-root.md-narrow .md-sub [data-md="artist"] { display: none; }
 #music-dock-root.md-narrow .md-sub .md-tms::before { content: none; }
+
+/* 抽屉左边缘的拖柄：拖动改宽，双击恢复默认（music-dock-drawer-width.js） */
+#music-dock-root .md-drw-grip { position: absolute; z-index: 3; top: 0; bottom: 0; left: 0; width: 10px; cursor: col-resize; touch-action: none; outline: none; }
+#music-dock-root .md-drw-grip::after { content: ""; position: absolute; top: 10%; bottom: 10%; left: 4px; width: 1px; background: var(--md-t1); opacity: 0; transition: opacity .16s, width .12s; }
+#music-dock-root .md-drw-grip:hover::after, #music-dock-root .md-drw-grip:focus-visible::after { opacity: .28; }
+#music-dock-root .md-pnl.md-drw-resizing .md-drw-grip::after { opacity: .9; width: 2px; background: var(--md-accent); }
+#music-dock-root .md-pnl.md-drw-resizing { transition: none; user-select: none; }
+/* 抽屉拖窄以后：页签和内边距跟着收，「播放列表」「声音」不挤在一起 */
+.md-pnl { container: md-drawer / inline-size; }
+@container md-drawer (max-width: 380px) {
+  #music-dock-root .md-dockrow .md-seg button { padding: 0 4px; }
+  #music-dock-root .md-dockrow { padding-right: 72px; }
+}
+@container md-drawer (max-width: 340px) {
+  #music-dock-root .md-dockrow .md-seg button { font-size: 12px; padding: 0 3px; }
+}
