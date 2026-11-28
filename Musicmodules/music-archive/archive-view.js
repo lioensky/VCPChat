@@ -758,13 +758,28 @@
             if (stage && app.stageHost && !app.stageHost.active) app.stageHost.enter();
         };
 
-        const goToPlaying = () => {
+        /*
+         * 自动跟到正在放的那首（不是用户自己点的）时，下面两种情况直接落到那张卡，不让镜头飞过去：
+         * 1. 窗口在后台、或刚从后台切回来：后台时不画，切回来那一下才开始飞，看着像狂跳，追帧又卡；
+         * 2. 隔得远（换了列，或同列隔十几张以上）：镜头一路扫过几十上百张卡，每张都要贴封面、印卡名，越飞越卡。
+         */
+        const FOLLOW_FLY_ROWS = 12;
+        let snapFollowUntil = 0;
+        const followSnaps = (lane, row) => document.hidden || !isShown() || performance.now() < snapFollowUntil
+            || Math.abs(lane - state.lane) > 1 || Math.abs(row - state.row) > FOLLOW_FLY_ROWS;
+        const goToPlaying = ({ follow = false } = {}) => {
             const at = Model.locate(state.columns, app.currentTrackIndex, Model.wrap(state.playedLane, state.columns.length || 1));
             if (!at) return;
             const n = state.columns.length;
             const lane = at.lane + n * Math.round((state.lane - at.lane) / n);
             const m = state.columns[at.lane].items.length;
             const row = at.row + m * Math.round((state.row - at.row) / m);
+            if (follow && followSnaps(lane, row)) {
+                select(lane, row, { pulse: false });
+                state.scene?.jump(lane, row);
+                kick();
+                return;
+            }
             select(lane, row);
         };
 
@@ -783,7 +798,7 @@
             state.playingIndex = app.currentTrackIndex;
             if (prevPlaying !== undefined && prevPlaying !== app.currentTrackIndex
                 && selectedIndex() === prevPlaying && tracks()[app.currentTrackIndex]) {
-                goToPlaying();
+                goToPlaying({ follow: true });
             }
             // 启动时播放器晚一点才恢复上次那首：用户还没动过，就直接落到那张卡（不飞过去）
             if (!pendingPlace && followUntil.t && performance.now() < followUntil.t && selectedIndex() !== app.currentTrackIndex) {
@@ -2095,7 +2110,14 @@
             }
         };
         syncGrain();
-        const onVisibility = () => { if (!document.hidden) { state.lastDraw = 0; kick(); } };
+        const onVisibility = () => {
+            if (document.hidden) return;
+            // 后台时换过歌：切回来先把选中直接落到正在放的那首，再开始画（不等每秒一次的检查、也不从旧位置飞过去）
+            snapFollowUntil = performance.now() + 1500;
+            if (isShown()) updatePlaying();
+            state.lastDraw = 0;
+            kick();
+        };
         document.addEventListener('visibilitychange', onVisibility);
         // 主题（light-theme）、舞台进出（music-stage-active）、底栏高度（body 上的变量）都挂在 body 上
         let lastBodyClass = document.body.className;
@@ -2137,7 +2159,7 @@
                 // 从播放页回来：旧界面的背景声纹不要重新起来
                 app.destroyAmbientPixi?.();
                 updatePlaying(true);
-                goToPlaying();
+                goToPlaying({ follow: true });
             }
             // 仅在影响档案版面的 body 类或底栏高度变化时重排；播放/暂停、调色等不再触发整页 resize 与同步布局
             if (isShown() && (layoutChanged || safeChanged)) resize();

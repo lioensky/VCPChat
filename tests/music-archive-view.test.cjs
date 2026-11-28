@@ -1503,6 +1503,42 @@ test('跟着在听：选中停在正在放的那首时，播放器换到下一�
     f.close();
 });
 
+test('跟着在听：后台时换了歌、或下一首隔得远，选中直接落过去，不让镜头一路飞（切回前台不追帧）', async () => {
+    const f = fixture({ n: 120, setup: (w, app) => { app.isPlaying = true; } });
+    const moves = [];
+    // 假场景：记下是飞过去（select）还是直接落位（jump）
+    const g = withFakeScene(f);
+    const scene = g.view.scene;
+    scene.select = (lane, row) => moves.push(['fly', lane, row]);
+    scene.jump = (lane, row) => moves.push(['land', lane, row]);
+    const wait = (ms) => new Promise((r) => f.w.setTimeout(r, ms));
+    g.view.locatePlaying();
+    const at = () => g.view.debug();
+    // 近处的下一首（前台）：照常飞过去
+    moves.length = 0;
+    f.app.currentTrackIndex = 1;
+    await wait(1150);
+    assert.equal(at().selected, 1);
+    assert.ok(moves.some((m) => m[0] === 'fly'), '近处照常飞');
+    // 隔得远的下一首（前台）：直接落位
+    moves.length = 0;
+    f.app.currentTrackIndex = 90;
+    await wait(1150);
+    assert.equal(at().selected, 90);
+    assert.deepEqual(moves.at(-1), ['land', at().lane, at().row], '远处直接落位');
+    // 后台时换到近处的一首：切回前台立刻落位，不等每秒检查、不飞
+    let hidden = true;
+    Object.defineProperty(f.w.document, 'hidden', { configurable: true, get: () => hidden });
+    f.w.document.dispatchEvent(new f.w.Event('visibilitychange'));
+    f.app.currentTrackIndex = 91;
+    moves.length = 0;
+    hidden = false;
+    f.w.document.dispatchEvent(new f.w.Event('visibilitychange'));
+    assert.equal(at().selected, 91, '切回来的那一刻已经在正在放的那首');
+    assert.deepEqual(moves.at(-1), ['land', at().lane, at().row], '切回来直接落位，不飞');
+    f.close();
+});
+
 test('键盘：检索框里 Tab 只在有字时换分类，到最后一类就放焦点出去', () => {
     const f = fixture();
     const doc = f.w.document;
