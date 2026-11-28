@@ -464,3 +464,68 @@ test('Batch 124: AmbientPixi update skips body.classList reduce-motion read when
     app.updateAmbientPixi(0.016);
     assert.equal(reduceReads, 0, 'AmbientPixi.update reads MusicMotion.reduced() without touching body.classList');
 });
+
+test('Batch 125: MusicStageRuntime.ensurePixi deduplicates lazy loads, recovers on error, and AmbientPixi awaits it on demand', async () => {
+    const scripts = [];
+    const doc = {
+        querySelector: (sel) => (sel.includes('data-vmusic-pixi') ? scripts.find((s) => s.dataset?.vmusicPixi === '1') || null : null),
+        createElement: (tag) => {
+            const listeners = {};
+            const el = {
+                tagName: tag.toUpperCase(),
+                dataset: {},
+                src: '',
+                async: false,
+                addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+                emit(type) { for (const fn of (listeners[type] || []).splice(0)) fn(); },
+                remove() { const idx = scripts.indexOf(el); if (idx >= 0) scripts.splice(idx, 1); }
+            };
+            return el;
+        },
+        body: {
+            appendChild(el) { scripts.push(el); return el; },
+            classList: { contains: () => false }
+        }
+    };
+    const win = { document: doc, devicePixelRatio: 1, addEventListener() {} };
+    const rtCtx = vm.createContext({ window: win, document: doc, Intl, console, setTimeout, clearTimeout });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-stage/music-stage-runtime.js'), 'utf8'), rtCtx);
+
+    // 1. Concurrent ensurePixi calls share one <script>, and error clears cached promise for retry
+    const p1 = win.MusicStageRuntime.ensurePixi();
+    const p2 = win.MusicStageRuntime.ensurePixi();
+    assert.equal(p1, p2, 'concurrent ensurePixi calls share one promise');
+    assert.equal(scripts.length, 1, 'only one script element is appended');
+    assert.match(scripts[0].src, /pixi\.min\.js$/);
+    scripts[0].emit('error');
+    assert.equal(await p1, null, 'script error resolves null');
+    assert.equal(scripts.length, 0, 'failed script element is removed');
+
+    // 2. Retry succeeds and AmbientPixi.init awaits ensurePixi cleanly
+    let initCalls = 0;
+    class Graphics { clear() { return this; } circle() { return this; } fill() { return this; } }
+    class Application {
+        async init() {
+            initCalls += 1;
+            this.canvas = { style: {} };
+            this.stage = { addChild() {} };
+            this.renderer = { resize() {} };
+        }
+        stop() {}
+        render() {}
+        destroy() {}
+    }
+    const container = { hidden: false, style: { display: '', visibility: '' }, innerHTML: '', appendChild() {}, clientWidth: 640, clientHeight: 480 };
+    doc.getElementById = (id) => (id === 'ambient-wave-container' ? container : null);
+    const ambCtx = vm.createContext({ window: win, document: doc, queueMicrotask, setTimeout, clearTimeout, console });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), ambCtx);
+    const app = { isArchiveActive: false, isStageActive: false, isPlaying: false };
+    win.setupAmbientPixi(app);
+    const createPromise = app.createAmbientPixi();
+    assert.equal(scripts.length, 1, 'AmbientPixi triggers lazy pixi script injection');
+    win.PIXI = { Application, Graphics };
+    scripts[0].emit('load');
+    await createPromise;
+    assert.equal(initCalls, 1, 'AmbientPixi initializes once ensurePixi finishes');
+    assert.equal(await win.MusicStageRuntime.ensurePixi(), win.PIXI, 'subsequent ensurePixi resolves cached global PIXI');
+});

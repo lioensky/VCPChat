@@ -862,3 +862,91 @@ test('Batch 86: archive-wall paintLyric reads geometry before is-now write and l
         w.close();
     }
 });
+
+test('Batch 125: archive-scene disables sync checkShaderErrors and compiles scene against post.rt before post.scene', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const vm = require('node:vm');
+    const targets = [];
+    const compiledTargets = [];
+    let currentRt = null;
+    let checkShaderErrorsVal = true;
+    let readyChecks = 0;
+    const fakeProg = { isReady: () => { readyChecks += 1; return readyChecks >= 1; } };
+    const props = new WeakMap();
+    const makeVec3 = () => ({ set() { return this; }, copy() { return this; }, lerp() { return this; }, normalize() { return this; }, crossVectors() { return this; }, addScaledVector() { return this; }, multiplyScalar() { return this; }, distanceToSquared() { return 0; }, project() { return this; }, x: 0, y: 0, z: 0 });
+    const makeMat4 = () => ({ elements: new Float32Array(16), copy() { return this; }, makeRotationY() { return this; }, setPosition() { return this; }, invert() { return this; } });
+    const makeGeo = () => ({
+        attributes: { position: { array: new Float32Array(18), count: 6, needsUpdate: false }, normal: { array: new Float32Array(18), count: 6, needsUpdate: false }, color: { array: new Float32Array(18), count: 6, needsUpdate: false } },
+        userData: { kind: new Uint8Array(6) },
+        deleteAttribute() {}, translate() {}, rotateX() {}, rotateZ() {}, toNonIndexed() { return this; }, setAttribute(k, v) { this.attributes[k] = v; }, dispose() {}
+    });
+    const makeObj = () => ({ visible: true, matrix: makeMat4(), position: makeVec3(), rotation: { set() {} }, add() {}, dispose() {} });
+    const THREE = {
+        SRGBColorSpace: 'srgb', LinearSRGBColorSpace: 'srgb-linear', ACESFilmicToneMapping: 4, DoubleSide: 2, HalfFloatType: 1016,
+        UniformsLib: { fog: {} }, UniformsUtils: { merge: () => ({}) },
+        MathUtils: { radToDeg: (r) => r * 180 / Math.PI },
+        Vector2: class { constructor(x = 0, y = 0) { this.x = x; this.y = y; } set(x, y) { this.x = x; this.y = y; return this; } },
+        Vector3: class { constructor() { return makeVec3(); } },
+        Matrix4: class { constructor() { return makeMat4(); } },
+        Box3: class { constructor() { this.min = makeVec3(); this.max = makeVec3(); } },
+        Raycaster: class { setFromCamera() {} },
+        Color: class { constructor(r = 0, g = 0, b = 0) { this.r = r; this.g = g; this.b = b; } set() { return this; } setRGB() { return this; } clone() { return new THREE.Color(); } copy() { return this; } lerp() { return this; } multiplyScalar() { return this; } getHexString() { return '000000'; } },
+        BoxGeometry: class { constructor() { return makeGeo(); } },
+        PlaneGeometry: class { constructor() { return makeGeo(); } },
+        ExtrudeGeometry: class { constructor() { return makeGeo(); } },
+        LatheGeometry: class { constructor() { return makeGeo(); } },
+        BufferGeometry: class { constructor() { return makeGeo(); } },
+        BufferAttribute: class { constructor(array, itemSize) { this.array = array; this.count = array.length / itemSize; } },
+        Float32BufferAttribute: class { constructor(arr, itemSize) { this.array = new Float32Array(arr); this.count = arr.length / itemSize; } },
+        Shape: class { constructor() { this.holes = []; } moveTo() {} lineTo() {} closePath() {} },
+        Path: class { absarc() {} },
+        ShaderMaterial: class { constructor(o) { this.uniforms = o?.uniforms || {}; } dispose() {} },
+        MeshBasicMaterial: class { constructor(o) { Object.assign(this, o); } dispose() {} },
+        DataTexture: class { constructor() { this.colorSpace = ''; this.needsUpdate = false; } dispose() {} },
+        CanvasTexture: class { constructor() { this.colorSpace = ''; this.anisotropy = 1; this.needsUpdate = false; } dispose() {} },
+        Texture: class { constructor() { this.colorSpace = ''; } dispose() {} },
+        WebGLRenderTarget: class { constructor(w, h, opts) { this.isPostRt = true; this.opts = opts; this.texture = {}; this.viewport = { set() {} }; this.scissor = { set() {} }; } setSize() {} dispose() {} },
+        Scene: class { constructor() { this.children = []; } add(o) { this.children.push(o); } },
+        Group: class { constructor() { Object.assign(this, makeObj()); this.children = []; } add(...a) { this.children.push(...a); } },
+        Mesh: class { constructor(g, m) { Object.assign(this, makeObj()); this.geometry = g; this.material = m; } },
+        InstancedMesh: class { constructor(g, m, n) { Object.assign(this, makeObj()); this.geometry = g; this.material = m; this.instanceMatrix = { array: new Float32Array(n * 16), needsUpdate: false }; this.instanceColor = { needsUpdate: false }; } setColorAt() {} getColorAt() {} },
+        Object3D: class { constructor() { Object.assign(this, makeObj()); } updateMatrix() {} },
+        PerspectiveCamera: class { constructor() { this.position = makeVec3(); this.fov = 3; } updateProjectionMatrix() {} lookAt() {} updateMatrixWorld() {} },
+        OrthographicCamera: class {},
+        Fog: class { constructor(c, n, f) { this.color = c; this.near = n; this.far = f; } },
+        WebGLRenderer: class {
+            constructor() {
+                this.debug = { get checkShaderErrors() { return checkShaderErrorsVal; }, set checkShaderErrors(v) { checkShaderErrorsVal = v; } };
+                this.capabilities = { getMaxAnisotropy: () => 4 };
+                this.properties = props;
+                this.info = { render: { calls: 0, triangles: 0 }, programs: [] };
+            }
+            setRenderTarget(rt) { currentRt = rt; targets.push(rt ? 'post.rt' : 'null'); }
+            compile(sc) {
+                compiledTargets.push(currentRt && currentRt.isPostRt ? 'post.rt' : 'null');
+                const mat = { tag: sc };
+                props.set(mat, { currentProgram: fakeProg });
+                return new Set([mat]);
+            }
+            compileAsync() { throw new Error('should use disposed-safe renderer.compile poll when renderer.properties exists'); }
+            setPixelRatio() {} getPixelRatio() { return 1; } setSize() {} render() {} dispose() {} forceContextLoss() {}
+        }
+    };
+    const fakeCtx2d = new Proxy({}, { get: (_, k) => (k === 'measureText' ? () => ({ width: 10, actualBoundingBoxAscent: 20 }) : () => {}) });
+    const makeEl = () => ({ className: '', classList: { add() {}, remove() {} }, appendChild() {}, remove() {}, getContext: () => fakeCtx2d, width: 0, height: 0 });
+    const ctx = {
+        window: {},
+        THREE,
+        performance: { now: () => 100 },
+        document: { createElement: makeEl },
+        setTimeout, clearTimeout
+    };
+    ctx.window = ctx;
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-scene.js'), 'utf8'), ctx);
+    const sc = ctx.window.MusicArchiveScene.create({ host: makeEl(), quality: 'standard', reducedMotion: () => true });
+    assert.equal(checkShaderErrorsVal, false, 'archive-scene disables synchronous renderer.debug.checkShaderErrors');
+    assert.deepEqual(compiledTargets, ['post.rt', 'null'], 'standard tier compiles main scene against post.rt then post.scene against null');
+    assert.equal(targets[targets.length - 1], 'null', 'render target is restored to null after warmup');
+    sc.dispose();
+});

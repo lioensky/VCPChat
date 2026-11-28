@@ -2273,3 +2273,40 @@ test('Batch 111: archive-view and dock palette prefer pinyinPro.polyphonic over 
         f.close();
     }
 });
+
+test('Batch 125: archive-list skips hidden reveal viewport reads and skips placeKindMark when in classic view', () => {
+    let roCb = null;
+    const rafs = [];
+    const f = fixture({
+        tracks: [],
+        setup: (w) => {
+            w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+            w.cancelAnimationFrame = () => {};
+            w.ResizeObserver = class {
+                constructor(cb) { this._cb = cb; }
+                observe(el) { if (el?.dataset?.l === 'kinds') roCb = this._cb; }
+                disconnect() {}
+            };
+            w.MusicFluid = { slide() { w.__slides = (w.__slides || 0) + 1; } };
+        }
+    });
+    try {
+        const vp = f.w.document.querySelector('.archive-list-viewport');
+        let vpReads = 0;
+        Object.defineProperty(vp, 'clientHeight', { configurable: true, get() { vpReads += 1; return 400; } });
+        Object.defineProperty(vp, 'scrollTop', { configurable: true, get() { vpReads += 1; return 0; }, set() {} });
+        f.view.list.reveal(0, null);
+        assert.equal(vpReads, 0, 'empty archive-list reveal skips clientHeight and scrollTop layout reads');
+
+        // Classic view hides archive: kindResizeObserver must not slide or trigger layout reads
+        f.view.showClassic();
+        rafs.length = 0;
+        const slidesBefore = f.w.__slides || 0;
+        if (roCb) roCb([{ contentRect: { width: 0, height: 0 } }]);
+        if (roCb) roCb([{ contentRect: { width: 320, height: 24 } }]);
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(f.w.__slides || 0, slidesBefore, 'kindResizeObserver skips placeKindMark while in classic view');
+    } finally {
+        f.close();
+    }
+});
