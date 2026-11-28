@@ -469,3 +469,63 @@ test('MusicStageRuntime.warmPrograms compiles in parallel, deduplicates per cont
         if (prevRaf === undefined) delete window.requestAnimationFrame; else window.requestAnimationFrame = prevRaf;
     }
 });
+
+test('r136: cancelPrograms forces immediate loseContext on aborted compiles, caps deferred releases, and 2D stages report ready', () => {
+    const fs = require('node:fs');
+    const R = window.MusicStageRuntime;
+    const KHR = 0x91B1;
+    const makeCtx = () => {
+        let lost = 0, syncs = 0;
+        const gl = {
+            VERTEX_SHADER: 0x8B31, FRAGMENT_SHADER: 0x8B30, LINK_STATUS: 0x8B82,
+            SYNC_GPU_COMMANDS_COMPLETE: 0x9117, SYNC_STATUS: 0x9114, SIGNALED: 0x9119,
+            isContextLost: () => lost > 0,
+            getExtension: (n) => {
+                if (n === 'KHR_parallel_shader_compile') return { COMPLETION_STATUS_KHR: KHR };
+                if (n === 'WEBGL_lose_context') return { loseContext: () => { lost += 1; } };
+                return null;
+            },
+            createShader: () => ({}), shaderSource: () => {}, compileShader: () => {},
+            createProgram: () => ({}), attachShader: () => {}, linkProgram: () => {},
+            deleteShader: () => {}, deleteProgram: () => {},
+            getProgramParameter: () => false,
+            fenceSync: () => { syncs += 1; return {}; },
+            flush: () => {},
+            getSyncParameter: () => 0,
+            deleteSync: () => {}
+        };
+        return { gl, get lost() { return lost; }, get syncs() { return syncs; } };
+    };
+
+    // 1. Aborted parallel compile forces immediate context loss (no deferred fenceSync)
+    const cAbort = makeCtx();
+    R.compileProgram(cAbort.gl, 'v', 'f', 'abort-test');
+    R.cancelPrograms(cAbort.gl);
+    R.releaseWebGLContext(cAbort.gl);
+    assert.equal(cAbort.lost, 1, 'aborted compile releases WebGL context immediately');
+    assert.equal(cAbort.syncs, 0, 'aborted compile skips deferred fenceSync');
+
+    // 2. Deferred releases cap at 2 and flush oldest on 3rd release
+    const c1 = makeCtx(), c2 = makeCtx(), c3 = makeCtx();
+    R.releaseWebGLContext(c1.gl);
+    R.releaseWebGLContext(c2.gl);
+    assert.equal(c1.lost, 0);
+    assert.equal(c2.lost, 0);
+    R.releaseWebGLContext(c3.gl);
+    assert.equal(c1.lost, 1, 'oldest deferred WebGL context flushed when pending cap exceeded');
+    // Clean up remaining deferred timers
+    R.releaseWebGLContext(c2.gl, { immediate: true });
+    R.releaseWebGLContext(c3.gl, { immediate: true });
+
+    // 3. programsFailed reports false on unknown/healthy context
+    assert.equal(R.programsFailed(null), false);
+    assert.equal(R.programsFailed(cAbort.gl), false);
+
+    // 4. All 7 async WebGL2 2D stages report ready in getDebugSnapshot and host/intro check it
+    for (const name of ['fogpane', 'hanabi', 'clockwork', 'lumiere', 'signal', 'impression', 'orbit']) {
+        const src = fs.readFileSync(path.join(stage, 'modes', `${name}-manager.js`), 'utf8');
+        assert.match(src, /ready:\s*!glState \|\| lostContext \|\| stats\.draws > 0 \|\| Runtime\.programsFailed\(glState\.gl\)/, `${name} reports ready`);
+    }
+    const hostSrc = fs.readFileSync(path.join(stage, 'music-stage-host.js'), 'utf8');
+    assert.match(hostSrc, /if \(snapshot\.ready === false && !snapshot\.fallbackMode\) return false;/);
+});

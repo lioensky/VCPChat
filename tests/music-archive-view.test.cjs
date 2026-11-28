@@ -2597,3 +2597,25 @@ test('Batch 130: archive-grid reuses cells in-place on scroll without DOM detach
         f.close();
     }
 });
+
+test('r136: archive 3D pauses as soon as mi-stage-hold-enter covers the screen during stage enter', async () => {
+    const f = fixture();
+    try {
+        const body = f.w.document.body.classList;
+        const allowed = () => f.view.debug().allowed;
+        body.add('music-stage-entering');
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(allowed(), true, 'archive renders card lift before stage covers screen');
+        body.add('mi-stage-hold-enter', 'music-stage-active');
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(allowed(), false, 'archive stops 3D rendering behind opaque enter curtain');
+        body.remove('mi-stage-hold-enter');
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(allowed(), false, 'archive stays paused during stage reveal until music-stage-active clears');
+        body.remove('music-stage-entering', 'music-stage-active');
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(allowed(), true, 'archive resumes after exiting stage');
+    } finally {
+        f.close();
+    }
+});

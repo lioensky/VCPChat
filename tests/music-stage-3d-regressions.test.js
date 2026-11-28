@@ -640,3 +640,12 @@ test('Batch 135: compilePasses queues parallel passes together, settlePrograms d
 
     dom.window.close();
 });
+
+test('r136: diorama endMaterial hitBox avoids mixed int/float vec3 ternaries that fail D3D11 FXC', () => {
+    const src = read('Musicmodules/music-stage/modes/diorama-world.js');
+    assert.match(src, /void hitBox\(vec3 o,vec3 inv,vec3 sgn,vec3 lo,vec3 hi,float id,inout float best,inout vec3 n,inout float what\)/);
+    assert.match(src, /d\.z=abs\(d\.z\)<0\.0001\?0\.0001:d\.z;/);
+    assert.doesNotMatch(src, /vec3\(-sign\(d\.x\),0,0\)/, 'no mixed int/float vec3 literal in cab hitBox/room normals');
+    assert.doesNotMatch(src, /vec3\(0,-sign\(d\.y\),0\)/);
+    assert.doesNotMatch(src, /vec3\(0,0,-sign\(d\.z\)\)/);
+});

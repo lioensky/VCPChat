@@ -433,3 +433,19 @@ test('Batch 108: music-intro caches scan text without per-frame DOM reads and qu
     assert.deepEqual(t.leftovers(), CLEAN);
     t.close();
 });
+
+test('r136: stageModeReady holds enter curtain while 2D stage reports initialized:true but ready:false', async () => {
+    const t = setup();
+    let ready = false;
+    t.host.getDebugSnapshot = () => ({ hasModeInstance: true, mode: { initialized: true, ready, fallbackMode: false } });
+    t.host.enter();
+    await t.advance(1800);
+    assert.equal(t.host.active, true);
+    const cover = t.doc.querySelector('.music-intro.is-transit');
+    assert.ok(cover && cover.hasAttribute('data-waiting'), 'curtain stays closed while ready===false');
+    assert.ok(t.doc.body.classList.contains('mi-stage-hold-enter'));
+    ready = true;
+    await t.advance(1800);
+    assert.deepEqual(t.leftovers(), CLEAN);
+    t.close();
+});
