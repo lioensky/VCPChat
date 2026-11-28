@@ -2337,3 +2337,84 @@ test('Batch 87: refreshTheme batches probes & parses rgb() without canvas, stage
         dom.window.close();
     }
 });
+
+test('Batch 89: edge spectrum skips sub-threshold work, reuses accentRef, releases even when blank, and interlude settles under reduced motion', () => {
+    const dom = createStageDom();
+    try {
+        let strokeCalls = 0;
+        dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+            if (type !== '2d') return null;
+            return new Proxy({ stroke() { strokeCalls += 1; } }, {
+                get(target, prop) { return prop in target ? target[prop] : () => {}; },
+                set(target, prop, value) { target[prop] = value; return true; }
+            });
+        };
+        for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const root = dom.window.document.getElementById('music-stage');
+        Object.defineProperty(root, 'clientWidth', { value: 960 });
+        Object.defineProperty(root, 'clientHeight', { value: 540 });
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        const accentRef = { r: 210, g: 120, b: 60 };
+        const app = { stagePalette: { accentRgb: accentRef } };
+        let resolveAccentCalls = 0;
+        const origUtils = dom.window.MusicStageModeUtils;
+        dom.window.MusicStageModeUtils = {
+            ...origUtils,
+            resolveAccent: (...args) => { resolveAccentCalls += 1; return origUtils.resolveAccent(...args); }
+        };
+
+        const state = { config: { quality: 'standard', edgeSpectrum: true } };
+        const edge = dom.window.MusicStageEdge.create({
+            app,
+            root,
+            elements: { edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'), edgeCanvas },
+            state,
+            scope: { add() {} },
+            clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+        });
+
+        // 1. Sub-threshold spectrum (all <= 0.025) draws flat once and skips subsequent unchanged frames
+        const quiet = new Array(64).fill(0.01);
+        edge.draw({ now: 1000, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0, spectrum: quiet } });
+        assert.equal(strokeCalls, 8, 'initial quiet frame draws 4 flat strips');
+        assert.equal(resolveAccentCalls, 1, 'initial frame resolves accent once');
+        strokeCalls = 0;
+        edge.draw({ now: 1100, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0, spectrum: quiet } });
+        assert.equal(strokeCalls, 0, 'subsequent sub-threshold frame skips redrawing flat strips');
+        assert.equal(resolveAccentCalls, 1, 'unchanged accentRgb reference skips resolveAccent on playing frames');
+
+        // 2. Active frame followed by empty spectrum (blank=true) then edgeSpectrum=false STILL releases canvases to 1x1
+        edge.draw({ now: 1200, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.5, spectrum: new Array(64).fill(0.5) } });
+        assert.equal(edgeCanvas.width, 960);
+        edge.draw({ now: 1300, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0, spectrum: [] } });
+        state.config.edgeSpectrum = false;
+        edge.draw({ now: 1400, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0, spectrum: [] } });
+        assert.equal(edgeCanvas.width, 1, 'disabling edgeSpectrum while already blank still releases canvas backing store');
+        assert.equal(edgeCanvas.height, 1);
+
+        // 3. Interlude visualizer settles once under reduced motion while playing
+        dom.window.matchMedia = () => ({ matches: true });
+        const interlude = dom.window.MusicStageRuntime.createInterludeVisualizer({ barCount: 20 });
+        const bars = interlude.root.querySelectorAll('.stage-interlude-bars i');
+        let tfWrites = 0;
+        const origSet = Object.getOwnPropertyDescriptor(dom.window.CSSStyleDeclaration.prototype, 'transform');
+        bars.forEach((b) => {
+            Object.defineProperty(b.style, 'transform', {
+                configurable: true,
+                get() { return origSet ? origSet.get.call(this) : ''; },
+                set(v) { tfWrites += 1; if (origSet) origSet.set.call(this, v); }
+            });
+        });
+        const playFrame = { playbackTime: 1, isPlaying: true, audio: { power: 0.5, spectrum: new Array(64).fill(0.5) } };
+        interlude.update(playFrame, { visible: true, intensity: 1 });
+        const afterFirst = tfWrites;
+        assert.ok(afterFirst > 0);
+        interlude.update({ ...playFrame, playbackTime: 2 }, { visible: true, intensity: 1 });
+        assert.equal(tfWrites, afterFirst, 'reduced-motion playing interlude skips redundant bar loop after settling');
+        interlude.destroy();
+    } finally {
+        dom.window.close();
+    }
+});

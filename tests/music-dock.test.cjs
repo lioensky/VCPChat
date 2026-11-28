@@ -2206,3 +2206,46 @@ test('Batch 83: palette hydrateRowSlot caches button attributes to avoid per-key
         window.close();
     }
 });
+
+test('Batch 89: dock caches drawer volume row refs and avoids offsetWidth reflow on like pop', () => {
+    const liked = new Set();
+    const { window, doc, app, dock } = setup((a) => {
+        a.isLiked = (t) => Boolean(t && liked.has(t.path));
+        a.toggleLike = (t) => { if (!t) return; if (liked.has(t.path)) liked.delete(t.path); else liked.add(t.path); };
+    });
+    try {
+        // 1. Like pop triggers synchronously on first click with 0 offsetWidth reflows
+        const likeBtn = doc.querySelector('[data-md="like"]');
+        let offsetReads = 0;
+        Object.defineProperty(likeBtn, 'offsetWidth', { configurable: true, get() { offsetReads += 1; return 32; } });
+        likeBtn.click();
+        assert.equal(likeBtn.classList.contains('md-like-pop'), true, 'first like click adds md-like-pop immediately');
+        assert.equal(offsetReads, 0, 'like pop performs zero synchronous offsetWidth forced reflows');
+
+        // 2. Repeated volume drag updates reuse cached .md-vol elements with 0 body/row querySelector calls
+        dock.openPanel('控制');
+        const body = doc.querySelector('[data-md="body"]');
+        const volRow = body.querySelector('.md-vol');
+        assert.ok(volRow, 'control panel has .md-vol row');
+        app.volumeSlider.value = '0.7';
+        app.volumeSlider.dispatchEvent(new window.Event('input'));
+
+        let bodyQueries = 0;
+        let rowQueries = 0;
+        const origBodyQ = body.querySelector.bind(body);
+        body.querySelector = (sel) => { if (sel === '.md-vol') bodyQueries += 1; return origBodyQ(sel); };
+        const origRowQ = volRow.querySelector.bind(volRow);
+        volRow.querySelector = (sel) => { rowQueries += 1; return origRowQ(sel); };
+
+        for (const v of ['0.6', '0.5', '0.4', '0.3']) {
+            app.volumeSlider.value = v;
+            app.volumeSlider.dispatchEvent(new window.Event('input'));
+        }
+        assert.equal(bodyQueries, 0, 'cached volRef avoids querying el.body for .md-vol on every drag event');
+        assert.equal(rowQueries, 0, 'cached volRef avoids 5 sub-queries inside .md-vol on every drag event');
+        assert.equal(volRow.querySelector('.md-pct').textContent, '30%');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
