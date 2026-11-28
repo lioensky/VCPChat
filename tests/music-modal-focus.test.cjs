@@ -1035,3 +1035,79 @@ test('Batch 95: modal-focus short-circuits hidden controls before getClientRects
         dom.window.close();
     }
 });
+
+test('Batch 105: modal-focus, channels, and eq-presets restore focus before marking inert/closing', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <button id="opener">Open</button>
+        <div id="m-order" class="music-modal-overlay"><button id="m-btn">InModal</button></div>
+        <select id="eq-preset-select"></select>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const opener = doc.getElementById('opener');
+        const modal = doc.getElementById('m-order');
+        const mBtn = doc.getElementById('m-btn');
+        mBtn.getClientRects = () => [{ width: 40, height: 20 }];
+        window.eval(fs.readFileSync('Musicmodules/music-modal-focus.js', 'utf8'));
+
+        opener.focus();
+        modal.classList.add('visible');
+        await tick(window);
+        assert.equal(doc.activeElement, mBtn, 'modal opening moves focus inside');
+
+        const events = [];
+        const origFocus = opener.focus.bind(opener);
+        opener.focus = (...args) => { events.push(`focus:inert=${modal.inert}`); return origFocus(...args); };
+        let inertVal = modal.inert;
+        Object.defineProperty(modal, 'inert', {
+            configurable: true,
+            get() { return inertVal; },
+            set(v) { inertVal = v; events.push(`inert=${v}`); }
+        });
+        modal.classList.remove('visible');
+        await tick(window);
+        assert.equal(events[0], 'focus:inert=false', 'modal-focus restores opener focus BEFORE setting inert=true');
+        assert.equal(events[1], 'inert=true', 'modal-focus sets inert=true AFTER focus restoration');
+
+        // channels & eq-presets focus restoration order before data-closing
+        window.eval(fs.readFileSync('Musicmodules/music-app-hooks.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-channels.js', 'utf8'));
+        window.eval(fs.readFileSync('Musicmodules/music-eq-presets.js', 'utf8'));
+        const app = {
+            eqBands: { 32: 0 },
+            eqPresets: { balance: { 32: 0 } },
+            eqPresetSelect: doc.getElementById('eq-preset-select'),
+            populateEqPresets() {}, applyEqPreset() {}, syncEqPresetSelect() {}, updateUIWithState() {},
+            api: { setMusicChannels: async (p) => ({ status: 'success', channels: p }) }
+        };
+        window.MusicChannels.setupMusicChannels(app);
+        window.MusicEqPresets.setupMusicEqPresets(app);
+
+        let chanClosingDuringFocus = null;
+        opener.focus = (...args) => {
+            const ov = doc.querySelector('.mchan')?.closest('.dialog-overlay');
+            if (ov) chanClosingDuringFocus = ov.dataset.closing;
+            return origFocus(...args);
+        };
+        origFocus();
+        app.channels.open();
+        doc.querySelector('.mchan .mstats-close').click();
+        assert.equal(chanClosingDuringFocus, undefined, 'channels restores opener focus before setting data-closing');
+
+        let eqClosingDuringFocus = null;
+        opener.focus = (...args) => {
+            const ov = doc.querySelector('.music-eq-name');
+            if (ov) eqClosingDuringFocus = ov.dataset.closing;
+            return origFocus(...args);
+        };
+        origFocus();
+        app.eqUserPresets.promptSave();
+        doc.querySelector('.music-eq-name .dialog-btn.cancel').click();
+        assert.equal(eqClosingDuringFocus, undefined, 'eq-presets restores opener focus before setting data-closing');
+
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

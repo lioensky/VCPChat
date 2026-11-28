@@ -83,3 +83,23 @@ test('Batch 96: batch toggleLike prepends new tracks in newest-first order witho
     assert.equal(off, false);
     assert.deepEqual(app.likedPlaylist().tracks, ['C:/m/b.flac']);
 });
+
+test('Batch 105: likedPlaylist fast-paths index 0 and falls back to non-zero index; queue-undo restoredQueue deduplicates', () => {
+    const { app, playlist } = setup();
+    const { restoredQueue } = require(path.join(__dirname, '../Musicmodules/music-queue-undo.js'));
+    // Non-zero position fallback
+    app.customPlaylists = [
+        { id: '1', name: 'A', tracks: [] },
+        { id: LIKED_ID, name: '喜欢的歌曲', tracks: [playlist[2].path] }
+    ];
+    assert.equal(app.likedPlaylist()?.id, LIKED_ID);
+    assert.equal(app.isLiked(playlist[2]), true);
+    // Index 0 fast path
+    app.customPlaylists.reverse();
+    assert.equal(app.likedPlaylist()?.id, LIKED_ID);
+    assert.equal(app.isLiked(playlist[2]), true);
+    // Queue undo single-pass dedup & dead-track filtering
+    const [a, b, c] = playlist;
+    const gone = { path: 'C:/m/gone.flac', title: 'gone' };
+    assert.deepEqual(restoredQueue([a, gone, a, b], [b, c, c], playlist), [a, b, c]);
+});
