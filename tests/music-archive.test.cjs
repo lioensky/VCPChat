@@ -442,7 +442,7 @@ test('Batch 75: archive-list applyQuery reads scrollTop before toggling .al-sq a
         list.rebuild();
         assert.equal(offsetTopReads, readsAfterFirstRebuild, 'subsequent rebuild reuses cached viewport offsetTop');
 
-        // Let microtask expire syncedTopFresh so applyQuery actually reads vp.scrollTop
+        // Without a scroll event, persistent scrollTop cache skips DOM scrollTop read across microtasks
         await Promise.resolve();
         // Spy on .al-sq classList.toggle to verify scrollTop is read BEFORE .al-sq mutates style
         const origToggle = list.el.classList.toggle.bind(list.el.classList);
@@ -452,6 +452,14 @@ test('Batch 75: archive-list applyQuery reads scrollTop before toggling .al-sq a
         };
         events.length = 0;
         list.input.value = 'Live';
+        list.input.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+        assert.equal(events.includes('read-scroll'), false, `clean persistent cache skips scrollTop read: ${JSON.stringify(events)}`);
+        // After a real scroll event dirties scrollTop, applyQuery must read scrollTop BEFORE toggling .al-sq
+        list.input.value = '';
+        list.input.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+        events.length = 0;
+        vp.dispatchEvent(new w.Event('scroll'));
+        list.input.value = 'Track';
         list.input.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
         const firstRead = events.indexOf('read-scroll');
         const firstToggle = events.indexOf('toggle-al-sq');

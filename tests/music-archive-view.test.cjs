@@ -1558,13 +1558,19 @@ test('archive list render batches viewport reads before edge-class writes and de
         if (name === 'at-top' || name === 'at-bottom') ops.push(`write:${name}`);
         return origToggle(name, force);
     };
-    // 等过微任务让 rebuild 的同帧 scrollTop 快照过期，再验证常规 reveal 严格先读后写
+    // 跨微任务后未发生真实滚动，持久缓存生效，reveal 跳过强制 scrollTop 读取
     await Promise.resolve();
+    f.view.list.reveal(0, 'all', { quiet: true });
+    assert.ok(!ops.includes('read:scrollTop'), `persistent scrollTop cache skips reflow across microtasks: ${ops.join(',')}`);
+    assert.ok(ops.includes('read:clientHeight'), `viewport clientHeight measured once on first reveal: ${ops.join(',')}`);
+    // 发生真实 scroll 事件后 scrollTop 标脏，验证常规 reveal 严格先读后写
+    ops.length = 0;
+    vp.dispatchEvent(new f.w.Event('scroll'));
     f.view.list.reveal(0, 'all', { quiet: true });
     const firstWrite = ops.findIndex((o) => o.startsWith('write:'));
     const lastReadBefore = ops.reduce((idx, o, i) => (i < firstWrite && o.startsWith('read:') ? i : idx), -1);
-    assert.ok(firstWrite >= 2, `expected reads before writes, got ${ops.join(',')}`);
-    assert.ok(ops.slice(0, firstWrite).includes('read:scrollTop') && ops.slice(0, firstWrite).includes('read:clientHeight'), `both viewport metrics read before class toggles: ${ops.join(',')}`);
+    assert.ok(firstWrite >= 1, `expected reads before writes, got ${ops.join(',')}`);
+    assert.ok(ops.slice(0, firstWrite).includes('read:scrollTop'), `scrollTop read before class toggles: ${ops.join(',')}`);
     assert.ok(lastReadBefore >= 0);
 
     // 紧跟 rebuild() 的同帧 reveal(已选中行, quiet) 应复用刚同步的 scrollTop，不再触发重排或冗余写入
@@ -2164,8 +2170,16 @@ test('Batch 95: archive-view rebuild pre-captures list viewport before HUD write
             set(v) { ops.push('write:files'); filesWrites += 1; return textDesc.set.call(this, v); }
         });
 
-        // Rebuilding with a new track count should capture viewport scrollTop BEFORE writing HUD files text
+        // Rebuilding without a scroll event reuses persistent scrollTop cache (zero forced scrollTop read)
         f.app.playlist.push({ path: '/m/80', title: 'Song 80', artist: 'Artist 80', album: 'Album 80', duration: 180 });
+        f.view.refresh();
+        assert.equal(ops.includes('read:scrollTop'), false, `persistent cache skips scrollTop read when clean: ${ops.join(',')}`);
+        assert.ok(ops.includes('write:files'), 'HUD files count updates on track count change');
+
+        // After a real scroll event dirties the cache, rebuild must pre-capture scrollTop BEFORE writing HUD files text
+        ops.length = 0;
+        vp.dispatchEvent(new f.w.Event('scroll'));
+        f.app.playlist.push({ path: '/m/81', title: 'Song 81', artist: 'Artist 81', album: 'Album 81', duration: 180 });
         f.view.refresh();
         const firstRead = ops.indexOf('read:scrollTop');
         const firstWrite = ops.indexOf('write:files');

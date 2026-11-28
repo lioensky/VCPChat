@@ -390,3 +390,43 @@ test('Batch 86: archive lyrics writes innerHTML once for plain lyrics and skips 
     ly.destroy();
     window.close();
 });
+
+test('Batch 107: archive lyrics quantizes --lp writes and deduplicates unchanged paintChip updates', () => {
+    const { window, app, ly, at } = setup({ playing: true });
+    // Plain timed lines (no word spans) exercise paintLineProgress --lp quantization
+    app.currentLyrics = [{ time: 0, text: 'Line 1' }, { time: 10, text: 'Line 2' }];
+    ly.sync();
+    at(2.0);
+    const activeP = ly.el.querySelector('.archive-lyrics-track p.on');
+    assert.ok(activeP);
+    let lpWrites = 0;
+    const origSetProp = activeP.style.setProperty.bind(activeP.style);
+    activeP.style.setProperty = (k, v) => {
+        if (k === '--lp') lpWrites += 1;
+        return origSetProp(k, v);
+    };
+    // Tiny delta within same 1/1000 quantized bucket skips redundant --lp write
+    at(2.002);
+    assert.equal(lpWrites, 0, 'sub-0.1% line progress delta skips --lp write');
+    // Advancing clearly past 0.1% updates --lp once
+    at(2.5);
+    assert.equal(lpWrites, 1, 'measurable line progress delta writes --lp once');
+    assert.equal(activeP.style.getPropertyValue('--lp'), '25.0%');
+
+    // paintChip skips redundant textContent writes on repeated sync with unchanged translation state
+    const chip = ly.el.querySelector('.archive-lyrics-chip');
+    let chipTextWrites = 0;
+    const textDesc = Object.getOwnPropertyDescriptor(window.Node.prototype, 'textContent');
+    Object.defineProperty(chip, 'textContent', {
+        configurable: true,
+        get() { return textDesc.get.call(this); },
+        set(v) { chipTextWrites += 1; return textDesc.set.call(this, v); }
+    });
+    app.lyricsAi = { enabled: true, state: { status: 'idle', path: '/t.flac' } };
+    ly.sync();
+    const afterFirst = chipTextWrites;
+    ly.sync();
+    assert.equal(chipTextWrites, afterFirst, 'repeated sync with identical AI state skips chip textContent rewrite');
+    ly.destroy();
+    window.close();
+});

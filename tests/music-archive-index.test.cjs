@@ -526,3 +526,77 @@ test('Batch 106: O(N) counting-sort artistRankOf matches exact Collator+titleRan
     assert.equal(spTitle.family('あ'), 'kana');
     assert.equal(spTitle.family('#'), '#');
 });
+
+test('Batch 107: archive-index direct-entry & run-cache grouping matches patched index, and archive-model skips unnumbered albumCompare', () => {
+    const Model = require('../Musicmodules/music-archive/archive-model.js');
+    const TrackOrder = require('../Musicmodules/music-track-order.js');
+    const tracks = [
+        { path: '/m/a1.flac', title: 'Alpha 1', artist: 'Singer A', album: 'Plain' },
+        { path: '/m/a2.flac', title: 'Alpha 2', artist: 'Singer A', album: 'Plain' },
+        { path: '/m/b1.flac', title: 'Beta 1', artist: 'Singer B', album: 'Plain' },
+        { path: '/m/c2.flac', title: 'Track 2', artist: 'Singer B', album: 'Numbered', trackNo: 2 },
+        { path: '/m/c1.flac', title: 'Track 1', artist: 'Singer A', album: 'Numbered', trackNo: 1 },
+        { path: '/m/d1.flac', title: 'Delta', artist: '', album: '' }
+    ];
+    const idx = Index.createIndex(tracks);
+    const indices = tracks.map((_, i) => i);
+    const spArtist = Index.sortSpec(idx, { mode: 'artist', tracks });
+    const colsFast = Index.groupColumns(idx, indices, { spec: spArtist });
+    const rowsFastAll = Index.listRows({ tracks, index: idx, kind: 'all', spec: spArtist });
+    const rowsFastArtist = Index.listRows({ tracks, index: idx, kind: 'artist', spec: spArtist });
+    const rowsFastAlbum = Index.listRows({ tracks, index: idx, kind: 'album', spec: spArtist });
+
+    // Monkey-patching index.group and index.artistGroup must bypass direct INDEX_META shortcut
+    const origGroup = idx.group;
+    const origArtistGroup = idx.artistGroup;
+    let customGroupCalls = 0;
+    let customArtistGroupCalls = 0;
+    idx.group = (i) => { customGroupCalls += 1; return origGroup(i); };
+    idx.artistGroup = (i) => { customArtistGroupCalls += 1; return origArtistGroup(i); };
+    const colsPatched = Index.groupColumns(idx, indices, { spec: spArtist });
+    const rowsPatchedAll = Index.listRows({ tracks, index: idx, kind: 'all', spec: spArtist });
+    assert.ok(customArtistGroupCalls >= tracks.length, 'patched artistGroup is invoked when overridden');
+    assert.deepEqual(colsFast, colsPatched, 'direct-entry groupColumns matches patched path');
+    assert.deepEqual(rowsFastAll, rowsPatchedAll, 'direct-entry listRows(all) matches patched path');
+    assert.ok(rowsFastArtist.rows.length > 0 && rowsFastAlbum.rows.length > 0);
+    // Also check title-mode groupColumns with patched index.group
+    const spTitle = Index.sortSpec(idx, { mode: 'title', tracks });
+    const colsTitlePatched = Index.groupColumns(idx, indices, { spec: spTitle });
+    assert.ok(customGroupCalls >= tracks.length, 'patched group is invoked for title sort');
+    assert.ok(colsTitlePatched.length >= 3);
+
+    // archive-model.buildColumns: skips albumCompare on unnumbered albums, runs it on numbered albums
+    global.MusicTrackOrder = TrackOrder;
+    const plainOnly = [
+        { path: '/p/a.flac', title: 'First', artist: 'Art', album: 'Album X' },
+        { path: '/p/b.flac', title: 'Second', artist: 'Art', album: 'Album X' },
+        { path: '/p/c.flac', title: 'Third', artist: 'Art', album: 'Album Y' }
+    ];
+    let cmpCalls = 0;
+    const origAlbumCompare = TrackOrder.albumCompare;
+    TrackOrder.albumCompare = (...args) => { cmpCalls += 1; return origAlbumCompare(...args); };
+    try {
+        const plainCols = Model.buildColumns(plainOnly, []);
+        assert.equal(cmpCalls, 0, 'unnumbered albums skip albumCompare in archive-model.buildColumns');
+        const albX = plainCols.find((c) => c.id === 'album:Album X');
+        assert.deepEqual(albX.items, [0, 1]);
+
+        const numCols = Model.buildColumns(tracks, []);
+        assert.equal(cmpCalls, 1, 'numbered album triggers albumCompare once');
+        const numbered = numCols.find((c) => c.id === 'album:Numbered');
+        assert.deepEqual(numbered.items, [4, 3], 'numbered album tracks sorted by trackNo');
+    } finally {
+        TrackOrder.albumCompare = origAlbumCompare;
+    }
+
+    // asciiRef fast path for ASCII vs accented album names (via buildColumns col.ref)
+    const accentTracks = [
+        { path: '/x/1.flac', title: 'A', artist: 'Art', album: 'Hello_World 2026' },
+        { path: '/x/2.flac', title: 'B', artist: 'Art', album: 'Hello_World 2026' },
+        { path: '/x/3.flac', title: 'C', artist: 'Art', album: 'Café Éclair' },
+        { path: '/x/4.flac', title: 'D', artist: 'Art', album: 'Café Éclair' }
+    ];
+    const refCols = Model.buildColumns(accentTracks, []);
+    assert.equal(refCols.find((c) => c.id === 'album:Hello_World 2026').ref, 'HELLO_WORLD 2026');
+    assert.equal(refCols.find((c) => c.id === 'album:Café Éclair').ref, 'CAFE ECLAIR');
+});
