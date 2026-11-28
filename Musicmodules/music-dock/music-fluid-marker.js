@@ -32,7 +32,11 @@
 
         const make = (tag, attrs, parent) => {
             const node = doc.createElementNS(NS, tag);
-            for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+            if (attrs) {
+                for (const k in attrs) {
+                    if (Object.prototype.hasOwnProperty.call(attrs, k)) node.setAttribute(k, attrs[k]);
+                }
+            }
             if (parent) parent.appendChild(node);
             return node;
         };
@@ -70,33 +74,31 @@
             if (align === 'center') return size / 2;
             return size - inset - thickness / 2;
         };
-        const pillCache = new WeakMap();
-        const setRectAttr = (node, cache, name, value) => {
-            if (cache[name] === value) return;
-            cache[name] = value;
-            node.setAttribute(name, value);
+        const headCache = Object.create(null);
+        const tailCache = Object.create(null);
+        const neckCache = Object.create(null);
+        const setRectNum = (node, cache, name, value) => {
+            const q = Math.round(value * 10);
+            if (cache[name] === q) return;
+            cache[name] = q;
+            node.setAttribute(name, (q / 10).toFixed(1));
         };
         let origin = 0; // SVG 沿轴方向的起点（容器内容坐标），形状坐标都减去它
-        const pill = (node, a, b, c, t) => {
-            let cache = pillCache.get(node);
-            if (!cache) {
-                cache = Object.create(null);
-                pillCache.set(node, cache);
-            }
+        const pill = (node, cache, a, b, c, t) => {
             const lo = Math.min(a, b) - origin;
             const len = Math.max(t, Math.abs(b - a));
             if (axis === 'x') {
-                setRectAttr(node, cache, 'x', lo.toFixed(1));
-                setRectAttr(node, cache, 'y', (c - t / 2).toFixed(1));
-                setRectAttr(node, cache, 'width', len.toFixed(1));
-                setRectAttr(node, cache, 'height', t.toFixed(1));
+                setRectNum(node, cache, 'x', lo);
+                setRectNum(node, cache, 'y', c - t / 2);
+                setRectNum(node, cache, 'width', len);
+                setRectNum(node, cache, 'height', t);
             } else {
-                setRectAttr(node, cache, 'y', lo.toFixed(1));
-                setRectAttr(node, cache, 'x', (c - t / 2).toFixed(1));
-                setRectAttr(node, cache, 'height', len.toFixed(1));
-                setRectAttr(node, cache, 'width', t.toFixed(1));
+                setRectNum(node, cache, 'y', lo);
+                setRectNum(node, cache, 'x', c - t / 2);
+                setRectNum(node, cache, 'height', len);
+                setRectNum(node, cache, 'width', t);
             }
-            setRectAttr(node, cache, 'rx', (t / 2).toFixed(1));
+            setRectNum(node, cache, 'rx', t / 2);
         };
         // SVG 只盖住小滴所在的那一段（加上模糊的余量），不再撑成整块内容那么大：
         // 目录有一万首时内容有几十万像素高，整张 SVG 会变成一张同样高的合成层，每次重画都很贵。
@@ -116,14 +118,14 @@
                 if (axis === 'x') { svg.style.left = `${origin}px`; svg.setAttribute('width', String(len)); svg.setAttribute('height', String(cs)); }
                 else { svg.style.top = `${origin}px`; svg.setAttribute('height', String(len)); svg.setAttribute('width', String(cs)); }
             }
-            pill(head, s.hs, s.he, c, thickness);
-            pill(tail, s.ts, s.te, c, thickness * 0.9);
+            pill(head, headCache, s.hs, s.he, c, thickness);
+            pill(tail, tailCache, s.ts, s.te, c, thickness * 0.9);
             // 细颈：头尾中心之间一根细条，拉得越开越细，goo 滤镜把三段融成一滴
             const hc = (s.hs + s.he) / 2;
             const tc = (s.ts + s.te) / 2;
             const gap = Math.abs(hc - tc);
             const t = Math.max(1, thickness * Math.max(0.35, 0.8 - gap / 400));
-            pill(neck, Math.min(hc, tc), Math.max(hc, tc), c, gap > 2 ? t : 0.01);
+            pill(neck, neckCache, Math.min(hc, tc), Math.max(hc, tc), c, gap > 2 ? t : 0.01);
         };
         const moving = () => Math.abs(s.hs - s.tgS) + Math.abs(s.he - s.tgE) + Math.abs(s.ts - s.tgS) + Math.abs(s.te - s.tgE) > 0.6;
         const step = (now) => {

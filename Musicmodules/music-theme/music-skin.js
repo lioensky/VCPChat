@@ -38,8 +38,10 @@
     const format = (track) => {
         const raw = String(track?.codec || '').trim().toUpperCase();
         if (raw) {
-            const rule = CODEC_RULES.find(([pattern]) => pattern.test(raw));
-            return rule ? rule[1] : raw;
+            for (let i = 0; i < CODEC_RULES.length; i += 1) {
+                if (CODEC_RULES[i][0].test(raw)) return CODEC_RULES[i][1];
+            }
+            return raw;
         }
         return extensionOf(track);
     };
@@ -61,8 +63,14 @@
         return bps > 0 ? `${Math.round(bps / 1000)} kbps` : '';
     };
 
-    const summary = (track) => [format(track), sampleRate(track), bitDepth(track), bitrate(track)]
-        .filter(Boolean).join(' · ');
+    const joinSpecs = (f, sr, bd, br) => {
+        let out = f || '';
+        if (sr) out = out ? `${out} · ${sr}` : sr;
+        if (bd) out = out ? `${out} · ${bd}` : bd;
+        if (br) out = out ? `${out} · ${br}` : br;
+        return out;
+    };
+    const summary = (track) => joinSpecs(format(track), sampleRate(track), bitDepth(track), bitrate(track));
 
     // 档案页、底栏也可以用同一套格式，保证三处显示一致。
     window.MusicTrackSpecs = { fileNumber, format, sampleRate, bitDepth, bitrate, summary };
@@ -154,11 +162,15 @@
             // 标题上方一行写这首在列表里排第几（原来是按路径算的假档案号，用户看不出意思）
             setText('file-number', total > 0 && nth > 0 ? `第 ${nth} / ${total} 首` : '', '');
             setText('album', track.album || '未分类', '未分类');
-            setText('format', format(track));
-            setText('sample-rate', sampleRate(track));
-            setText('bit-depth', bitDepth(track), track.lossless === false ? '有损' : '—');
-            setText('bitrate', bitrate(track));
-            setText('specs', summary(track), '');
+            const fmt = format(track);
+            const sr = sampleRate(track);
+            const bd = bitDepth(track);
+            const br = bitrate(track);
+            setText('format', fmt);
+            setText('sample-rate', sr);
+            setText('bit-depth', bd, track.lossless === false ? '有损' : '—');
+            setText('bitrate', br);
+            setText('specs', joinSpecs(fmt, sr, bd, br), '');
             if (changed) {
                 const reduceMotion = Boolean(window.MusicMotion?.reduced?.()
                     ?? window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -276,10 +288,12 @@
     const checkedSelects = new WeakSet();
     const enhanceSelect = (select) => {
         if (select.dataset.segmented || checkedSelects.has(select)) return;
-        const options = Array.from(select.options);
-        const chars = options.reduce((sum, option) => sum + option.textContent.trim().length, 0);
-        if (options.length < 2 || options.length > SEGMENT_MAX_OPTIONS || chars > SEGMENT_MAX_CHARS) {
-            if (options.length > 0) checkedSelects.add(select);
+        const options = select.options;
+        const optLen = options.length;
+        let chars = 0;
+        for (let i = 0; i < optLen; i += 1) chars += options[i].textContent.trim().length;
+        if (optLen < 2 || optLen > SEGMENT_MAX_OPTIONS || chars > SEGMENT_MAX_CHARS) {
+            if (optLen > 0) checkedSelects.add(select);
             return;
         }
         select.dataset.segmented = '1';
@@ -325,7 +339,11 @@
             const dir = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1
                 : event.key === 'Home' ? -2 : event.key === 'End' ? 2 : 0;
             if (!dir) return;
-            const enabled = Array.from(group.children).filter((b) => !b.disabled);
+            const kids = group.children;
+            const enabled = [];
+            for (let i = 0; i < kids.length; i += 1) {
+                if (!kids[i].disabled) enabled.push(kids[i]);
+            }
             if (enabled.length < 2) return;
             const cur = enabled.indexOf(document.activeElement);
             const next = dir === -2 ? enabled[0]

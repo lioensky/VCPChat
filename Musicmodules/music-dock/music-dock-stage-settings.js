@@ -84,19 +84,37 @@
                     }
                 }
                 const wanted = TUNE_FIRST[sceneId] || [];
-                let first = wanted.map((key) => rowByKey.get(key)).filter(Boolean);
-                if (rows.length <= TUNE_FIRST_COUNT + 2) first = rows.slice();
-                else if (first.length < 3) first = rows.slice(0, TUNE_FIRST_COUNT);
+                let first = [];
+                if (rows.length <= TUNE_FIRST_COUNT + 2) {
+                    first = rows.slice();
+                } else {
+                    for (let i = 0; i < wanted.length; i += 1) {
+                        const hit = rowByKey.get(wanted[i]);
+                        if (hit) first.push(hit);
+                    }
+                    if (first.length < 3) first = rows.slice(0, TUNE_FIRST_COUNT);
+                }
                 const firstSet = new Set(first);
-                const rest = rows.filter((row) => !firstSet.has(row));
+                const rest = [];
+                for (let i = 0; i < rows.length; i += 1) {
+                    if (!firstSet.has(rows[i])) rest.push(rows[i]);
+                }
                 const ordered = first.concat(rest);
-                if (ordered.some((row, i) => row !== rows[i])) {
+                let orderChanged = false;
+                for (let i = 0; i < ordered.length; i += 1) {
+                    if (ordered[i] !== rows[i]) { orderChanged = true; break; }
+                }
+                if (orderChanged) {
                     const frag = document.createDocumentFragment();
-                    ordered.forEach((row) => frag.appendChild(row));
+                    for (let i = 0; i < ordered.length; i += 1) frag.appendChild(ordered[i]);
                     tuningNode.appendChild(frag);
                 }
-                rest.forEach((row) => row.classList.add('md-tune-rest'));
-                first.forEach((row) => row.classList.remove('md-tune-rest'));
+                for (let i = 0; i < rest.length; i += 1) {
+                    if (!rest[i].classList.contains('md-tune-rest')) rest[i].classList.add('md-tune-rest');
+                }
+                for (let i = 0; i < first.length; i += 1) {
+                    if (first[i].classList.contains('md-tune-rest')) first[i].classList.remove('md-tune-rest');
+                }
                 const hideSec = rows.length === 0;
                 if (el.tuneSec.hidden !== hideSec) el.tuneSec.hidden = hideSec;
                 const hideMore = rest.length === 0;

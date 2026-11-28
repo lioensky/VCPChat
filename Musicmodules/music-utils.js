@@ -87,7 +87,7 @@ function setupUtils(app) {
             && canNarrowWords(lastSearchWords, words))
             ? lastSearchHits
             : list;
-        const out = [];
+        const out = list.slice(0, 0);
         if (wLen === 1) {
             const w0 = words[0];
             for (let i = 0, n = scan.length; i < n; i += 1) {

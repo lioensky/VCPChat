@@ -68,6 +68,14 @@
             if (pending) { clearTimeout(pending); closingTimers.delete(overlay); }
             global.removeEventListener('keydown', onKey, true);
             global.removeEventListener?.('beforeunload', onUnload);
+            // 先归还焦点（排除 body 与对话框自身）再撤掉 visible 类，避免改类后立刻 focus() 触发强制重排
+            if (!isImmediate) {
+                if (previousFocus instanceof HTMLElement && previousFocus !== document.body && previousFocus.isConnected && !overlay.contains(previousFocus)) {
+                    try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 焦点还不回去就算了 */ }
+                } else if (overlay.contains(document.activeElement)) {
+                    try { document.activeElement.blur(); } catch (e) { /* noop */ }
+                }
+            }
             overlay.dataset.closing = '1';
             overlay.classList.remove('visible');
             // 留给合上的动画（流体套件或 .2s 淡出）；窗口卸载时直接移除，避免悬挂定时器。
@@ -75,9 +83,6 @@
             else {
                 const timer = setTimeout(() => { closingTimers.delete(overlay); overlay.remove(); }, 320);
                 closingTimers.set(overlay, timer);
-            }
-            if (!isImmediate && previousFocus instanceof HTMLElement && previousFocus.isConnected) {
-                try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 焦点还不回去就算了 */ }
             }
             resolve(value);
         };

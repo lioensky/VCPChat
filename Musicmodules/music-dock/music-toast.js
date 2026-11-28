@@ -112,7 +112,9 @@
             entry.actEl = action ? el.querySelector('.mtst-act') : null;
             entry.barEl = progress ? el.querySelector('.mtst-bar > span') : null;
             entry.lastProgress = clampedProgress;
-            if (entry.msgEl) entry.msgEl.textContent = entry.opts.message || '';
+            const msgText = entry.opts.message || '';
+            entry.lastMessage = msgText;
+            if (entry.msgEl) entry.msgEl.textContent = msgText;
             if (entry.actEl) entry.actEl.textContent = `${action.label || '好'}${count}`;
         };
 
@@ -242,7 +244,10 @@
             if (!structureChanged && prevHadProgress === nextHasProgress && entry.el) {
                 if ('message' in patch && entry.msgEl) {
                     const nextText = entry.opts.message || '';
-                    if (entry.msgEl.textContent !== nextText) entry.msgEl.textContent = nextText;
+                    if (entry.lastMessage !== nextText) {
+                        entry.lastMessage = nextText;
+                        entry.msgEl.textContent = nextText;
+                    }
                 }
                 if (nextHasProgress && 'progress' in patch && entry.barEl) {
                     const nextProgress = Math.max(0, Math.min(1, entry.opts.progress));
@@ -276,12 +281,17 @@
 
     const dismiss = (id) => toasts.get(String(id))?.close();
     const clear = () => {
-        [...toasts.values()].forEach((t) => t.close(true));
-        for (const pending of [...closing]) {
-            clearTimeout(pending.timer);
-            pending.el.remove();
+        if (toasts.size) {
+            const list = [...toasts.values()];
+            for (let i = 0; i < list.length; i += 1) list[i].close(true);
         }
-        closing.clear();
+        if (closing.size) {
+            for (const pending of closing) {
+                clearTimeout(pending.timer);
+                pending.el.remove();
+            }
+            closing.clear();
+        }
     };
     global.addEventListener?.('beforeunload', clear, { once: true });
 

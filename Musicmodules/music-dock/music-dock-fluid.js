@@ -27,18 +27,18 @@
         const win = doc.defaultView || global;
         const uid = `mdf${Math.random().toString(36).slice(2, 8)}`;
         const id = (name) => `${uid}-${name}`;
-        const attrCache = new WeakMap();
-        const make = (tag, attrs = {}, parent = null) => {
+        const make = (tag, attrs = null, parent = null) => {
             const node = doc.createElementNS(NS, tag);
-            const entries = Object.entries(attrs);
-            if (entries.length) {
-                const map = Object.create(null);
-                for (const [k, v] of entries) {
-                    const text = String(v);
+            if (attrs) {
+                let map = null;
+                for (const k in attrs) {
+                    if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+                    const text = String(attrs[k]);
+                    if (!map) map = Object.create(null);
                     map[k] = text;
                     node.setAttribute(k, text);
                 }
-                attrCache.set(node, map);
+                if (map) node.__mdfA = map;
             }
             if (parent) parent.appendChild(node);
             return node;
@@ -174,12 +174,19 @@
         };
         const toHex = (rgb) => `#${hex2(rgb[0])}${hex2(rgb[1])}${hex2(rgb[2])}`;
         const setAttr = (node, name, value) => {
-            const text = typeof value === 'number' ? value.toFixed(2) : String(value);
-            let map = attrCache.get(node);
+            let map = node.__mdfA;
             if (!map) {
                 map = Object.create(null);
-                attrCache.set(node, map);
+                node.__mdfA = map;
             }
+            if (typeof value === 'number') {
+                const q = Math.round(value * 100);
+                if (map[name] === q) return;
+                map[name] = q;
+                node.setAttribute(name, (q / 100).toFixed(2));
+                return;
+            }
+            const text = String(value);
             if (map[name] === text) return;
             map[name] = text;
             node.setAttribute(name, text);
@@ -425,15 +432,18 @@
                 const top = layerTop + ry - RING_R;
                 const left1 = Math.round(left * 10);
                 const top1 = Math.round(top * 10);
-                const shText = `${sh.toFixed(3)}:${sz.toFixed(3)}`;
-                const showChanged = force || ring.__mdfShow !== shText;
+                const shQ = Math.round(sh * 1000);
+                const szQ = Math.round(sz * 1000);
+                const showChanged = force || ring.__mdfSh !== shQ || ring.__mdfSz !== szQ;
                 if (showChanged || ring.__mdfLeft1 !== left1 || ring.__mdfTop1 !== top1) {
-                    ring.__mdfLeft1 = left1; ring.__mdfTop1 = top1; ring.__mdfShow = shText;
+                    ring.__mdfLeft1 = left1; ring.__mdfTop1 = top1; ring.__mdfSh = shQ; ring.__mdfSz = szQ;
                     ring.style.transform = `translate3d(${(left1 / 10).toFixed(1)}px, ${(top1 / 10).toFixed(1)}px, 0) scale(${((0.4 + 0.6 * sh) * sz).toFixed(3)})`;
                     if (showChanged) {
-                        ring.style.opacity = sh.toFixed(3);
-                        ring.classList.toggle('md-hdl-bead', sz < 0.8);
-                        ring.style.pointerEvents = sh > 0.5 ? '' : 'none';
+                        ring.style.opacity = (shQ / 1000).toFixed(3);
+                        const bead = sz < 0.8;
+                        if (ring.__mdfBead !== bead) { ring.__mdfBead = bead; ring.classList.toggle('md-hdl-bead', bead); }
+                        const pe = sh > 0.5 ? '' : 'none';
+                        if (ring.__mdfPe !== pe) { ring.__mdfPe = pe; ring.style.pointerEvents = pe; }
                     }
                     onRingMove?.({ left, top, docked: s.ring.docked, near });
                 }
