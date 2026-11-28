@@ -2612,7 +2612,7 @@ test('Batch 112: containment CSS, pre-baked queue .md-qdur hidden toggle & cache
     const dockCss = read('Musicmodules/music-dock/music-dock.css');
     const panelCss = read('Musicmodules/music-dock/music-dock-panel.css');
     assert.match(skinCss, /\.sidebar-list-container\s*\{[^}]*contain:\s*layout paint style/);
-    assert.match(skinCss, /\.sidebar-playlist\s*\{[^}]*contain:\s*strict/);
+    assert.match(skinCss, /\.sidebar-playlist\s*\{[^}]*contain:\s*layout paint style/);
     assert.match(dockCss, /\.md-dock\s*\{[^}]*contain:\s*layout style/);
     assert.match(panelCss, /#music-dock-root\s+\.md-qdur\[hidden\]\s*\{\s*display:\s*none;/);
 

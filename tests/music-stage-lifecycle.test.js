@@ -2894,3 +2894,62 @@ test('Batch 111: stage edge renders Rec.709 mono luma when --stage-edge-mono: 1 
         dom.window.close();
     }
 });
+
+test('Batch 115: stage edge preserves fixed-axis endpoints across active->silent->active transitions and tolerates missing scope with ResizeObserver', () => {
+    const dom = createStageDom();
+    try {
+        const pointsLog = [];
+        dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+            if (type !== '2d') return null;
+            return new Proxy({
+                moveTo(x, y) { pointsLog.push(['M', Math.round(x * 100) / 100, Math.round(y * 100) / 100]); },
+                lineTo(x, y) { pointsLog.push(['L', Math.round(x * 100) / 100, Math.round(y * 100) / 100]); }
+            }, {
+                get(target, prop) { return prop in target ? target[prop] : () => {}; },
+                set(target, prop, value) { target[prop] = value; return true; }
+            });
+        };
+        let roCallback = null;
+        dom.window.ResizeObserver = class {
+            constructor(cb) { roCallback = cb; }
+            observe() {}
+            disconnect() {}
+        };
+        for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const root = dom.window.document.getElementById('music-stage');
+        Object.defineProperty(root, 'clientWidth', { value: 1200, configurable: true });
+        Object.defineProperty(root, 'clientHeight', { value: 800, configurable: true });
+        // Pass scope: null while ResizeObserver exists -> must not throw
+        const edge = dom.window.MusicStageEdge.create({
+            app: { stagePalette: { accentRgb: { r: 120, g: 180, b: 220 } } },
+            root,
+            elements: {
+                edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'),
+                edgeCanvas: root.querySelector('.music-stage-edge-spectrum-canvas')
+            },
+            state: { config: { edgeSpectrum: true, quality: 'standard' } },
+            scope: null,
+            clamp: dom.window.MusicStageRuntime.clamp
+        });
+        assert.equal(typeof roCallback, 'function');
+        roCallback([{ contentRect: { width: 1200, height: 800 } }]);
+        const activeSpec = new Float32Array(64).fill(0.5);
+        const quietSpec = new Float32Array(64);
+        edge.draw({ now: 100, isPlaying: true, track: { path: '/a.flac' }, viewport: { dpr: 1 }, audio: { spectrum: activeSpec, power: 0.6 } });
+        const activeEnds = pointsLog.slice(0, 8);
+        assert.equal(activeEnds.length, 8);
+        // Transition to silent flat line
+        pointsLog.length = 0;
+        edge.draw({ now: 160, isPlaying: true, track: { path: '/a.flac' }, viewport: { dpr: 1 }, audio: { spectrum: quietSpec, power: 0 } });
+        assert.equal(pointsLog.length, 8, 'flat frame draws 4 straight segments');
+        // Resume active audio -> fixed-axis coordinates remain intact without repopulating errors
+        pointsLog.length = 0;
+        edge.draw({ now: 220, isPlaying: true, track: { path: '/a.flac' }, viewport: { dpr: 1 }, audio: { spectrum: activeSpec, power: 0.6 } });
+        assert.deepEqual(pointsLog.slice(0, 8), activeEnds, 'resumed active frame preserves exact endpoints after flat frame');
+        edge.release();
+    } finally {
+        dom.window.close();
+    }
+});

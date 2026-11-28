@@ -1059,3 +1059,139 @@ test('Batch 114: stats trackKeyCache & all-time summary fast path, stage-setting
     assert.equal(groups.length, 1);
     assert.equal(groups[0].keep.path, 'C:\\Music\\CD1\\Song.flac');
 });
+
+test('Batch 115: folders key/parentOf, m3u targeted match/export, lyrics-ai single-pass classifier, track-file pre-show hook & spectrum FFT/draw', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+
+    // 1. music-folders: key(), underDir(), parentOf() on trailing/mixed separators & remote schemes
+    const Folders = require(path.join(__dirname, '../Musicmodules/music-folders.js'));
+    assert.equal(Folders.underDir('C:\\Music\\Album\\01.flac', 'c:/music///'), true);
+    assert.equal(Folders.underDir('C:\\Music2\\01.flac', 'C:\\Music\\'), false);
+    const fRows = Folders.folderRows([{ path: 'D:/Lib///' }], [
+        { path: 'D:\\Lib\\Sub\\a.flac' },
+        { path: 'https://cloud.example/b.flac' },
+        { path: '/a/b/c.flac' },
+        { path: '/a/d/e.flac' },
+        { path: '\\rootOnly.flac' }
+    ]);
+    assert.equal(fRows[0].path, 'D:/Lib///');
+    assert.equal(fRows[0].count, 1);
+    assert.equal(fRows.some((r) => r.path === '/a/b' && r.count === 1), true);
+    assert.equal(fRows.some((r) => r.path === '/a/d' && r.count === 1), true);
+
+    // 2. music-m3u: matchEntries last-wins + duplicate missing count + exportPlaylist first-wins & remote skip
+    const M3u = require(path.join(__dirname, '../Musicmodules/music-m3u.js'));
+    const matched = M3u.matchEntries(
+        [
+            { path: 'c:/music/a.flac', exists: true },
+            { path: 'C:\\Music\\A.flac', exists: true },
+            { path: 'C:\\Music\\new.flac', exists: true },
+            { path: 'C:\\Music\\gone.flac', exists: false },
+            { path: 'C:\\Music\\gone.flac', exists: false }
+        ],
+        [
+            { path: 'C:\\Music\\first.flac' },
+            { path: 'C:\\Music\\a.flac' },
+            { path: 'C:\\Music\\A.FLAC' }
+        ]
+    );
+    assert.deepEqual(matched.paths, ['C:\\Music\\A.FLAC', 'C:\\Music\\new.flac'], 'last-wins library case & dedup');
+    assert.deepEqual(matched.toAdd, ['C:\\Music\\new.flac']);
+    assert.equal(matched.missing, 2, 'duplicate missing entries still counted');
+
+    let exportedPayload = null;
+    const m3uApp = {
+        playlist: [
+            { path: 'C:\\Music\\A.flac', title: 'First', artist: 'Art1', duration: 180 },
+            { path: 'c:\\music\\a.flac', title: 'Second', artist: 'Art2', duration: 200 }
+        ],
+        customPlaylists: [],
+        api: {
+            importMusicM3u: async () => ({ ok: false, canceled: true }),
+            exportMusicM3u: async (p) => { exportedPayload = p; return { ok: true, file: 'C:\\out.m3u8' }; }
+        }
+    };
+    M3u.setupMusicM3u(m3uApp);
+    await m3uApp.m3u.exportPlaylist({
+        id: '1', name: 'Mix',
+        tracks: ['C:/Music/A.flac', 'https://dav.example/remote.flac', 'C:\\Music\\Raw.mp3']
+    });
+    assert.equal(exportedPayload.tracks.length, 2, 'remote URL skipped');
+    assert.equal(exportedPayload.tracks[0].title, 'First', 'first-wins metadata on duplicate library path');
+    assert.deepEqual(exportedPayload.tracks[1], { path: 'C:\\Music\\Raw.mp3' });
+
+    // 3. music-lyrics-ai: single-pass Unicode classification matches Kana/Hangul/Han+Latin/Latin
+    const LyricsAi = require(path.join(__dirname, '../Musicmodules/music-lyrics-ai.js'));
+    assert.equal(LyricsAi.needsTranslation([{ original: '中文 Hello こんにちは' }, { original: '사랑해' }]), true, 'kana/hangul overrides han');
+    assert.equal(LyricsAi.needsTranslation([{ original: 'Hello world 中文' }, { original: '中文 Test line' }]), false, 'latin + han stays non-foreign');
+    assert.equal(LyricsAi.needsTranslation([{ original: 'Hello world' }, { original: 'Café résumé' }]), true, 'pure latin & latin-extended triggers translation');
+    assert.equal(LyricsAi.needsTranslation([
+        { original: 'Hello world', translation: '你好' },
+        { original: 'Good morning' },
+        { original: 'Good night' }
+    ]), false, '>=30% translated skips AI translation');
+
+    // 4. music-track-file: synchronous MusicAppHooks.before('showContextMenu') hides show-in-folder BEFORE showContextMenu runs
+    const dom = new JSDOM('<!doctype html><body><div id="menu"><div class="context-menu-item" data-action="get-lyrics"></div></div></body>', {
+        runScripts: 'outside-only', url: 'http://localhost/'
+    });
+    try {
+        const w = dom.window;
+        w.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-app-hooks.js'), 'utf8'));
+        w.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-track-file.js'), 'utf8'));
+        const menu = w.document.getElementById('menu');
+        const observedHidden = [];
+        const tfApp = {
+            contextMenu: menu,
+            contextMenuTrackIndex: 0,
+            playlist: [
+                { path: 'https://dav.example/cloud.flac', title: 'Cloud' },
+                { path: 'C:\\Music\\local.flac', title: 'Local' }
+            ],
+            api: { showMusicInFolder: async () => ({ ok: true }) },
+            showContextMenu() {
+                const it = menu.querySelector('[data-action="show-in-folder"]');
+                observedHidden.push(it.hidden);
+                menu.classList.add('visible');
+            }
+        };
+        w.MusicTrackFile.setupMusicTrackFile(tfApp);
+        tfApp.contextMenuTrackIndex = 0;
+        tfApp.showContextMenu(10, 10);
+        tfApp.contextMenuTrackIndex = 1;
+        tfApp.showContextMenu(10, 10);
+        assert.deepEqual(observedHidden, [true, false], 'show-in-folder visibility synced synchronously BEFORE showContextMenu layout');
+        assert.equal(w.MusicTrackFile.isLocal('C:\\foo://bar.flac'), true);
+        assert.equal(w.MusicTrackFile.isLocal('https://example.com/a.flac'), false);
+    } finally {
+        dom.window.close();
+    }
+
+    // 5. music-spectrum: fft matches exact DFT for complex inputs (len=2,4,8) and spectrumColumns separates loud/quiet frames
+    const Spec = require(path.join(__dirname, '../Musicmodules/music-spectrum.js'));
+    for (const n of [2, 4, 8]) {
+        const srcRe = Float32Array.from({ length: n }, (_, k) => Math.sin(k * 1.3 + 0.2));
+        const srcIm = Float32Array.from({ length: n }, (_, k) => Math.cos(k * 0.7 - 0.4));
+        const re = srcRe.slice();
+        const im = srcIm.slice();
+        Spec.fft(re, im);
+        for (let k = 0; k < n; k += 1) {
+            let expRe = 0, expIm = 0;
+            for (let j = 0; j < n; j += 1) {
+                const ang = (-2 * Math.PI * k * j) / n;
+                const c = Math.cos(ang), s = Math.sin(ang);
+                expRe += srcRe[j] * c - srcIm[j] * s;
+                expIm += srcRe[j] * s + srcIm[j] * c;
+            }
+            assert.ok(Math.abs(re[k] - expRe) < 1e-4, `fft(${n}) re[${k}] mismatch`);
+            assert.ok(Math.abs(im[k] - expIm) < 1e-4, `fft(${n}) im[${k}] mismatch`);
+        }
+    }
+    const sig = new Float32Array(16384);
+    for (let i = 0; i < 8192; i += 1) sig[i] = 0.5 * Math.sin((2 * Math.PI * 1000 * i) / 44100);
+    const cols = Spec.spectrumColumns([sig], { columns: 4, size: 4096 });
+    assert.equal(cols.columns.length, 4);
+    assert.equal(cols.loud, 2, 'counts only loud half of buffer');
+    assert.equal(cols.average.length, 2048);
+});
