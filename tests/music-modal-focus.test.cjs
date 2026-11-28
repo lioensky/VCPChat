@@ -994,3 +994,44 @@ test('Batch 84: modal-focus blocks out-of-modal single-key leaks, closing dialog
         dom.window.close();
     }
 });
+
+test('Batch 95: modal-focus short-circuits hidden controls before getClientRects/getComputedStyle during Tab wrap', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="m-hidden" class="music-modal-overlay">
+            <button id="first-vis">First</button>
+            <button id="mid-hidden" hidden>Hidden</button>
+            <button id="last-vis">Last</button>
+        </div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const first = doc.getElementById('first-vis');
+        const mid = doc.getElementById('mid-hidden');
+        const last = doc.getElementById('last-vis');
+        first.getClientRects = () => [{ width: 40, height: 20 }];
+        last.getClientRects = () => [{ width: 40, height: 20 }];
+        let hiddenRectCalls = 0;
+        let hiddenStyleCalls = 0;
+        mid.getClientRects = () => { hiddenRectCalls += 1; return [{ width: 40, height: 20 }]; };
+        const origCS = window.getComputedStyle.bind(window);
+        window.getComputedStyle = (el) => {
+            if (el === mid) hiddenStyleCalls += 1;
+            return origCS(el);
+        };
+
+        window.eval(fs.readFileSync('Musicmodules/music-modal-focus.js', 'utf8'));
+        const modal = doc.getElementById('m-hidden');
+        modal.classList.add('visible');
+        await tick(window);
+
+        last.focus();
+        last.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+        assert.equal(doc.activeElement, first, 'Tab from last visible wraps to first visible, skipping hidden button');
+        assert.equal(hiddenRectCalls, 0, 'hidden button skips getClientRects');
+        assert.equal(hiddenStyleCalls, 0, 'hidden button skips getComputedStyle');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

@@ -387,3 +387,28 @@ test('Batch 86: AmbientPixi fast-paths inline hidden style before getComputedSty
     assert.equal(fillObjs.size, 3, 'glow + bubble fill + bubble highlight reuse 3 descriptor objects across frames');
     assert.equal(strokeObjs.size, 2, 'ring stroke + bubble stroke reuse 2 descriptor objects across frames');
 });
+
+test('Batch 95: AmbientPixi isContainerHidden short-circuits on body.music-archive-on before getComputedStyle', async () => {
+    let csCalls = 0;
+    const container = { hidden: false, style: { display: '', visibility: '' }, innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const doc = {
+        getElementById: (id) => (id === 'ambient-wave-container' ? container : null),
+        body: { classList: { contains: (cls) => cls === 'music-archive-on' } }
+    };
+    const win = {
+        document: doc,
+        PIXI: { Application: class {}, Graphics: class {} },
+        devicePixelRatio: 1,
+        addEventListener() {},
+        getComputedStyle: () => { csCalls += 1; return { visibility: 'visible', display: 'block' }; }
+    };
+    const context = vm.createContext({
+        window: win, document: doc, queueMicrotask, setTimeout, clearTimeout, console
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+    const app = { isArchiveActive: false, isPlaying: false };
+    win.setupAmbientPixi(app);
+    await app.createAmbientPixi();
+    assert.equal(csCalls, 0, 'body.music-archive-on skips getComputedStyle in isContainerHidden');
+    assert.equal(app.ambientPixiController, null, 'does not create WebGL ambient controller while body.music-archive-on is set');
+});

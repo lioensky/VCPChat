@@ -2134,3 +2134,66 @@ test('Batch 84: archive-list paintRow bitmask skips unchanged writes and guards 
         f.close();
     }
 });
+
+test('Batch 95: archive-view rebuild pre-captures list viewport before HUD writes and renderRuler reuses 32 tick nodes', async () => {
+    const f = fixture({
+        n: 80,
+        playlists: [
+            { id: 'p1', name: 'A大歌单', tracks: Array.from({ length: 35 }, (_, i) => `/m/${i}`) },
+            { id: 'p2', name: 'B大歌单', tracks: Array.from({ length: 42 }, (_, i) => `/m/${i + 10}`) }
+        ]
+    });
+    try {
+        f.view.setListOpen(true);
+        // 等同帧 scrollTop 快照过期，再验证 rebuild 会在写入 HUD 前主动预读 viewport scrollTop
+        await Promise.resolve();
+        const vp = listEl(f, 'viewport');
+        const filesEl = f.w.document.querySelector('[data-ref="files"]');
+        const ops = [];
+        let st = 40;
+        Object.defineProperty(vp, 'scrollTop', {
+            configurable: true,
+            get() { ops.push('read:scrollTop'); return st; },
+            set(v) { st = v; }
+        });
+        const textDesc = Object.getOwnPropertyDescriptor(f.w.Node.prototype, 'textContent');
+        let filesWrites = 0;
+        Object.defineProperty(filesEl, 'textContent', {
+            configurable: true,
+            get() { return textDesc.get.call(this); },
+            set(v) { ops.push('write:files'); filesWrites += 1; return textDesc.set.call(this, v); }
+        });
+
+        // Rebuilding with a new track count should capture viewport scrollTop BEFORE writing HUD files text
+        f.app.playlist.push({ path: '/m/80', title: 'Song 80', artist: 'Artist 80', album: 'Album 80', duration: 180 });
+        f.view.refresh();
+        const firstRead = ops.indexOf('read:scrollTop');
+        const firstWrite = ops.indexOf('write:files');
+        assert.ok(firstRead !== -1 && firstWrite !== -1 && firstRead < firstWrite, `expected viewport read before HUD write, got ${ops.join(',')}`);
+
+        // Refreshing again with unchanged track count skips redundant refs.files.textContent write
+        filesWrites = 0;
+        f.view.refresh();
+        assert.equal(filesWrites, 0, 'unchanged track count skips redundant refs.files.textContent write');
+
+        // Switching between two lanes with >= 32 tracks reuses the 32 <s> ruler tick DOM nodes and updates aria-valuemax
+        const rulerTrack = f.w.document.querySelector('[data-ref="rulerTrack"]');
+        const cols = f.view.debug().columns;
+        const lane1 = cols.findIndex((c) => c.id === 'playlist:p1');
+        const lane2 = cols.findIndex((c) => c.id === 'playlist:p2');
+        assert.ok(lane1 >= 0 && lane2 >= 0);
+        while (f.view.debug().lane !== lane1) f.key('ArrowRight');
+        const initialTicks = [...rulerTrack.querySelectorAll('.archive-ruler-tick')];
+        assert.equal(initialTicks.length, 32, '35-track lane renders 32 ruler ticks');
+        assert.equal(rulerTrack.getAttribute('aria-valuemax'), '35');
+
+        while (f.view.debug().lane !== lane2) f.key('ArrowRight');
+        const nextTicks = [...rulerTrack.querySelectorAll('.archive-ruler-tick')];
+        assert.equal(nextTicks.length, 32, '42-track lane keeps 32 ruler ticks');
+        assert.equal(nextTicks[0], initialTicks[0], 'first ruler tick node reused in-place');
+        assert.equal(nextTicks[31], initialTicks[31], 'last ruler tick node reused in-place');
+        assert.equal(rulerTrack.getAttribute('aria-valuemax'), '42', 'aria-valuemax updated on lane change');
+    } finally {
+        f.close();
+    }
+});
