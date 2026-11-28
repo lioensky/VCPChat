@@ -1099,9 +1099,9 @@ test('Batch 102: watchTrails mirrors .mf-trail-on on host row, CSS eliminates ho
     }
 });
 
-test('Batch 106: dynamic .mtst-layer mount defers record() to rAF, fluid-select skips added .md-ql, and panel CSS applies contain:strict on .md-cmd-list', async () => {
+test('Batch 106 / 127: dynamic .mtst-layer mount defers record() to rAF, fluid-select skips added .md-ql, and panel CSS applies height-auto-safe containment on .md-cmd-list', async () => {
     const panelCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-panel.css'), 'utf8');
-    assert.match(panelCss, /\.md-cmd-list\s*\{[^}]*width:\s*100%;[^}]*contain:\s*strict;/, '.md-cmd-list uses width: 100% + contain: strict');
+    assert.match(panelCss, /\.md-cmd-list\s*\{[^}]*width:\s*100%;[^}]*contain:\s*layout paint style;/, '.md-cmd-list uses width: 100% + contain: layout paint style (no size containment under height: auto)');
 
     const dom = new JSDOM('<!doctype html><body><div class="md-body"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
     const { window } = dom;

@@ -2310,3 +2310,104 @@ test('Batch 125: archive-list skips hidden reveal viewport reads and skips place
         f.close();
     }
 });
+
+test('Batch 126 / 127: flat views pre-size before show, scope layout-holding/revealing off root, mirror .has-focus without :has(), and isolate archive-list containment', () => {
+    const listCss = read('Musicmodules/music-archive/archive-list.css');
+    assert.match(listCss, /\.archive-list-viewport\s*\{[^}]*contain:\s*layout paint style;/, 'archive-list viewport applies layout paint style containment');
+    assert.match(listCss, /\.archive-list-row\s*\{[^}]*contain:\s*layout style;/, 'archive-list rows apply layout style containment');
+
+    const wallCss = read('Musicmodules/music-archive/archive-wall.css');
+    assert.equal(wallCss.includes(':has(.is-focus)'), false, 'archive-wall.css drops :has(.is-focus) selector');
+    assert.match(wallCss, /:not\(\.has-focus\)/, 'archive-wall.css uses mirrored .has-focus class');
+    assert.match(wallCss, /\.archive-wall\.layout-holding\b/, 'layout-holding scoped to .archive-wall');
+    assert.match(wallCss, /\.archive-grid\.layout-holding\b/, 'layout-holding scoped to .archive-grid');
+    assert.match(wallCss, /\.archive-wall\.aw-table\.layout-revealing::after/, 'layout-revealing scoped to .archive-wall.aw-table');
+    assert.equal(wallCss.includes('#music-archive-view.layout-holding'), false, 'root no longer carries layout-holding');
+    assert.equal(wallCss.includes('#music-archive-view.layout-revealing'), false, 'root no longer carries layout-revealing');
+    assert.match(wallCss, /\.ag-head,\s*\.ag-cell\s*\{[^}]*contain:\s*layout style;/, 'archive-grid cells apply layout style containment');
+
+    const wallOps = [];
+    const anims = [];
+    const rafs = [];
+    const f = fixture({
+        n: 24,
+        setup: (w) => {
+            Object.defineProperty(w, 'innerWidth', { configurable: true, value: 1400 });
+            Object.defineProperty(w, 'innerHeight', { configurable: true, value: 900 });
+            w.Element.prototype.scrollTo = w.Element.prototype.scrollTo || function () {};
+            w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+            w.cancelAnimationFrame = () => {};
+            w.Element.prototype.animate = function () {
+                const a = { onfinish: null, oncancel: null, cancel() {} };
+                anims.push(a);
+                return a;
+            };
+            w.eval(read('Musicmodules/music-archive/archive-wall.js'));
+            w.eval(read('Musicmodules/music-archive/archive-grid.js'));
+            const origCreate = w.MusicArchiveWall.create;
+            w.MusicArchiveWall = {
+                ...w.MusicArchiveWall,
+                create: (opts) => {
+                    const inst = origCreate(opts);
+                    if (!opts.tilt) {
+                        const origSetRoom = inst.setRoom;
+                        const origShow = inst.show;
+                        inst.setRoom = (r) => { wallOps.push(['setRoom', Math.round(r.width)]); return origSetRoom(r); };
+                        inst.show = (on) => { wallOps.push(['show', Boolean(on)]); return origShow(on); };
+                    }
+                    return inst;
+                }
+            };
+        }
+    });
+    try {
+        const root = f.w.document.getElementById('music-archive-view');
+        const rect = (l, t, w, h) => ({ left: l, top: t, right: l + w, bottom: t + h, width: w, height: h });
+        root.getBoundingClientRect = () => rect(0, 0, 1400, 900);
+        const hud = root.querySelector('.archive-hud');
+        hud.getBoundingClientRect = () => rect(0, 0, 1400, 900);
+        root.querySelector('.archive-nav').getBoundingClientRect = () => rect(0, 0, 1400, 56);
+        root.querySelector('.archive-footer').getBoundingClientRect = () => rect(0, 840, 1400, 48);
+
+        // Switch to wall via sweep: setRoom must precede show(true), and layout-holding must stay on .archive-wall
+        wallOps.length = 0;
+        f.view.setLayout('wall');
+        assert.ok(anims.length >= 1, 'sweep creates cover animation');
+        anims.pop().onfinish();
+        const setRoomIdx = wallOps.findIndex(([op, w]) => op === 'setRoom' && w > 0);
+        const showOnIdx = wallOps.findIndex(([op, on]) => op === 'show' && on === true);
+        assert.ok(setRoomIdx >= 0 && showOnIdx > setRoomIdx, `setRoom runs before show(true): ${JSON.stringify(wallOps)}`);
+        const wallEl = root.querySelector('.archive-wall:not(.aw-table)');
+        const tableEl = root.querySelector('.archive-wall.aw-table');
+        const gridEl = root.querySelector('.archive-grid');
+        assert.equal(root.classList.contains('layout-holding'), false, 'root does not receive layout-holding');
+        assert.equal(wallEl.classList.contains('layout-holding'), true, 'target wall receives layout-holding during swap');
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(wallEl.classList.contains('layout-holding'), false, 'wall clears layout-holding on reveal');
+        assert.equal(wallEl.classList.contains('has-focus'), true, 'wall mirrors .has-focus when selected tile is rendered');
+        if (anims.length) anims.pop().onfinish();
+
+        // Switch to grid: wall clears .has-focus and grid mirrors .has-focus on .ag-scroll
+        f.view.setLayout('grid');
+        anims.pop().onfinish();
+        assert.equal(wallEl.classList.contains('has-focus'), false, 'hidden wall clears .has-focus');
+        assert.equal(gridEl.classList.contains('layout-holding'), true, 'target grid receives layout-holding');
+        assert.equal(root.classList.contains('layout-holding'), false);
+        while (rafs.length) rafs.shift()(16);
+        const scroller = gridEl.querySelector('.ag-scroll');
+        assert.equal(scroller.classList.contains('has-focus'), true, 'grid scroller mirrors .has-focus when selected cell is visible');
+        if (anims.length) anims.pop().onfinish();
+
+        // Switch to table: layout-revealing lands on table.el only, never on #music-archive-view
+        f.view.setLayout('table');
+        anims.pop().onfinish();
+        assert.equal(scroller.classList.contains('has-focus'), false, 'hidden grid clears .has-focus');
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(root.classList.contains('layout-revealing'), false, 'root does not receive layout-revealing');
+        assert.equal(tableEl.classList.contains('layout-revealing'), true, 'table receives layout-revealing during reveal sweep');
+        if (anims.length) anims.pop().onfinish();
+        assert.equal(tableEl.classList.contains('layout-revealing'), false, 'table clears layout-revealing after sweep');
+    } finally {
+        f.close();
+    }
+});

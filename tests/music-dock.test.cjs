@@ -2825,3 +2825,77 @@ test('Batch 121: fluid-kit skips input focusin & checks trail container before :
         window.close();
     }
 });
+
+test('Batch 126: dock filters non-empty archive-view and non-edge HUD class mutations, and palette flushSlide scrolls before sliding', async () => {
+    let hudRectReads = 0;
+    const rafs = [];
+    const { window, doc, dock } = setup((a, w) => {
+        Object.defineProperty(w, 'innerWidth', { configurable: true, value: 1280 });
+        a.archiveView = { mode: 'archive' };
+        w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+        w.cancelAnimationFrame = () => {};
+        const view = w.document.createElement('div');
+        view.id = 'music-archive-view';
+        const hud = w.document.createElement('div');
+        hud.className = 'archive-hud list-open';
+        Object.defineProperty(hud, 'offsetWidth', { configurable: true, value: 1280 });
+        hud.getBoundingClientRect = () => { hudRectReads += 1; return { left: 0, right: 1280, width: 1280, height: 800 }; };
+        const list = w.document.createElement('div');
+        list.className = 'archive-list';
+        Object.defineProperty(list, 'offsetLeft', { configurable: true, value: 20 });
+        Object.defineProperty(list, 'offsetWidth', { configurable: true, value: 300 });
+        hud.appendChild(list);
+        view.appendChild(hud);
+        w.document.body.appendChild(view);
+        w.document.body.classList.add('music-archive-on');
+    });
+    try {
+        while (rafs.length) rafs.shift()(16);
+        assert.ok(hudRectReads >= 1, 'initial syncShift measures archiveEdges and hooks hudObserver');
+        const view = doc.getElementById('music-archive-view');
+        const hud = view.querySelector('.archive-hud');
+
+        // Layout-switch classes on #music-archive-view and unrelated classes on .archive-hud must not re-measure archiveEdges
+        hudRectReads = 0;
+        view.classList.add('layout-wall', 'layout-flat', 'archive-post-atmos');
+        view.classList.remove('layout-wall');
+        view.classList.add('layout-table');
+        hud.classList.add('unrelated-flag');
+        await new Promise((r) => window.setTimeout(r, 0));
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(hudRectReads, 0, 'non-empty archive-view and non-edge HUD class toggles skip archiveEdges reflow');
+
+        // Relevant edge class (list-open) and is-empty still trigger re-measurement
+        hud.classList.remove('list-open');
+        await new Promise((r) => window.setTimeout(r, 0));
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(hudRectReads, 1, 'list-open edge class mutation triggers archiveEdges measurement');
+
+        hudRectReads = 0;
+        view.classList.add('is-empty');
+        await new Promise((r) => window.setTimeout(r, 0));
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(hudRectReads, 1, 'is-empty mutation on #music-archive-view triggers archiveEdges measurement');
+
+        // Palette flushSlide runs scrollIntoView BEFORE MusicFluid.slide writes drop style
+        const order = [];
+        window.MusicFluid = {
+            enabled: () => false,
+            slide: () => { order.push('slide'); }
+        };
+        dock.openPalette('a');
+        while (rafs.length) rafs.shift()(16);
+        const rows = [...doc.querySelectorAll('.md-cmd-row')];
+        assert.ok(rows.length >= 2, 'palette renders multiple rows');
+        for (const r of rows) r.scrollIntoView = () => { order.push('scroll'); };
+        order.length = 0;
+        const input = doc.querySelector('.md-cmd-in');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        while (rafs.length) rafs.shift()(16);
+        assert.deepEqual(order, ['scroll', 'slide'], 'flushSlide scrolls active row into view before MusicFluid.slide writes drop style');
+        dock.closePalette();
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
