@@ -14,6 +14,7 @@
     const HOLE_R = 34;      // 小环在播放条上挖出的凹口
     const VOL_RISE = 112;   // 音量水滴升起的高度
     const HEX_RE = /^#?([0-9a-f]{6})$/i;
+    const RING_MODES = new Set(['playhead', 'hover', 'drop']);
     const hex2 = (v) => {
         const n = Math.round(Math.max(0, Math.min(255, v)));
         return n < 16 ? `0${n.toString(16)}` : n.toString(16);
@@ -621,7 +622,9 @@
             get volumeOpen() { return s.vol.t === 1; },
             get ringDocked() { return s.ring.docked; },
             setRingMode(mode) {
-                s.ringMode = ['playhead', 'hover', 'drop'].includes(mode) ? mode : 'fixed';
+                const nextMode = RING_MODES.has(mode) ? mode : 'fixed';
+                if (s.ringMode === nextMode && s.drop.p === 1) return;
+                s.ringMode = nextMode;
                 s.drop.p = 1;
                 retargetRing(); kick();
             },

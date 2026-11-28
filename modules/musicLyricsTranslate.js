@@ -57,7 +57,7 @@ function parseTranslations(text, expected) {
 
 function completionsUrl(serverUrl) {
     const url = new URL(String(serverUrl || '').trim());
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('VCP 服务器地址必须是 http 或 https');
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('VCP 服务器地址必须是 http 或 https');
     url.pathname = url.pathname.replace(CHATVCP_RE, '/chat/completions');
     return url.href;
 }

@@ -5,7 +5,8 @@
 // 现在给每首打分，取最高分；同分取曲库里靠前的。没有 electron 依赖，测试直接用。
 
 const AUDIO_EXT = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff|wv)$/i;
-const ASCII_ONLY = /^[\x00-\x7f]*$/;
+// ASCII、基础平假名与 CJK 统一汉字在 NFKC 下恒等，跳过常规曲名的 ICU 规范化开销
+const NEEDS_NFKC_RE = /[^\x00-\x7f\u4e00-\u9fff\u3041-\u3096]/;
 const SPACE_UNDER_RE = /[\s_]+/g;
 const PATH_SEP_RE = /[\\/]/;
 const SPLIT_QUERY_RE = /\s+[-–—]\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i;
@@ -13,7 +14,7 @@ const SPLIT_QUERY_RE = /\s+[-–—]\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i;
 function norm(value) {
     const raw = String(value ?? '');
     if (!raw) return '';
-    return (ASCII_ONLY.test(raw) ? raw : raw.normalize('NFKC'))
+    return (NEEDS_NFKC_RE.test(raw) ? raw.normalize('NFKC') : raw)
         .toLowerCase()
         .replace(AUDIO_EXT, '')
         .replace(SPACE_UNDER_RE, ' ')

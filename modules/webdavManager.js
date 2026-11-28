@@ -11,6 +11,26 @@ let servers = [];
 let serverIdCounter = 1;
 let serversLoaded = false;
 
+const WEBDAV_ID_RE = /^webdav_(\d+)$/;
+const TRAIL_SLASH_RE = /\/$/;
+const TRAIL_SLASHES_RE = /\/+$/;
+const EXT_STRIP_RE = /\.[^.]+$/;
+const HTTP_SCHEME_RE = /^https?:\/\//i;
+
+function findMatchingServer(fileUrl) {
+    let best = null;
+    let bestLen = -1;
+    for (let i = 0; i < servers.length; i += 1) {
+        const s = servers[i];
+        const base = String(s.url || '').replace(TRAIL_SLASH_RE, '');
+        if (base && (fileUrl === base || fileUrl.startsWith(base + '/')) && s.url.length > bestLen) {
+            best = s;
+            bestLen = s.url.length;
+        }
+    }
+    return best;
+}
+
 // 配置文件路径
 const getConfigPath = () => {
     const appPath = process.env.VCP_DATA_PATH || path.join(require('os').homedir(), '.vcpchat');
@@ -20,7 +40,7 @@ const getConfigPath = () => {
 function nextCounterFor(list, savedNextId) {
     let next = Math.max(1, Number(savedNextId) || 1);
     for (const s of list || []) {
-        const m = /^webdav_(\d+)$/.exec(String(s?.id || ''));
+        const m = WEBDAV_ID_RE.exec(String(s?.id || ''));
         if (m) {
             const n = Number(m[1]) + 1;
             if (n > next) next = n;
@@ -152,7 +172,7 @@ function withEngineCredentials(task) {
     return run;
 }
 async function ensureEngineCredentials(baseUrl, username, password) {
-    const base = String(baseUrl || '').replace(/\/$/, '');
+    const base = String(baseUrl || '').replace(TRAIL_SLASH_RE, '');
     const user = username || null;
     const pass = password || null;
     const key = `${audioEngineEndpoint.getBaseUrl()}\0${base}\0${user ?? ''}\0${pass ?? ''}`;
@@ -172,7 +192,7 @@ function addServer(config) {
     const server = {
         id,
         name: config.name || 'WebDAV Server',
-        url: config.url.trim().replace(/\/$/, ''),
+        url: config.url.trim().replace(TRAIL_SLASH_RE, ''),
         username: config.username || '',
         password: config.password || ''
     };
@@ -305,7 +325,7 @@ async function scanAudioFiles(config, progressCallback) {
         progressCallback(tracks.length);
     };
     async function scanDir(dirPath, isRoot = false) {
-        const dirKey = String(dirPath || '/').replace(/\/+$/, '') || '/';
+        const dirKey = String(dirPath || '/').replace(TRAIL_SLASHES_RE, '') || '/';
         if (visitedDirs.has(dirKey)) return;
         visitedDirs.add(dirKey);
         
@@ -329,7 +349,7 @@ async function scanAudioFiles(config, progressCallback) {
                             name: entryName,
                             path: entry.url,
                             href: entry.href,
-                            title: entryName.replace(/\.[^.]+$/, ''),
+                            title: entryName.replace(EXT_STRIP_RE, ''),
                             artist: '',
                             album: '',
                             isRemote: true
@@ -360,7 +380,7 @@ function getFileUrl(config) {
     const server = getServerById(config.serverId);
     if (!server) return null;
     
-    const baseUrl = server.url.replace(/\/$/, '');
+    const baseUrl = server.url.replace(TRAIL_SLASH_RE, '');
     const remotePath = config.remotePath || '';
     return `${baseUrl}${remotePath.startsWith('/') ? remotePath : '/' + remotePath}`;
 }
@@ -398,16 +418,11 @@ async function configureAndLoad(config) {
         const fileUrl = config.url || '';
         
         // 尝试从已保存的服务器列表中找到路径边界最长匹配的服务器（与 credentialsForTrack 一致）
-        const matchingServer = servers
-            .filter(s => {
-                const serverUrl = String(s.url || '').replace(/\/$/, '');
-                return serverUrl && (fileUrl.startsWith(serverUrl + '/') || fileUrl === serverUrl);
-            })
-            .sort((a, b) => b.url.length - a.url.length)[0];
-        
+        const matchingServer = findMatchingServer(fileUrl);
+
         if (matchingServer) {
             // 使用服务器配置的完整 URL（包含路径）
-            baseUrl = matchingServer.url.replace(/\/$/, '');
+            baseUrl = matchingServer.url.replace(TRAIL_SLASH_RE, '');
         } else {
             // 回退：从文件 URL 提取目录路径作为 base_url
             // 例如：https://nas.local:5244/dav/music/song.flac -> https://nas.local:5244/dav
@@ -440,10 +455,8 @@ function credentialsForTrack({ serverId, path: trackPath } = {}) {
     const byId = serverId ? getServerCredentials(serverId) : null;
     if (byId) return byId;
     const url = String(trackPath || '');
-    if (!/^https?:\/\//i.test(url)) return null;
-    const server = servers
-        .filter(s => { const base = String(s.url || '').replace(/\/$/, ''); return base && (url === base || url.startsWith(base + '/')); })
-        .sort((a, b) => b.url.length - a.url.length)[0];
+    if (!HTTP_SCHEME_RE.test(url)) return null;
+    const server = findMatchingServer(url);
     return server ? getServerCredentials(server.id) : null;
 }
 

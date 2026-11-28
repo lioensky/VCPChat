@@ -404,6 +404,20 @@
         const activeTrails = new Set();
         const activeMenuTrails = new Set();
         const activeBtnByDrop = new WeakMap();
+        const dropByRow = new WeakMap();
+        const trailForRow = (row) => {
+            for (let i = 0; i < TRAILS.length; i += 1) {
+                if (row.matches(TRAILS[i].row)) return TRAILS[i];
+            }
+            return null;
+        };
+        const getExistingDrop = (row) => {
+            let drop = dropByRow.get(row);
+            if (drop && drop.parentElement === row) return drop;
+            drop = row.querySelector(':scope > .mf-trail');
+            if (drop) dropByRow.set(row, drop);
+            return drop;
+        };
         const setTrailOn = (drop, on, isMenu) => {
             if (!drop) return;
             if (on) {
@@ -418,12 +432,13 @@
             }
         };
         const dropOf = (row) => {
-            let drop = row.querySelector(':scope > .mf-trail');
+            let drop = getExistingDrop(row);
             if (!drop) {
                 drop = doc.createElement('i');
                 drop.className = 'mf-trail';
                 drop.setAttribute('aria-hidden', 'true');
                 row.append(drop);
+                dropByRow.set(row, drop);
             }
             return drop;
         };
@@ -438,29 +453,33 @@
             };
         };
         const follow = (target) => {
-            if (!target.closest(ALL_TRAIL_ROWS)) return;
-            for (const t of TRAILS) {
-                const btn = target.closest(t.item);
-                const row = btn?.closest(t.row);
-                if (!row || btn.disabled) continue;
-                let drop = row.querySelector(':scope > .mf-trail');
-                const fresh = !drop || !drop.classList.contains('mf-on');
-                // 指针在同一个按钮的内部子元素间移动时跳过重复布局测量与补间
-                if (!fresh && activeBtnByDrop.get(drop) === btn) return;
-                // 先读几何再按需挂载装饰层，避免首次悬停先改 DOM 再测布局触发强制重排
-                const to = placeIn(row, btn, t);
-                if (!drop) drop = dropOf(row);
-                activeBtnByDrop.set(drop, btn);
-                // 两列的列表（axis: 'xy'）横竖各流各的，斜着过去时像一滴被拉长再收拢
-                if (fresh) { slides.delete(t.key); slides.delete(`${t.key}:x`); slides.delete(`${t.key}:y`); }
-                if (t.axis === 'xy') {
-                    slide(drop, to, { key: `${t.key}:x`, axis: 'x', lead: 160, trail: 320 });
-                    slide(drop, to, { key: `${t.key}:y`, axis: 'y', lead: 160, trail: 320 });
-                } else {
-                    slide(drop, to, { key: t.key, axis: t.axis || 'x', lead: 160, trail: 320 });
+            let row = target.closest(ALL_TRAIL_ROWS);
+            while (row) {
+                const t = trailForRow(row);
+                if (t) {
+                    const btn = target.closest(t.item);
+                    if (btn && !btn.disabled && btn.closest(t.row) === row) {
+                        let drop = getExistingDrop(row);
+                        const fresh = !drop || !drop.classList.contains('mf-on');
+                        // 指针在同一个按钮的内部子元素间移动时跳过重复布局测量与补间
+                        if (!fresh && activeBtnByDrop.get(drop) === btn) return;
+                        // 先读几何再按需挂载装饰层，避免首次悬停先改 DOM 再测布局触发强制重排
+                        const to = placeIn(row, btn, t);
+                        if (!drop) drop = dropOf(row);
+                        activeBtnByDrop.set(drop, btn);
+                        // 两列的列表（axis: 'xy'）横竖各流各的，斜着过去时像一滴被拉长再收拢
+                        if (fresh) { slides.delete(t.key); slides.delete(`${t.key}:x`); slides.delete(`${t.key}:y`); }
+                        if (t.axis === 'xy') {
+                            slide(drop, to, { key: `${t.key}:x`, axis: 'x', lead: 160, trail: 320 });
+                            slide(drop, to, { key: `${t.key}:y`, axis: 'y', lead: 160, trail: 320 });
+                        } else {
+                            slide(drop, to, { key: t.key, axis: t.axis || 'x', lead: 160, trail: 320 });
+                        }
+                        setTrailOn(drop, true, Boolean(t.menu));
+                        return;
+                    }
                 }
-                setTrailOn(drop, true, Boolean(t.menu));
-                return;
+                row = row.parentElement?.closest(ALL_TRAIL_ROWS) || null;
             }
         };
         const onPointerOver = (event) => {
@@ -479,16 +498,13 @@
         const onFocusOut = (event) => {
             if (!activeTrails.size) return;
             const target = event.target;
-            if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
-            for (const t of TRAILS) {
-                const row = target.closest(t.row);
-                if (!row) continue;
-                const next = event.relatedTarget;
-                if (next instanceof global.Node && row.contains(next)) return;
-                if (row.matches(':hover')) return;
-                setTrailOn(row.querySelector(':scope > .mf-trail'), false, false);
-                return;
-            }
+            if (!(target instanceof global.Element)) return;
+            const row = target.closest(ALL_TRAIL_ROWS);
+            if (!row) return;
+            const next = event.relatedTarget;
+            if (next instanceof global.Node && row.contains(next)) return;
+            if (row.matches(':hover')) return;
+            setTrailOn(getExistingDrop(row), false, false);
         };
         doc.addEventListener('focusout', onFocusOut, true);
         // 菜单每次重新打开（右键、点排序按钮……）：上次留下的那一汪先收掉，免得一打开就停在旧的位置
@@ -506,16 +522,14 @@
         const onPointerOut = (event) => {
             if (!activeTrails.size) return;
             const target = event.target;
-            if (!(target instanceof global.Element) || !target.closest(ALL_TRAIL_ROWS)) return;
-            for (const t of TRAILS) {
-                const row = target.closest(t.row);
-                if (!row) continue;
-                const next = event.relatedTarget;
-                const keep = t.solo ? target.closest(t.item) : row;
-                if (keep && next instanceof global.Node && keep.contains(next)) return;
-                setTrailOn(row.querySelector(':scope > .mf-trail'), false, false);
-                return;
-            }
+            if (!(target instanceof global.Element)) return;
+            const row = target.closest(ALL_TRAIL_ROWS);
+            if (!row) return;
+            const t = trailForRow(row);
+            const next = event.relatedTarget;
+            const keep = t && t.solo ? target.closest(t.item) : row;
+            if (keep && next instanceof global.Node && keep.contains(next)) return;
+            setTrailOn(getExistingDrop(row), false, false);
         };
         doc.addEventListener('pointerout', onPointerOut, true);
         addCleanup(() => {

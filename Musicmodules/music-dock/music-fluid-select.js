@@ -24,7 +24,16 @@
 
     const CHEVRON = '<svg class="mfs-chev" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const CHECK = '<svg class="mfs-check" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" focusable="false"><path d="M3.2 8.6l3.1 3 6.5-7.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    let chevronTpl = null;
     let checkTpl = null;
+    const cloneChevron = () => {
+        if (!chevronTpl) {
+            const box = doc.createElement('span');
+            box.innerHTML = CHEVRON;
+            chevronTpl = box.firstElementChild;
+        }
+        return chevronTpl ? chevronTpl.cloneNode(true) : null;
+    };
     const cloneCheck = () => {
         if (!checkTpl) {
             const box = doc.createElement('span');
@@ -76,8 +85,9 @@
         if (label) trigger.setAttribute('aria-label', label);
         const text = doc.createElement('span');
         text.className = 'mfs-text';
-        trigger.append(text);
-        trigger.insertAdjacentHTML('beforeend', CHEVRON);
+        const chev = cloneChevron();
+        if (chev) trigger.append(text, chev);
+        else trigger.append(text);
 
         const sync = () => {
             const now = labelOf(select);
@@ -141,20 +151,12 @@
         }
     }
 
-    function place(menu, trigger) {
+    function measureTrigger(trigger) {
         const r = trigger.getBoundingClientRect();
         const vw = global.innerWidth, vh = global.innerHeight, m = 10;
         const below = vh - r.bottom - m, above = r.top - m;
         const maxH = Math.max(160, Math.min(360, Math.max(below, above) - 6));
-        menu.style.minWidth = `${Math.max(r.width, 120)}px`;
-        menu.style.maxHeight = `${maxH}px`;
-        const w = menu.offsetWidth, h = Math.min(menu.offsetHeight, maxH);
-        let left = Math.min(Math.max(m, r.right - w), vw - w - m);
-        if (r.left + w <= vw - m && r.left >= m) left = r.left;
-        let top = below >= h || below >= above ? r.bottom + 6 : r.top - 6 - h;
-        top = Math.max(m, Math.min(top, vh - h - m));
-        menu.style.left = `${Math.round(left)}px`;
-        menu.style.top = `${Math.round(top)}px`;
+        return { r, vw, vh, m, below, above, maxH };
     }
 
     function open(select) {
@@ -162,16 +164,22 @@
         const entry = DRESSED.get(select);
         if (!entry || select.disabled) return;
         const { trigger } = entry;
+        // 先读按钮几何再建并挂载菜单，避免挂载后先写 minWidth/maxHeight 再量 offsetWidth 触发两次同步重排
+        const geom = measureTrigger(trigger);
         const menu = doc.createElement('div');
         // custom-select-dropdown：底栏抽屉认这个类，点在里面不算「点到抽屉外面」
         menu.className = 'mfs-menu mf-glass custom-select-dropdown';
         menu.id = `mfs-menu-${++uid}`;
         menu.setAttribute('role', 'listbox');
+        menu.style.minWidth = `${Math.max(geom.r.width, 120)}px`;
+        menu.style.maxHeight = `${geom.maxH}px`;
         if (trigger.getAttribute('aria-label')) menu.setAttribute('aria-label', trigger.getAttribute('aria-label'));
         const items = [];
         const frag = doc.createDocumentFragment();
         let group = null;
-        Array.from(select.options).forEach((option, index) => {
+        const opts = select.options;
+        for (let index = 0; index < opts.length; index += 1) {
+            const option = opts[index];
             const skipRender = option.hidden && option.disabled && !option.selected;
             const ogEl = option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement : null;
             const og = (!skipRender && ogEl && !ogEl.hidden) ? ogEl.label : '';
@@ -197,9 +205,9 @@
             if (chk) item.append(chk);
             items.push(item);
             // 只用来显示当前状态的项（隐藏且不能选，比如 EQ 的「自定义」）：不是当前值时不进菜单
-            if (skipRender) return;
+            if (skipRender) continue;
             frag.append(item);
-        });
+        }
         menu.addEventListener('click', (event) => {
             const item = event.target?.closest?.('.mfs-item');
             if (!item || !menu.contains(item)) return;
@@ -219,12 +227,25 @@
         trigger.classList.add('mfs-open');
         openState = { select, menu, trigger, items };
         paintSelected();
-        place(menu, trigger);
         const selItem = items[select.selectedIndex];
-        const current = (selItem && selItem.isConnected ? selItem : null)
-            || items.find((i) => i.isConnected && i.getAttribute('aria-disabled') !== 'true');
+        let current = (selItem && selItem.isConnected) ? selItem : null;
+        if (!current) {
+            for (let i = 0; i < items.length; i += 1) {
+                if (items[i].isConnected && items[i].getAttribute('aria-disabled') !== 'true') { current = items[i]; break; }
+            }
+        }
+        // 单次布局读完菜单宽高与当前项偏移，再统一写 left/top/scrollTop
+        const w = menu.offsetWidth;
+        const h = Math.min(menu.offsetHeight, geom.maxH);
+        const scrollTop = current ? Math.max(0, current.offsetTop - menu.clientHeight / 2 + current.offsetHeight / 2) : 0;
+        let left = Math.min(Math.max(geom.m, geom.r.right - w), geom.vw - w - geom.m);
+        if (geom.r.left + w <= geom.vw - geom.m && geom.r.left >= geom.m) left = geom.r.left;
+        let top = geom.below >= h || geom.below >= geom.above ? geom.r.bottom + 6 : geom.r.top - 6 - h;
+        top = Math.max(geom.m, Math.min(top, geom.vh - h - geom.m));
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
         if (current) {
-            menu.scrollTop = Math.max(0, current.offsetTop - menu.clientHeight / 2 + current.offsetHeight / 2);
+            menu.scrollTop = scrollTop;
             current.focus({ preventScroll: true });
         }
         global.MusicFluid?.bud?.(menu, trigger, { duration: 360 });
@@ -260,7 +281,11 @@
     const onDocKeyDown = (event) => {
         if (!openState) return;
         const { items, menu } = openState;
-        const live = items.filter((i) => i.isConnected && i.getAttribute('aria-disabled') !== 'true');
+        const live = [];
+        for (let i = 0; i < items.length; i += 1) {
+            const it = items[i];
+            if (it.isConnected && it.getAttribute('aria-disabled') !== 'true') live.push(it);
+        }
         const at = live.indexOf(doc.activeElement);
         const go = (i) => { const t = live[Math.max(0, Math.min(live.length - 1, i))]; t?.focus({ preventScroll: true }); t?.scrollIntoView({ block: 'nearest' }); };
         switch (event.key) {
@@ -379,6 +404,8 @@
         bodyObs = null;
         for (const obs of SELECT_OBSERVERS.values()) obs.disconnect();
         SELECT_OBSERVERS.clear();
+        chevronTpl = null;
+        checkTpl = null;
         doc.removeEventListener('keydown', onDocKeyDown, true);
         doc.removeEventListener('pointerdown', onDocPointerDown, true);
         doc.removeEventListener('click', onDocClick);

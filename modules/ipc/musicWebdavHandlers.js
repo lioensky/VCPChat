@@ -2,6 +2,8 @@
 // WebDAV 的 IPC：服务器增删查、测试连接、浏览目录、扫描音频、取文件地址和凭据、加载远程曲目。
 // 由 musicHandlers.js 在注册 IPC 时调用；从那里搬出来，行为不变。
 
+const URL_QUERY_HASH_RE = /[?#]/;
+
 function safeDecode(text) {
     try { return decodeURIComponent(text); } catch (_) { return text; }
 }
@@ -101,7 +103,7 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
                 req.password = serverCreds.password;
             }
         }
-        const rawName = String(req.url).split(/[?#]/)[0].split('/').pop() || '';
+        const rawName = String(req.url).split(URL_QUERY_HASH_RE)[0].split('/').pop() || '';
         setCurrentSongInfo({
             title: req.trackMeta?.title || safeDecode(rawName),
             artist: req.trackMeta?.artist || '未知艺术家',

@@ -62,7 +62,8 @@
             lastQuality: '',
             lastTrack: null,
             lastFlatKey: '',
-            lastColorKey: '',
+            lastColorRgb: '',
+            lastAlphaByte: -1,
             glowStroke: '',
             glowShadow: '',
             mainStroke: '',
@@ -343,9 +344,14 @@
             edgeCanvasState.lastQuality = '';
             edgeCanvasState.lastTrack = null;
             edgeCanvasState.lastFlatKey = '';
-            edgeCanvasState.lastColorKey = '';
+            edgeCanvasState.lastColorRgb = '';
+            edgeCanvasState.lastAlphaByte = -1;
             edgeCanvasState.blank = true;
             specPrefix = new Float64Array(0);
+            edgeCanvasState.top = new Float32Array(0);
+            edgeCanvasState.right = new Float32Array(0);
+            edgeCanvasState.bottom = new Float32Array(0);
+            edgeCanvasState.left = new Float32Array(0);
             for (let i = 0; i < EDGE_SIDES.length; i += 1) {
                 const strip = edgeStrips[EDGE_SIDES[i]];
                 if (!strip) continue;
@@ -460,7 +466,8 @@
             const spectrum = frame.audio.spectrum;
             const idleScale = frame.isPlaying ? 1 : 0.12;
             const alpha = 0.28 + (Number(frame.audio.power) || 0) * 0.62;
-            const alphaKey = alpha.toFixed(3);
+            // 8-bit alpha quantization matches 8bpc canvas raster precision and avoids per-frame rgba string churn
+            const alphaByte = Math.max(0, Math.min(255, Math.round(alpha * 255)));
             const lightGlow = quality === 'energy-saving';
             // If peak bin <= 0.025, every windowed average is <= 0.025 and maps to zero displacement in POW_LUT.
             const specMax = buildSpectrumPrefix(spectrum);
@@ -468,7 +475,7 @@
             let flatBase = '';
 
             if (!activeSpectrum && !edgeCanvasState.blank) {
-                flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
+                flatBase = `${rgb}|${alphaByte}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
                 if (flatBase === edgeCanvasState.lastFlatKey) {
                     edgeCanvasState.drawnAt = now;
                     return;
@@ -497,7 +504,7 @@
 
             const hasMotion = mTop || mRight || mBottom || mLeft;
             if (!mTop || !mRight || !mBottom || !mLeft) {
-                if (!flatBase) flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
+                if (!flatBase) flatBase = `${rgb}|${alphaByte}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
             }
             const flatKey = hasMotion ? '' : flatBase;
             edgeCanvasState.drawnAt = now;
@@ -508,14 +515,15 @@
             edgeCanvasState.blank = false;
             edgeCanvasState.lastFlatKey = flatKey;
 
-            const colorKey = `${rgb}|${alphaKey}`;
-            if (colorKey !== edgeCanvasState.lastColorKey) {
-                edgeCanvasState.lastColorKey = colorKey;
-                const glowAlpha = alpha * 0.5;
+            if (rgb !== edgeCanvasState.lastColorRgb || alphaByte !== edgeCanvasState.lastAlphaByte) {
+                edgeCanvasState.lastColorRgb = rgb;
+                edgeCanvasState.lastAlphaByte = alphaByte;
+                const qAlpha = alphaByte / 255;
+                const glowAlpha = qAlpha * 0.5;
                 edgeCanvasState.glowStroke = `rgba(${rgb}, ${glowAlpha.toFixed(3)})`;
                 edgeCanvasState.glowShadow = `rgba(${rgb}, ${Math.min(0.9, glowAlpha * 1.45).toFixed(3)})`;
-                edgeCanvasState.mainStroke = `rgba(${rgb}, ${alphaKey})`;
-                edgeCanvasState.mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
+                edgeCanvasState.mainStroke = `rgba(${rgb}, ${qAlpha.toFixed(3)})`;
+                edgeCanvasState.mainShadow = `rgba(${rgb}, ${Math.min(0.9, qAlpha * 1.45).toFixed(3)})`;
             }
             const fb = (!mTop || !mRight || !mBottom || !mLeft) ? flatBase : '';
             drawSide(edgeStrips.top, top, mTop, wasBlank, fb, lightGlow);
