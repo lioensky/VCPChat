@@ -21,6 +21,7 @@ const DEFAULTS = {
     batchSize: 64,
     batchIntervalMs: 250,
     progressIntervalMs: 100,
+    dirConcurrency: 16,
     statConcurrency: 32,
     perWorkerInFlight: 2
 };
@@ -30,29 +31,64 @@ function defaultWorkerCount() {
     return Math.max(1, Math.min(4, cores - 1));
 }
 
-async function collectAudioFiles(rootDir, { signal, unreadable } = {}) {
-    const found = [];
-    const pending = [rootDir];
-    while (pending.length) {
-        if (signal?.aborted) break;
-        const dir = pending.pop();
+async function collectAudioFiles(rootDir, { signal, unreadable, concurrency = DEFAULTS.dirConcurrency } = {}) {
+    if (signal?.aborted) return [];
+    const limit = Math.max(1, Math.floor(Number(concurrency) || DEFAULTS.dirConcurrency));
+    let active = 0;
+    const queue = [];
+    const runLimited = (fn) => new Promise((resolve, reject) => {
+        const exec = () => {
+            if (signal?.aborted) { resolve(null); return; }
+            active += 1;
+            Promise.resolve().then(fn).then(resolve, reject).finally(() => {
+                active -= 1;
+                while (queue.length && active < limit) queue.shift()();
+            });
+        };
+        if (active < limit) exec();
+        else queue.push(exec);
+    });
+
+    const walk = async (dir) => {
+        if (signal?.aborted) return null;
         let entries;
         try {
-            entries = await fsp.readdir(dir, { withFileTypes: true });
+            entries = await runLimited(() => fsp.readdir(dir, { withFileTypes: true }));
         } catch (error) {
             console.error(`[MusicScan] Cannot read ${dir}: ${error.message}`);
-            if (unreadable) unreadable.push(dir);
-            continue;
+            return { unreadableDir: dir, files: null, children: null };
         }
-        // 同一目录内按名字排，目录按深度优先接在后面：结果顺序只取决于磁盘内容，不取决于谁先解析完。
+        if (!entries || signal?.aborted) return null;
+        // 同一目录内按名字排，扁平化时按深度优先拼回：结果顺序只取决于磁盘内容，不取决于谁先读完。
         entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        const files = [];
         const subdirs = [];
         for (let i = 0; i < entries.length; i += 1) {
             const entry = entries[i];
             if (entry.isDirectory()) subdirs.push(path.join(dir, entry.name));
-            else if (SUPPORTED_FORMATS.has(path.extname(entry.name).toLowerCase())) found.push(path.join(dir, entry.name));
+            else if (SUPPORTED_FORMATS.has(path.extname(entry.name).toLowerCase())) files.push(path.join(dir, entry.name));
         }
-        for (let i = subdirs.length - 1; i >= 0; i--) pending.push(subdirs[i]);
+        const children = subdirs.length ? await Promise.all(subdirs.map(walk)) : null;
+        return { unreadableDir: null, files, children };
+    };
+
+    const rootNode = await walk(rootDir);
+    const found = [];
+    if (!rootNode) return found;
+    const stack = [rootNode];
+    while (stack.length) {
+        const node = stack.pop();
+        if (!node) continue;
+        if (node.unreadableDir) {
+            if (unreadable) unreadable.push(node.unreadableDir);
+            continue;
+        }
+        const files = node.files;
+        for (let i = 0; i < files.length; i += 1) found.push(files[i]);
+        const children = node.children;
+        if (children) {
+            for (let i = children.length - 1; i >= 0; i -= 1) stack.push(children[i]);
+        }
     }
     return found;
 }
@@ -183,7 +219,7 @@ async function scanFolder(options) {
             }
         }
     } else {
-        files = await collectAudioFiles(folderPath, { signal, unreadable });
+        files = await collectAudioFiles(folderPath, { signal, unreadable, concurrency: tune.dirConcurrency });
     }
     const total = files.length;
     onStart?.({ total, folderPath });
