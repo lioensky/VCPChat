@@ -86,3 +86,51 @@ test('the [offset:] tag shifts every timestamp, positive means earlier', () => {
     const later = app.parseLrc('[offset:-1000]\n[00:10.00]一');
     assert.equal(later[0].time, 11);
 });
+
+test('Batch 111: normalizeStructuredLyrics filters // placeholders in single pass and segmented bilingual parseLrc matches via monotonic window', () => {
+    const app = setup();
+    app.lyricSpeedFactor = 2;
+    app.lyricOffset = 0.5;
+    const norm = app.normalizeStructuredLyrics({
+        isWordByWord: true,
+        lines: [
+            { fullText: '  //  ', startTime: 1, endTime: 2 },
+            {
+                fullText: 'AC/DC',
+                startTime: 2,
+                endTime: 4,
+                translation: '保留斜杠',
+                renderHints: { renderEndTime: 4.5, mode: 'w' },
+                words: [{ text: 'AC', startTime: 2, endTime: 3, syllables: [{ text: 'A', startTime: 2, endTime: 2.5 }] }]
+            }
+        ]
+    });
+    assert.equal(norm.length, 1, 'standalone // placeholder removed while AC/DC preserved');
+    assert.equal(norm[0].time, 4.5);
+    assert.equal(norm[0].endTime, 8.5);
+    assert.equal(norm[0].renderHints.rawDuration, 4);
+    assert.equal(norm[0].renderHints.renderEndTime, 9.5);
+    assert.equal(norm[0].words[0].startTime, 4.5);
+    assert.equal(norm[0].words[0].syllables[0].endTime, 5.5);
+
+    // Segmented bilingual LRC: second half resets timestamps and pairs within < 1.2s without reusing translations
+    app.lyricSpeedFactor = 1;
+    app.lyricOffset = 0;
+    const segLrc = [
+        '[00:10.00]Line One',
+        '[00:20.00]Line Two',
+        '[00:30.00]Line Three',
+        '[00:40.00]Line Four',
+        '[00:10.40]第一句翻译',
+        '[00:19.20]第二句翻译',
+        '[00:31.20]超出1.2秒不配',
+        '[00:40.10]第四句翻译'
+    ].join('\n');
+    const paired = app.parseLrc(segLrc);
+    assert.deepEqual(Array.from(paired, (l) => [l.original, l.translation]), [
+        ['Line One', '第一句翻译'],
+        ['Line Two', '第二句翻译'],
+        ['Line Three', ''],
+        ['Line Four', '第四句翻译']
+    ]);
+});

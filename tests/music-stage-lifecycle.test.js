@@ -1083,7 +1083,7 @@ test('music-stage-skin avoids full-window edge-spectrum offscreen pass and trims
     assert.ok(edgeBlock, 'edge-spectrum container rule exists');
     assert.match(edgeBlock[1], /filter:\s*none;/, 'no full-window grayscale filter on container');
     assert.match(edgeBlock[1], /opacity:\s*1;/, 'no full-window group opacity on container');
-    assert.match(css, /\.music-stage\s+\.music-stage-edge-spectrum-canvas\s*\{[^}]*filter:\s*grayscale\(1\)/, 'grayscale applied to narrow strip canvases');
+    assert.match(css, /\.music-stage\s+\.music-stage-edge-spectrum-canvas\s*\{[^}]*--stage-edge-mono:\s*1;[^}]*filter:\s*none;/, 'skin switches edge canvases to JS mono without per-frame CSS grayscale filter');
     assert.match(css, /body\.music-fl-low\s+\.music-stage-id3\s*\{[^}]*backdrop-filter:\s*none/, 'energy-saving disables backdrop-filter on stage track card');
 
     const dom = createStageDom();
@@ -2824,6 +2824,72 @@ test('Batch 108: stage-edge strips cloned canvas id & caches default accent, and
         assert.equal(snap2.transitionCount, 2);
         star.destroy();
         assert.equal(star.getDebugSnapshot().children, 0, 'destroy releases all active and retiring Starborn children');
+    } finally {
+        dom.window.close();
+    }
+});
+
+test('Batch 111: stage edge renders Rec.709 mono luma when --stage-edge-mono: 1 is set and preserves corner endpoints across fixed-axis cache frames', () => {
+    const dom = createStageDom();
+    try {
+        const strokes = [];
+        const pointsLog = [];
+        dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+            if (type !== '2d') return null;
+            let strokeStyle = '';
+            return new Proxy({
+                get strokeStyle() { return strokeStyle; },
+                set strokeStyle(v) { strokeStyle = v; },
+                moveTo(x, y) { pointsLog.push(['M', x, y]); },
+                lineTo(x, y) { pointsLog.push(['L', x, y]); },
+                stroke() { strokes.push(strokeStyle); }
+            }, {
+                get(target, prop) { return prop in target ? target[prop] : () => {}; },
+                set(target, prop, value) { target[prop] = value; return true; }
+            });
+        };
+        const origCS = dom.window.getComputedStyle.bind(dom.window);
+        dom.window.getComputedStyle = (el) => {
+            const st = origCS(el);
+            return new Proxy(st, {
+                get(target, prop) {
+                    if (prop === 'getPropertyValue') {
+                        return (name) => (name === '--stage-edge-mono' ? '1' : target.getPropertyValue(name));
+                    }
+                    const v = target[prop];
+                    return typeof v === 'function' ? v.bind(target) : v;
+                }
+            });
+        };
+        for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const root = dom.window.document.getElementById('music-stage');
+        Object.defineProperty(root, 'clientWidth', { value: 1200, configurable: true });
+        Object.defineProperty(root, 'clientHeight', { value: 800, configurable: true });
+        const scope = new dom.window.MusicStageRuntime.DisposableScope();
+        const edge = dom.window.MusicStageEdge.create({
+            app: { stagePalette: { accentRgb: { r: 200, g: 100, b: 50 } } },
+            root,
+            elements: {
+                edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'),
+                edgeCanvas: root.querySelector('.music-stage-edge-spectrum-canvas')
+            },
+            state: { config: { edgeSpectrum: true, quality: 'standard' } },
+            scope,
+            clamp: dom.window.MusicStageRuntime.clamp
+        });
+        const spec = new Float32Array(64).fill(0.5);
+        edge.draw({ now: 100, isPlaying: true, track: { path: '/a.flac' }, viewport: { dpr: 1 }, audio: { spectrum: spec, power: 0.6 } });
+        // Rec.709: round(0.2126*200 + 0.7152*100 + 0.0722*50) = round(117.65) = 118
+        assert.ok(strokes.some((s) => s.startsWith('rgba(118, 118, 118,')), `mono mode draws Rec.709 luma rgba(118,118,118,...), got: ${strokes[0]}`);
+        // Second active frame reuses cached fixed-axis coordinates without losing endpoints
+        const firstFrameMoves = pointsLog.slice(0, 2);
+        pointsLog.length = 0;
+        edge.draw({ now: 160, isPlaying: true, track: { path: '/a.flac' }, viewport: { dpr: 1 }, audio: { spectrum: spec, power: 0.7 } });
+        assert.deepEqual(pointsLog.slice(0, 2), firstFrameMoves, 'second active frame preserves exact top-edge corner coordinates via cached fixed axis');
+        edge.release();
+        scope.destroy();
     } finally {
         dom.window.close();
     }

@@ -119,6 +119,11 @@ test('bus validates bounds, throttles playing frames, delivers stop immediately 
     off();
     bus.publish({ playing: false }, 1012);
     assert.equal(received.length, 2);
+    assert.equal(bus.hasSubscribers(), false, 'hasSubscribers returns false after last unsubscribe');
+    const subCheck = bus.subscribe(() => {});
+    assert.equal(bus.hasSubscribers(), true, 'hasSubscribers returns true with active subscriber');
+    subCheck();
+    assert.equal(bus.hasSubscribers(), false);
     const noopOff = bus.subscribe(null);
     assert.equal(typeof noopOff, 'function');
     assert.equal(bus.publish({ playing: true, data: [0.4] }, 2000), true);

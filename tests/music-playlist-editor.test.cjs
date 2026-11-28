@@ -272,3 +272,55 @@ test('Batch 83: sidebar caches album/artist groups, delegates category clicks, a
     assert.equal(doc.querySelector('.sidebar-tab[data-view="all"]').classList.contains('active'), true);
     dom.window.close();
 });
+
+test('Batch 111: MusicTrackOrder.hasAlbumOrder skips albumCompare for unnumbered sidebar albums and empty playlists skip modal partition', () => {
+    const TrackOrder = require('../Musicmodules/music-track-order.js');
+    const plain = [
+        { path: 'D:/Music/AlbumA/Alpha.flac', title: 'Alpha', artist: 'A', album: 'Plain' },
+        { path: 'D:/Music/AlbumA/Beta.flac', title: 'Beta', artist: 'A', album: 'Plain' }
+    ];
+    const numbered = [
+        { path: 'D:/Music/AlbumB/02 Second.flac', title: 'Second', artist: 'B', album: 'Num' },
+        { path: 'D:/Music/AlbumB/01 First.flac', title: 'First', artist: 'B', album: 'Num' }
+    ];
+    assert.equal(TrackOrder.hasAlbumOrder(plain), false, 'unnumbered album reports hasAlbumOrder=false');
+    assert.equal(TrackOrder.hasAlbumOrder(numbered), true, 'track-numbered album reports hasAlbumOrder=true');
+    assert.equal(TrackOrder.hasAlbumOrder([{ path: 'D:/m/CD2/Song.flac' }, { path: 'D:/m/CD1/Song.flac' }]), true, 'disc-numbered album reports hasAlbumOrder=true');
+
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="sidebar-category-view"></div>
+        <div id="playlist-el"></div>
+        <div id="list"></div><span id="count"></span><h3 id="title"></h3>
+    </body>`, { runScripts: 'outside-only' });
+    let cmpCalls = 0;
+    dom.window.MusicTrackOrder = {
+        hasAlbumOrder: TrackOrder.hasAlbumOrder,
+        albumCompare: (...args) => { cmpCalls += 1; return TrackOrder.albumCompare(...args); }
+    };
+    dom.window.eval(fs.readFileSync('Musicmodules/music-sidebar.js', 'utf8'));
+    const doc = dom.window.document;
+    const app = {
+        playlist: [...plain, ...numbered],
+        playlistEl: doc.getElementById('playlist-el'),
+        sidebarFooter: doc.createElement('div'),
+        stripAudioExtension: (s) => s,
+        customPlaylists: [{ id: 'empty', name: '空歌单', tracks: [] }],
+        modalSongList: doc.getElementById('list'),
+        modalCount: doc.getElementById('count'),
+        modalPlaylistTitle: doc.getElementById('title'),
+        modalSearchInput: { value: '' },
+        playlistEditModal: doc.createElement('div'),
+        renderPlaylist() {},
+        api: { saveCustomPlaylists: async () => ({ success: true }) },
+        searchTracks: (list) => list
+    };
+    dom.window.setupSidebar(app);
+    const groups = app.getAlbumGroups();
+    assert.equal(cmpCalls, 1, 'getAlbumGroups runs albumCompare only on numbered album, skipping unnumbered album');
+    const numGroup = groups.find((g) => g.name === 'Num');
+    assert.deepEqual(Array.from(numGroup.tracks, (t) => t.title), ['First', 'Second']);
+    app.openPlaylistEditModal('empty');
+    assert.equal(app.modalRows, app.playlist, 'empty playlist reuses filtered playlist array directly without partitioning');
+    assert.equal(doc.querySelectorAll('.music-modal-song-item').length, 4);
+    dom.window.close();
+});

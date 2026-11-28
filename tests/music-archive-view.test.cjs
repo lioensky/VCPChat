@@ -2240,3 +2240,36 @@ test('Batch 100: archive-index artist-first short-circuit preserves exact rankin
     assert.ok(allHits.includes(2) && allHits.includes(3), 'title substring and album prefix hits included in order');
     assert.ok(allHits.indexOf(1) < allHits.indexOf(2) && allHits.indexOf(2) < allHits.indexOf(3));
 });
+
+test('Batch 111: archive-view and dock palette prefer pinyinPro.polyphonic over pinyin() to bypass Trie build, with pinyin() fallback', () => {
+    let polyCalls = 0;
+    let pinyinCalls = 0;
+    const f = fixture({
+        tracks: [
+            { path: '/p0.flac', title: '星光', artist: '歌手', album: '专辑' },
+            { path: '/p1.flac', title: '夜曲', artist: '周杰伦', album: '十一月' }
+        ],
+        setup: (w) => {
+            w.pinyinPro = {
+                polyphonic: (ch) => {
+                    polyCalls += 1;
+                    const map = { '星': 'xing', '光': 'guang', '夜': 'ye', '曲': 'qu', '周': 'zhou', '杰': 'jie', '伦': 'lun' };
+                    return [[map[ch] || '']];
+                },
+                pinyin: () => {
+                    pinyinCalls += 1;
+                    throw new Error('should not call pinyin() when polyphonic() is available');
+                }
+            };
+        }
+    });
+    try {
+        const idx = f.view.getSearchIndex();
+        assert.ok(polyCalls > 0, 'archive-view uses pinyinPro.polyphonic');
+        assert.equal(pinyinCalls, 0, 'archive-view never invokes pinyin() when polyphonic() exists');
+        assert.deepEqual([...idx.query('xg')], [0], 'polyphonic initials match title');
+        assert.deepEqual([...idx.query('zjl')], [1], 'polyphonic initials match artist');
+    } finally {
+        f.close();
+    }
+});
