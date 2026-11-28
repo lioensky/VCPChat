@@ -142,7 +142,7 @@
         surface.addEventListener('mouseleave', () => { hovering = false; renderExpansion(); });
         root.addEventListener('focusin', () => { focused = true; renderExpansion(); });
         root.addEventListener('focusout', event => {
-            focused = root.contains(event.relatedTarget);
+            focused = Boolean(event.relatedTarget && typeof event.relatedTarget.nodeType === 'number' && root.contains(event.relatedTarget));
             renderExpansion();
         });
         root.addEventListener('keydown', event => {
@@ -189,7 +189,7 @@
         });
         renderInjection();
         const unsubscribe = api.onMusicCapsuleState(next => { received = true; apply(next); });
-        Promise.resolve(api.getMusicCapsuleState()).then(next => {
+        Promise.resolve(api.getMusicCapsuleState?.()).then(next => {
             if (!received) apply(next);
         }).catch(error => console.warn('[MusicCapsule] Initial snapshot failed:', error));
         window.addEventListener('beforeunload', () => {

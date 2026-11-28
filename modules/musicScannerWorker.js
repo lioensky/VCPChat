@@ -12,7 +12,7 @@ if (!parentPort) {
 
 const { coverCachePath } = workerData;
 const PARSE_TIMEOUT_MS = 30000;
-const MIME_EXT_MAP = {
+const MIME_EXT_MAP = Object.assign(Object.create(null), {
     jpeg: 'jpg',
     jpg: 'jpg',
     png: 'png',
@@ -23,19 +23,22 @@ const MIME_EXT_MAP = {
     avif: 'avif',
     tiff: 'tiff',
     'svg+xml': 'svg'
-};
+});
 
-const FAST_MIME_EXT = {
+const FAST_MIME_EXT = Object.assign(Object.create(null), {
     'image/jpeg': 'jpg',
     'image/jpg': 'jpg',
     'image/png': 'png',
     'image/webp': 'webp'
-};
+});
 
 function safeCoverExtension(format) {
     if (typeof format === 'string' && FAST_MIME_EXT[format]) return FAST_MIME_EXT[format];
-    const raw = String(format || 'image/jpeg').split(';')[0].trim().toLowerCase();
-    const sub = raw.includes('/') ? raw.split('/')[1] : raw;
+    const str = String(format || 'image/jpeg');
+    const semi = str.indexOf(';');
+    const raw = (semi !== -1 ? str.slice(0, semi) : str).trim().toLowerCase();
+    const slash = raw.indexOf('/');
+    const sub = slash !== -1 ? raw.slice(slash + 1) : raw;
     if (MIME_EXT_MAP[sub]) return MIME_EXT_MAP[sub];
     const clean = sub.replace(/[^a-z0-9]/g, '').slice(0, 8);
     return clean || 'jpg';

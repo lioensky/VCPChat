@@ -153,13 +153,18 @@ function setupVisualizer(app) {
         for (let wIdx = 0; wIdx < app.vocalWaves.length; wIdx++) {
             const wave = app.vocalWaves[wIdx];
             const amp = wave.amplitude + energyBoost;
-            const step = wave.frequency * 2;
+            if (wave._stepFreq !== wave.frequency) {
+                const step = wave.frequency * 2;
+                wave._stepFreq = wave.frequency;
+                wave._sd = Math.sin(step);
+                wave._cd = Math.cos(step);
+            }
             const phaseOffset = time * wave.speed * 0.01 + wave.phase;
             // 和角递推替代每帧 ~2000 次 Math.sin 调用，波形精度一致
             let s = Math.sin(phaseOffset);
             let c = Math.cos(phaseOffset);
-            const sd = Math.sin(step);
-            const cd = Math.cos(step);
+            const sd = wave._sd;
+            const cd = wave._cd;
             ctx.beginPath();
             ctx.strokeStyle = vocalStrokeStyles[wIdx];
 
@@ -533,8 +538,11 @@ function setupVisualizer(app) {
 
             // --- Cover Pulse Animation Logic ---
             // 沉浸舞台拥有自己的封面与音频响应，普通封面在舞台期间或降低动态时停止写入跳动缩放。
-            const reduceMotion = Boolean(window.MusicMotion?.reduced?.() || document.body?.classList?.contains('music-reduce-motion'));
-            if (!isStageActive && !reduceMotion && app.isPlaying && app.currentVisualizerData.length > 0 && app.albumArtWrapper) {
+            const canPulse = !isStageActive && app.isPlaying && app.currentVisualizerData.length > 0 && app.albumArtWrapper;
+            const reduceMotion = canPulse
+                ? (window.MusicMotion ? Boolean(window.MusicMotion.reduced?.()) : Boolean(document.body?.classList?.contains('music-reduce-motion')))
+                : false;
+            if (canPulse && !reduceMotion) {
                 const startBin = Math.max(0, Math.floor(app.currentVisualizerData.length * app.COVER_MID_START_RATIO));
                 const endBin = Math.min(
                     app.currentVisualizerData.length,

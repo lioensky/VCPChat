@@ -1523,8 +1523,9 @@
 
         const toggle = () => state.active ? exit() : enter();
 
+        const reducedMotionMedia = global.matchMedia?.('(prefers-reduced-motion: reduce)') || null;
         const reducedMotion = () => Boolean(global.MusicMotion?.reduced?.()
-            ?? global.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+            ?? reducedMotionMedia?.matches);
 
         // Whether a mode has drawn its first real frame. The 3D modes report
         // `initialized` once their shaders are warm and a frame has run (or
@@ -1668,7 +1669,7 @@
             state.settingsOpen = nextOpen;
             const ret = settingsReturnFocus;
             const focusTarget = !state.settingsOpen && !state.destroyed
-                ? (ret && ret !== document.body && ret.isConnected && !elements.settingsCard?.contains(ret) ? ret : elements.settingsToggle)
+                ? (ret && ret !== document.body && ret.isConnected && !elements.settingsCard?.contains(ret) && !ret.closest?.('[inert], [hidden]') ? ret : elements.settingsToggle)
                 : null;
             if (!state.settingsOpen) {
                 if (focusTarget) focusTarget.focus?.({ preventScroll: true });
@@ -1796,7 +1797,7 @@
             }
         });
         scope.listen(document, 'pointerdown', (event) => {
-            if (picker.open && !elements.modeSwitcher.contains(event.target)) setModePickerOpen(false, { focus: 'none' });
+            if (picker.open && !(event.target && typeof event.target.nodeType === 'number' && elements.modeSwitcher.contains(event.target))) setModePickerOpen(false, { focus: 'none' });
         }, true);
         scope.listen(elements.progressTrack, 'pointerdown', (event) => {
             state.draggingProgress = true;

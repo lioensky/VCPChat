@@ -307,7 +307,9 @@
 
             const app = this.app;
             const isPlaying = Boolean(app.isPlaying);
-            const reduced = Boolean(global.MusicMotion?.reduced?.() || global.document?.body?.classList?.contains('music-reduce-motion'));
+            const reduced = global.MusicMotion
+                ? Boolean(global.MusicMotion.reduced?.())
+                : Boolean(global.document?.body?.classList?.contains('music-reduce-motion'));
             const spectrum = app.currentVisualizerData || [];
             const hasAudio = spectrum.length > 0;
 

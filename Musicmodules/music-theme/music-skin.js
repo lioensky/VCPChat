@@ -350,6 +350,7 @@
         }
         group.appendChild(frag);
         group.addEventListener('keydown', (event) => {
+            if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
             const dir = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1
                 : event.key === 'Home' ? -2 : event.key === 'End' ? 2 : 0;
             if (!dir) return;

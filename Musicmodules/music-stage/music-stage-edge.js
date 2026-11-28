@@ -458,6 +458,13 @@
                 || Math.max(1, rootSize.height) !== edgeCanvasState.height
                 || targetDpr !== edgeCanvasState.dpr
                 || qualityChanged;
+            // Gate throttled playing frames before touching canvas sizing or accent resolution.
+            if (frame.isPlaying) {
+                edgeCanvasState.pausedAt = 0;
+                const aim = 1000 / (EDGE_FPS[quality] || 30);
+                if (now < edgeCanvasState.drawnAt) edgeCanvasState.drawnAt = 0;
+                if (!needsResize && !trackChanged && !edgeCanvasState.blank && edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
+            }
             const palRef = app?.stagePalette?.accentRgb || null;
             const visRef = palRef ? null : (app?.visualizerColor || null);
             const accentUnchanged = edgeCanvasState.lastR >= 0 && (
@@ -467,13 +474,7 @@
                     && visRef.r === edgeCanvasState.lastR && visRef.g === edgeCanvasState.lastG && visRef.b === edgeCanvasState.lastB)
                 || (!palRef && !visRef && edgeCanvasState.lastAccentRef === null && edgeCanvasState.lastVisRef === null)
             );
-            // Gate throttled playing frames before touching canvas sizing or accent resolution.
-            if (frame.isPlaying) {
-                edgeCanvasState.pausedAt = 0;
-                const aim = 1000 / (EDGE_FPS[quality] || 30);
-                if (now < edgeCanvasState.drawnAt) edgeCanvasState.drawnAt = 0;
-                if (!needsResize && !trackChanged && !edgeCanvasState.blank && edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
-            } else {
+            if (!frame.isPlaying) {
                 if (now < edgeCanvasState.pausedAt) edgeCanvasState.pausedAt = now;
                 if (!needsResize && !trackChanged && !edgeCanvasState.blank && accentUnchanged) {
                     edgeCanvasState.pausedAt ||= now;
@@ -521,6 +522,9 @@
                 }
                 edgeCanvasState.lastQuality = quality;
                 edgeCanvasState.colorRev += 1;
+                edgeCanvasState.pausedAt = 0;
+                edgeCanvasState.drawnAt = 0;
+            } else if (trackChanged) {
                 edgeCanvasState.pausedAt = 0;
                 edgeCanvasState.drawnAt = 0;
             }

@@ -384,7 +384,7 @@
         };
         // 点心形只切换喜欢，不触发这一行的播放
         const onLikeClick = (e) => {
-            const button = e.target.closest?.('.cl-like');
+            const button = e.target?.closest?.('.cl-like');
             if (!button || typeof app.toggleLike !== 'function') return;
             e.stopPropagation();
             e.preventDefault();
@@ -392,7 +392,7 @@
             const track = li && (li._track || app.playlist[Number(li.dataset.index)]);
             if (track) app.toggleLike(track);
         };
-        const onLikeDblClick = (e) => { if (e.target.closest?.('.cl-like')) { e.stopPropagation(); e.preventDefault(); } };
+        const onLikeDblClick = (e) => { if (e.target?.closest?.('.cl-like')) { e.stopPropagation(); e.preventDefault(); } };
         list.addEventListener('click', onLikeClick, true);
         list.addEventListener('dblclick', onLikeDblClick, true);
         const onLikeChange = (event) => {

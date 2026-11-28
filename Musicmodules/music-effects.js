@@ -3,6 +3,11 @@
 
 function setupEffects(app) {
     // 缓存十段 EQ 滑块引用，拖动滑块时免去每帧 20 次 getElementById 查询
+    const HAS_OWN = Object.prototype.hasOwnProperty;
+    const PRESET_NAMES = Object.assign(Object.create(null), {
+        balance: '平衡', classical: '古典', pop: '流行',
+        rock: '摇滚', electronic: '电子', acg_vocal: '萌系ACG'
+    });
     const eqSliderCache = new Map();
     let eqContentEl = null;
     let eqBandSrc = null;
@@ -18,10 +23,6 @@ function setupEffects(app) {
 
     // --- EQ Control ---
     app.populateEqPresets = () => {
-        const presetNames = {
-            'balance': '平衡', 'classical': '古典', 'pop': '流行',
-            'rock': '摇滚', 'electronic': '电子', 'acg_vocal': '萌系ACG'
-        };
         // 滑块拖得和哪个预设都不一样时显示「自定义」；这一项不能从列表里选。
         const useFrag = typeof document.createDocumentFragment === 'function';
         const target = useFrag ? document.createDocumentFragment() : app.eqPresetSelect;
@@ -32,9 +33,10 @@ function setupEffects(app) {
         custom.hidden = true;
         target.appendChild(custom);
         for (const preset in app.eqPresets) {
+            if (!HAS_OWN.call(app.eqPresets, preset)) continue;
             const option = document.createElement('option');
             option.value = preset;
-            option.textContent = presetNames[preset] || preset;
+            option.textContent = PRESET_NAMES[preset] || preset;
             target.appendChild(option);
         }
         if (useFrag) app.eqPresetSelect.appendChild(target);
@@ -59,7 +61,7 @@ function setupEffects(app) {
         }
         let match = '';
         for (const name in app.eqPresets) {
-            if (!Object.prototype.hasOwnProperty.call(app.eqPresets, name)) continue;
+            if (!HAS_OWN.call(app.eqPresets, name)) continue;
             const preset = app.eqPresets[name];
             let ok = true;
             for (let i = 0; i < n; i += 1) {
@@ -87,9 +89,11 @@ function setupEffects(app) {
     };
 
     app.applyEqPreset = (presetName) => {
+        if (!app.eqPresets || !HAS_OWN.call(app.eqPresets, presetName)) return;
         const preset = app.eqPresets[presetName];
         if (!preset) return;
         for (const band in preset) {
+            if (!HAS_OWN.call(preset, band)) continue;
             const slider = getEqSlider(band);
             if (slider) slider.value = preset[band];
         }
@@ -106,6 +110,7 @@ function setupEffects(app) {
         eqBandKeys = null;
         const target = useFrag ? document.createDocumentFragment() : app.eqBandsContainer;
         for (const band in app.eqBands) {
+            if (!HAS_OWN.call(app.eqBands, band)) continue;
             const bandContainer = document.createElement('div');
             bandContainer.className = 'eq-band';
             const label = document.createElement('label');
@@ -164,6 +169,7 @@ function setupEffects(app) {
         if (!app.api?.setMusicEq) return;
         const newBands = {};
         for (const band in app.eqBands) {
+            if (!HAS_OWN.call(app.eqBands, band)) continue;
             const slider = getEqSlider(band);
             const parsed = parseInt(slider ? slider.value : app.eqBands[band], 10);
             const value = Number.isFinite(parsed) ? parsed : 0;
@@ -228,16 +234,16 @@ function setupEffects(app) {
             if (result.status === 'success') {
                 app.irLoadedPath = filePath;
                 app.irEnabled = true;
-                app.irSwitch.checked = true;
+                if (app.irSwitch) app.irSwitch.checked = true;
                 app.updateIrStatus('加载成功', 'loaded');
             } else {
                 app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(result.message, '加载失败'), 'error');
-                app.irEnabled = false; app.irSwitch.checked = false;
+                app.irEnabled = false; if (app.irSwitch) app.irSwitch.checked = false;
             }
         } catch (e) {
             if (seq !== irLoadSeq) return;
             app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(e, '加载失败'), 'error');
-            app.irEnabled = false; app.irSwitch.checked = false;
+            app.irEnabled = false; if (app.irSwitch) app.irSwitch.checked = false;
         }
     };
 
@@ -248,7 +254,7 @@ function setupEffects(app) {
         if (filePath) return app.loadIrFile(filePath);
         if (!app.irLoadedPath) {
             app.irEnabled = false;
-            app.irSwitch.checked = false;
+            if (app.irSwitch) app.irSwitch.checked = false;
             if (app.irPresetSelect?.value === 'custom') {
                 app.irPresetSelect.value = '';
                 if (app.irLoadBtn) app.irLoadBtn.style.display = 'none';
@@ -267,7 +273,7 @@ function setupEffects(app) {
                 app.updateIrStatus((window.MusicErrorText || ((m, f) => f))(result.message, '卸载失败'), 'error');
                 return;
             }
-            app.irLoadedPath = null; app.irEnabled = false; app.irSwitch.checked = false;
+            app.irLoadedPath = null; app.irEnabled = false; if (app.irSwitch) app.irSwitch.checked = false;
             app.updateIrStatus('未加载', 'idle');
         } catch (e) {
             if (seq !== irLoadSeq) return;
@@ -289,7 +295,7 @@ function setupEffects(app) {
         };
         await app.sendLatest('loudness', () => app.api.configureMusicNormalization(loudness));
         const isRg = app.loudnessMode === 'replaygain_track' || app.loudnessMode === 'replaygain_album';
-        if (app.replaygainSwitch.checked !== isRg) {
+        if (app.replaygainSwitch && app.replaygainSwitch.checked !== isRg) {
             app.replaygainSwitch._programmaticUpdate = true;
             app.replaygainSwitch.checked = isRg;
             Promise.resolve().then(() => { app.replaygainSwitch._programmaticUpdate = false; });
