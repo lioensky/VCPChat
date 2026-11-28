@@ -1195,3 +1195,37 @@ test('Batch 115: folders key/parentOf, m3u targeted match/export, lyrics-ai sing
     assert.equal(cols.loud, 2, 'counts only loud half of buffer');
     assert.equal(cols.average.length, 2048);
 });
+
+test('Batch 119: stats-view rank WeakMap cache/empty fast-path, UTC longestStreak, parserCore round3/TTML bgDepth, and krcDecrypt guard', () => {
+    const StatsView = require(path.join(__dirname, '../Musicmodules/music-stats-view.js'));
+    // 1. Empty tracks short-circuits cleanly; non-empty caches byPath and invalidates on library mutation
+    assert.deepEqual(StatsView.rank({ tracks: [] }, [{ path: 'C:\\a.flac' }]), { songs: [], artists: [], albums: [] });
+    const lib = [
+        { path: 'C:\\M\\a.flac', title: 'A', artist: 'Singer X', album: 'Alb 1' },
+        { path: 'C:\\M\\b.flac', title: 'B', artist: 'Singer Y', album: 'Alb 2' }
+    ];
+    const r1 = StatsView.rank({ tracks: [{ path: 'c:/m/a.flac', plays: 4 }] }, lib);
+    assert.equal(r1.songs.length, 1);
+    assert.equal(r1.songs[0].index, 0);
+    assert.equal(r1.artists[0].name, 'Singer X');
+    lib.push({ path: 'C:\\M\\c.flac', title: 'C', artist: 'Singer Z', album: 'Alb 3' });
+    const r2 = StatsView.rank({ tracks: [{ path: 'c:/m/c.flac', plays: 2 }] }, lib);
+    assert.equal(r2.songs.length, 1);
+    assert.equal(r2.songs[0].index, 2, 'rankPathCache invalidates when library length grows');
+    // 2. UTC longestStreak handles month/year/DST boundaries cleanly
+    assert.equal(StatsView.longestStreak({ '2026-03-07': 120, '2026-03-08': 120, '2026-03-09': 120, '2026-03-11': 120 }), 3);
+    assert.equal(StatsView.longestStreak({ '2025-12-31': 60, '2026-01-01': 60 }), 2);
+
+    // 3. parserCore TTML bgDepth, namespace stripping, round3, and LRC pad2 roundtrip
+    const parser = require(path.join(__dirname, '../modules/lyrics/parserCore.js'));
+    const ttml = parser.parseTTML('<tt><body><p begin="00:01.000" end="00:05.000"><tt:span begin="1.0s" end="2.0s">Main</tt:span><span ttm:role="x-bg"><span begin="2.5s" end="3.5s">Echo</span></span><span ttm:role="x-translation">主唱</span></p></body></tt>');
+    assert.equal(ttml.lines.length, 1);
+    assert.equal(ttml.lines[0].fullText, 'Main (Echo)');
+    assert.equal(ttml.lines[0].translation, '主唱');
+    assert.equal(ttml.lines[0].words[1].startTime, 2.5);
+    assert.equal(parser.convertToLrcString(ttml), '[00:01.00]Main (Echo)\n[00:01.00]主唱');
+
+    // 4. krcDecrypt skips regex when [language: is absent
+    const { decodeKrcLanguageTag } = require(path.join(__dirname, '../modules/lyrics/krcDecrypt.js'));
+    assert.deepEqual(decodeKrcLanguageTag('[0,1000]<0,500,0>Hello'), { translations: [], romanizations: [] });
+});

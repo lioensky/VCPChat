@@ -2953,3 +2953,68 @@ test('Batch 115: stage edge preserves fixed-axis endpoints across active->silent
         dom.window.close();
     }
 });
+
+test('Batch 119: stage runtime splitGraphemes ASCII/emoji, clamp01 Infinity/NaN, frozen viewport cache, and lyrics parseLrc scriptOf & pctQ reset on seek', () => {
+    const dom = createStageDom();
+    try {
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
+        const rt = dom.window.MusicStageRuntime;
+        // 1. splitGraphemes ASCII fast path & Unicode grapheme clusters
+        assert.deepEqual(Array.from(rt.splitGraphemes('Hello!')), ['H', 'e', 'l', 'l', 'o', '!']);
+        assert.deepEqual(Array.from(rt.splitGraphemes('')), []);
+        assert.deepEqual(Array.from(rt.splitGraphemes('A\r\nB')), ['A', '\r\n', 'B']);
+        // 2. resolveAudioBands & createAudioOnset treat NaN/Infinity as 0 (matching clamp)
+        const bands = rt.resolveAudioBands([0.5, NaN, Infinity, -0.2, 1.5, 0.4, 0.3, 0.2, 0.1, 0.5]);
+        assert.ok(bands.bass >= 0 && bands.bass <= 1 && Number.isFinite(bands.power));
+        const onset = rt.createAudioOnset();
+        const st = onset.update({ playbackTime: 0.1, isPlaying: true, lines: [], audio: { power: 0.5, spectrum: [Infinity, NaN, -1, 0.8, 2] } });
+        assert.ok(Number.isFinite(st.energy) && Number.isFinite(st.impact));
+        // 3. createFrame reuses frozen viewport reference across unchanged frames
+        const f1 = rt.createFrame({ currentLyrics: [], playlist: [], currentTrackIndex: -1 }, 100);
+        const f2 = rt.createFrame({ currentLyrics: [], playlist: [], currentTrackIndex: -1 }, 116);
+        assert.equal(f1.viewport, f2.viewport, 'unchanged viewport object is reused across frames');
+        assert.equal(Object.isFrozen(f1.viewport), true);
+
+        // 4. music-lyrics parseLrc scriptOf single-pass priority & word pctQ reset on seek-back
+        runScript(dom, 'Musicmodules/music-lyrics.js');
+        const ul = dom.window.document.createElement('ul');
+        const box = dom.window.document.createElement('div');
+        box.appendChild(ul);
+        dom.window.document.body.appendChild(box);
+        const lApp = {
+            lyricsList: ul,
+            lyricsContainer: box,
+            lyricSpeedFactor: 1,
+            lyricOffset: 0,
+            playlist: [],
+            currentTrackIndex: -1,
+            currentLyrics: [],
+            isPlaying: true,
+            isTrackLoading: false,
+            lastKnownCurrentTime: 0,
+            lastStateUpdateTime: Date.now()
+        };
+        dom.window.setupLyrics(lApp);
+        // Japanese line containing both Han and Kana pairs with Chinese translation within 0.3s
+        const parsed = lApp.parseLrc('[00:01.00]星空の夜\n[00:01.30]星空的夜晚\n[00:05.00]Hello\n[00:05.20]World');
+        assert.equal(parsed.length, 3, 'kana+han merges with han translation, latin+latin stays separate');
+        assert.equal(parsed[0].original, '星空の夜');
+        assert.equal(parsed[0].translation, '星空的夜晚');
+        // Word-by-word pctQ resets after finished -> seek back to exact same 50% progress rewrites --word-progress
+        lApp.currentLyrics = [{
+            time: 0, startTime: 0, endTime: 4, original: 'AB', isWordByWord: true,
+            words: [{ text: 'A', startTime: 0, endTime: 2 }, { text: 'B', startTime: 2, endTime: 4 }]
+        }];
+        lApp.renderLyrics();
+        const w0 = ul.querySelector('.lyric-word');
+        lApp.lastKnownCurrentTime = 1.0; lApp.lastStateUpdateTime = Date.now(); lApp.animateLyrics(true);
+        assert.equal(w0.style.getPropertyValue('--word-progress'), '50.0%');
+        lApp.lastKnownCurrentTime = 2.5; lApp.lastStateUpdateTime = Date.now(); lApp.animateLyrics(true);
+        assert.equal(w0.style.getPropertyValue('--word-progress'), '100%');
+        lApp.lastKnownCurrentTime = 1.0; lApp.lastStateUpdateTime = Date.now(); lApp.animateLyrics(true);
+        assert.equal(w0.style.getPropertyValue('--word-progress'), '50.0%', 'seeking back to prior 50.0% progress rewrites --word-progress after finished state');
+    } finally {
+        dom.window.close();
+    }
+});
