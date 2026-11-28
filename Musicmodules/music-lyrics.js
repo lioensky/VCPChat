@@ -237,38 +237,67 @@ function setupLyrics(app) {
      */
     app.normalizeStructuredLyrics = (lyricData) => {
         if (!lyricData || !Array.isArray(lyricData.lines)) return [];
-        return lyricData.lines
+        const src = lyricData.lines;
+        const speed = app.lyricSpeedFactor;
+        const offset = app.lyricOffset;
+        const isWbyw = Boolean(lyricData.isWordByWord);
+        const out = [];
+        for (let i = 0; i < src.length; i += 1) {
+            const line = src[i];
             // 某些上游迁移数据会插入正文严格为“//”的独立占位行。
             // 仅过滤完整独立行，避免误伤 AC/DC、A/B 等正常歌词。
-            .filter(line => String(line?.fullText || '').trim() !== '//')
-            .map(line => ({
+            if (String(line?.fullText || '').trim() === '//') continue;
+            const start = line.startTime * speed + offset;
+            const end = line.endTime * speed + offset;
+            let words = [];
+            if (Array.isArray(line.words) && line.words.length) {
+                const rawWords = line.words;
+                words = new Array(rawWords.length);
+                for (let wi = 0; wi < rawWords.length; wi += 1) {
+                    const w = rawWords[wi];
+                    let syllables;
+                    if (Array.isArray(w.syllables)) {
+                        const rawSyls = w.syllables;
+                        syllables = new Array(rawSyls.length);
+                        for (let si = 0; si < rawSyls.length; si += 1) {
+                            const syl = rawSyls[si];
+                            syllables[si] = {
+                                ...syl,
+                                startTime: syl.startTime * speed + offset,
+                                endTime: syl.endTime * speed + offset
+                            };
+                        }
+                    }
+                    words[wi] = {
+                        ...w,
+                        text: w.text,
+                        startTime: w.startTime * speed + offset,
+                        endTime: w.endTime * speed + offset,
+                        syllables
+                    };
+                }
+            }
+            const hints = line.renderHints;
+            out.push({
                 ...line,
-                startTime: line.startTime * app.lyricSpeedFactor + app.lyricOffset,
-                time: line.startTime * app.lyricSpeedFactor + app.lyricOffset,
-                endTime: line.endTime * app.lyricSpeedFactor + app.lyricOffset,
+                startTime: start,
+                time: start,
+                endTime: end,
                 original: line.fullText,
                 translation: line.translation || '',
                 romanization: line.romanization || '',
-                words: Array.isArray(line.words) ? line.words.map(w => ({
-                    ...w,
-                    text: w.text,
-                    startTime: w.startTime * app.lyricSpeedFactor + app.lyricOffset,
-                    endTime: w.endTime * app.lyricSpeedFactor + app.lyricOffset,
-                    syllables: Array.isArray(w.syllables) ? w.syllables.map(syllable => ({
-                        ...syllable,
-                        startTime: syllable.startTime * app.lyricSpeedFactor + app.lyricOffset,
-                        endTime: syllable.endTime * app.lyricSpeedFactor + app.lyricOffset
-                    })) : undefined
-                })) : [],
-                renderHints: line.renderHints ? {
-                    ...line.renderHints,
-                    rawDuration: (line.endTime - line.startTime) * app.lyricSpeedFactor,
-                    renderEndTime: Number.isFinite(line.renderHints.renderEndTime)
-                        ? line.renderHints.renderEndTime * app.lyricSpeedFactor + app.lyricOffset
-                        : line.endTime * app.lyricSpeedFactor + app.lyricOffset
+                words,
+                renderHints: hints ? {
+                    ...hints,
+                    rawDuration: (line.endTime - line.startTime) * speed,
+                    renderEndTime: Number.isFinite(hints.renderEndTime)
+                        ? hints.renderEndTime * speed + offset
+                        : end
                 } : undefined,
-                isWordByWord: Boolean(lyricData.isWordByWord)
-            }));
+                isWordByWord: isWbyw
+            });
+        }
+        return out;
     };
 
     const BOM_RE = /^\uFEFF/;
@@ -371,15 +400,25 @@ function setupLyrics(app) {
 
             const originalEntries = rawEntries.slice(0, splitIndex).sort((a, b) => a.time - b.time);
             const translationEntries = rawEntries.slice(splitIndex).sort((a, b) => a.time - b.time);
+            const tLen = translationEntries.length;
+            const used = new Uint8Array(tLen);
+            let winStart = 0;
 
-            for (const orig of originalEntries) {
-                // 在翻译列表中寻找时间差在 1.2 秒以内的最佳匹配项
+            for (let oi = 0; oi < originalEntries.length; oi += 1) {
+                const orig = originalEntries[oi];
+                // 两侧均按时间升序：推进左边界并只扫 [orig.time - 1.2, orig.time + 1.2) 窗口，免去 O(N^2) 与 splice 搬移
+                while (winStart < tLen && (used[winStart] || translationEntries[winStart].time <= orig.time - 1.2)) {
+                    winStart += 1;
+                }
                 let bestTrans = '';
                 let minDiff = 1.2;
                 let foundIndex = -1;
 
-                for (let j = 0; j < translationEntries.length; j++) {
-                    const diff = Math.abs(translationEntries[j].time - orig.time);
+                for (let j = winStart; j < tLen; j += 1) {
+                    if (used[j]) continue;
+                    const tTime = translationEntries[j].time;
+                    if (tTime >= orig.time + 1.2) break;
+                    const diff = Math.abs(tTime - orig.time);
                     if (diff < minDiff) {
                         minDiff = diff;
                         bestTrans = translationEntries[j].text;
@@ -387,9 +426,7 @@ function setupLyrics(app) {
                     }
                 }
 
-                if (foundIndex !== -1) {
-                    translationEntries.splice(foundIndex, 1);
-                }
+                if (foundIndex !== -1) used[foundIndex] = 1;
 
                 resultLines.push({
                     time: orig.time,

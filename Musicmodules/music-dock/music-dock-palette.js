@@ -388,14 +388,16 @@
         let cachedPinyinFn = null;
         const pinyinFn = () => {
             const lib = global.pinyinPro;
-            if (!lib || typeof lib.pinyin !== 'function') return null;
+            const hasPoly = typeof lib?.polyphonic === 'function';
+            if (!lib || (!hasPoly && typeof lib.pinyin !== 'function')) return null;
             if (cachedPinyinLib === lib && cachedPinyinFn) return cachedPinyinFn;
             pinyinCache.clear();
             cachedPinyinLib = lib;
+            // 单字查询优先走 polyphonic 直接查单字表，跳过 pinyin() 首次冷启构建多音词典 Trie（~140ms @ 4x CPU）与额外堆占用
             cachedPinyinFn = (c) => {
                 let p = pinyinCache.get(c);
                 if (p === undefined) {
-                    try { p = lib.pinyin(c, { toneType: 'none' }); } catch (error) { p = ''; }
+                    try { p = hasPoly ? (lib.polyphonic(c, { toneType: 'none', type: 'array' })?.[0]?.[0] || '') : lib.pinyin(c, { toneType: 'none' }); } catch (error) { p = ''; }
                     pinyinCache.set(c, p);
                 }
                 return p;

@@ -121,7 +121,17 @@
         return (a, b) => (keyOf(a) - keyOf(b)) || rest(a, b);
     };
 
-    const exported = { numberOf, albumCompare };
+    // 快速检查一组曲目里是否存在任何碟号或曲号：无编号专辑可跳过比较器构造与排序。
+    const hasAlbumOrder = (tracks) => {
+        if (!Array.isArray(tracks) || tracks.length <= 1) return false;
+        for (let i = 0; i < tracks.length; i += 1) {
+            const v = numberOf(tracks[i]);
+            if (v.no > 0 || v.disc > 0) return true;
+        }
+        return false;
+    };
+
+    const exported = { numberOf, albumCompare, hasAlbumOrder };
     if (typeof module !== 'undefined' && module.exports) module.exports = exported;
     global.MusicTrackOrder = exported;
 })(typeof window !== 'undefined' ? window : globalThis);

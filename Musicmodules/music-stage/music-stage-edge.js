@@ -72,6 +72,7 @@
             lastFlatStyle: -1,
             lastColorRgb: '',
             lastAlphaByte: -1,
+            mono: false,
             glowStroke: '',
             glowShadow: '',
             mainStroke: '',
@@ -168,6 +169,14 @@
                 edgeCanvasState.layoutRev += 1;
                 edgeCanvasState.lastFlatStyle = -1;
                 edgeCanvasState.blank = false;
+                const nextMono = typeof global.getComputedStyle === 'function'
+                    ? global.getComputedStyle(edgeStrips.top.canvas).getPropertyValue('--stage-edge-mono').trim() === '1'
+                    : false;
+                if (edgeCanvasState.mono !== nextMono) {
+                    edgeCanvasState.mono = nextMono;
+                    edgeCanvasState.colorRev += 1;
+                    edgeCanvasState.lastColorRgb = '';
+                }
             }
             return true;
         };
@@ -222,7 +231,7 @@
             for (let index = 0; index < count; index += 1) {
                 const ratio = index / denom;
                 fixed[index] = reverse ? edgeLen - inset - ratio * span : inset + ratio * span;
-                scaledFades[index] = Math.pow(Math.sin(ratio * Math.PI), 0.42) * amplitude;
+                scaledFades[index] = (index === 0 || index === denom) ? 0 : Math.pow(Math.sin(ratio * Math.PI), 0.42) * amplitude;
                 const wrappedRatio = (clamp(ratio) * 0.86 + offset) % 1;
                 const center = Math.floor(Math.pow(wrappedRatio, 1.55) * maxIdx);
                 const lo = center > radius ? center - radius : 0;
@@ -248,6 +257,7 @@
         };
 
         const fillFlatEndpoints = (points, side, inset, width, height) => {
+            points._fixedRev = 0;
             const last = points.length - 2;
             const isTop = side === 'top';
             const isBottom = side === 'bottom';
@@ -287,6 +297,16 @@
             const baseAxis = isTop || isLeft ? inset : (isBottom ? height - inset : width - inset);
             const sign = isTop || isLeft ? 1 : -1;
             const horizontal = isTop || isBottom;
+            const layoutRev = edgeCanvasState.layoutRev;
+            if (points._fixedRev !== layoutRev) {
+                if (horizontal) {
+                    for (let index = 0; index < count; index += 1) points[index << 1] = fixed[index];
+                } else {
+                    for (let index = 0; index < count; index += 1) points[(index << 1) + 1] = fixed[index];
+                }
+                points._fixedRev = layoutRev;
+            }
+            const dynOffset = horizontal ? 1 : 0;
             let hasMotion = false;
             for (let index = 0; index < count; index += 1) {
                 let disp = 0;
@@ -301,14 +321,7 @@
                         }
                     }
                 }
-                const coordinateIndex = index << 1;
-                if (horizontal) {
-                    points[coordinateIndex] = fixed[index];
-                    points[coordinateIndex + 1] = baseAxis + sign * disp;
-                } else {
-                    points[coordinateIndex] = baseAxis + sign * disp;
-                    points[coordinateIndex + 1] = fixed[index];
-                }
+                points[(index << 1) + dynOffset] = baseAxis + sign * disp;
             }
             return hasMotion;
         };
@@ -369,6 +382,7 @@
             edgeCanvasState.lastFlatStyle = -1;
             edgeCanvasState.lastColorRgb = '';
             edgeCanvasState.lastAlphaByte = -1;
+            edgeCanvasState.mono = false;
             edgeCanvasState.blank = true;
             specPrefix = new Float64Array(0);
             edgeCanvasState.top = new Float32Array(0);
@@ -482,17 +496,24 @@
                 if (now - edgeCanvasState.pausedAt > 1500) return;
                 if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
             }
+            const prevMono = edgeCanvasState.mono;
             if (!resizeEdgeCanvas(frame)) return;
+            const monoChanged = edgeCanvasState.mono !== prevMono;
             const { width, height, inset, horizontalAmplitude, verticalAmplitude, horizontalCount, verticalCount } = edgeCanvasState;
             edgeCanvasState.lastTrack = track;
             edgeCanvasState.lastAccentRef = palRef;
             edgeCanvasState.lastVisRef = visRef;
             // If track/theme accent or quality tier changed while paused, wake the settled paused border once to match.
-            if (colorChanged || qualityChanged) {
+            if (colorChanged || qualityChanged || monoChanged) {
                 edgeCanvasState.lastR = colorR;
                 edgeCanvasState.lastG = colorG;
                 edgeCanvasState.lastB = colorB;
-                edgeCanvasState.lastRgb = `${colorR}, ${colorG}, ${colorB}`;
+                if (edgeCanvasState.mono) {
+                    const luma = Math.round(0.2126 * colorR + 0.7152 * colorG + 0.0722 * colorB);
+                    edgeCanvasState.lastRgb = `${luma}, ${luma}, ${luma}`;
+                } else {
+                    edgeCanvasState.lastRgb = `${colorR}, ${colorG}, ${colorB}`;
+                }
                 edgeCanvasState.lastQuality = quality;
                 edgeCanvasState.colorRev += 1;
                 edgeCanvasState.pausedAt = 0;

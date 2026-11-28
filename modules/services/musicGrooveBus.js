@@ -32,4 +32,7 @@ function subscribe(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
 }
-module.exports = { publish, subscribe };
+function hasSubscribers() {
+    return listeners.size > 0;
+}
+module.exports = { publish, subscribe, hasSubscribers };

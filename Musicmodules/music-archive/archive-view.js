@@ -819,15 +819,18 @@
         let pinyinFn = null; // 同一份拼音表始终是同一个函数，条目缓存靠它判断拼音有没有变
         const pinyinOf = () => {
             const lib = global.pinyinPro;
-            if (!lib || typeof lib.pinyin !== 'function') return null;
+            const hasPoly = typeof lib?.polyphonic === 'function';
+            if (!lib || (!hasPoly && typeof lib.pinyin !== 'function')) return null;
             if (pinyinFn && pinyinFn.lib === lib) return pinyinFn;
+            pinyinCache.clear();
+            // 单字转拼音走 polyphonic 查单字表，免去 pinyin() 冷启构建整套多音词典 Trie 的主线程卡顿与内存开销
             pinyinFn = (c) => {
-                if (!pinyinCache.has(c)) {
-                    let p = '';
-                    try { p = lib.pinyin(c, { toneType: 'none' }); } catch (e) { p = ''; }
+                let p = pinyinCache.get(c);
+                if (p === undefined) {
+                    try { p = hasPoly ? (lib.polyphonic(c, { toneType: 'none', type: 'array' })?.[0]?.[0] || '') : lib.pinyin(c, { toneType: 'none' }); } catch (e) { p = ''; }
                     pinyinCache.set(c, p);
                 }
-                return pinyinCache.get(c);
+                return p;
             };
             pinyinFn.lib = lib;
             return pinyinFn;

@@ -16,8 +16,10 @@
     --stage-edge-fade: 0.0836;
 }
 
+/* 通过 --stage-edge-mono: 1 让边框频谱直接按 Rec.709 亮度绘出单色细线，省去四条画布每帧的 CSS grayscale(1) 离屏滤镜通道 */
 .music-stage .music-stage-edge-spectrum-canvas {
-    filter: grayscale(1);
+    --stage-edge-mono: 1;
+    filter: none;
 }
 
 .music-stage .music-stage-edge-flow-light {

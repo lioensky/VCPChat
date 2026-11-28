@@ -103,13 +103,14 @@ function setupSidebar(app) {
             }
             group.tracks.push(t);
         }
-        // 专辑里按碟号、曲号排，和「目录」一致（单首专辑跳过比较器构造）
+        // 专辑里按碟号、曲号排，和「目录」一致（单首及无碟/曲号专辑跳过比较器构造与排序）
         const list = Array.from(albums.values());
         if (order) {
+            const checkOrder = typeof order.hasAlbumOrder === 'function' ? order.hasAlbumOrder : null;
             for (let gIdx = 0; gIdx < list.length; gIdx += 1) {
                 const g = list[gIdx];
                 const n = g.tracks.length;
-                if (n <= 1) continue;
+                if (n <= 1 || (checkOrder && !checkOrder(g.tracks))) continue;
                 const cmp = order.albumCompare(g.tracks, (a, b) => a - b);
                 const idx = new Array(n);
                 for (let k = 0; k < n; k += 1) idx[k] = k;
@@ -394,17 +395,21 @@ function setupSidebar(app) {
     app.renderModalSongList = () => {
         const pl = app.customPlaylists.find(p => p.id === app.editingPlaylistId); if (!pl) return;
         const q = String(app.modalSearchQuery || '').trim();
-        const selectedPaths = new Set(pl.tracks);
         const filtered = q && app.searchTracks ? app.searchTracks(app.playlist, q) : app.playlist;
-        // 单趟稳定分区（已选歌在前，未选歌在后），保持原有相对顺序，避免 O(N log N) 排序与临时包装对象
-        const inPl = [];
-        const rest = [];
-        for (let i = 0; i < filtered.length; i += 1) {
-            const t = filtered[i];
-            if (selectedPaths.has(t.path)) inPl.push(t); else rest.push(t);
+        // 单趟稳定分区（已选歌在前，未选歌在后），空歌单直接复用 filtered，避免 Set 与全表拷贝
+        let inPlCount = 0;
+        let sortedFiltered = filtered;
+        if (pl.tracks.length > 0 && filtered.length > 0) {
+            const selectedPaths = new Set(pl.tracks);
+            const inPl = [];
+            const rest = [];
+            for (let i = 0; i < filtered.length; i += 1) {
+                const t = filtered[i];
+                if (selectedPaths.has(t.path)) inPl.push(t); else rest.push(t);
+            }
+            inPlCount = inPl.length;
+            sortedFiltered = inPlCount > 0 ? inPl.concat(rest) : filtered;
         }
-        const inPlCount = inPl.length;
-        const sortedFiltered = inPl.concat(rest);
         // 一次拼好整张列表再写进去，点击交给列表本身（以前每行各建三层元素、各挂一个监听，5000 首打开、每敲一个字都要重建半秒多）
         app.modalRows = sortedFiltered;
         app.lastModalClickIndex = -1; // 行号换了一套：Shift 连选从下一次单击重新算起

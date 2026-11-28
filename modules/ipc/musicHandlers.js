@@ -610,6 +610,7 @@ async function getCurrentLyrics() {
                 cleanup();
                 reject(new Error('读取当前歌词超时，请稍后重试。'));
             }, 5000);
+            timer.unref?.();
             ipcMain.on('music-current-lyrics-response', onResponse);
             win.once('closed', onClosed);
             try {
@@ -822,6 +823,7 @@ function initialize(options) {
             return getMusicCapsuleSnapshot();
         });
         ipcMain.on('music-groove-publish', (event, payload) => {
+            if (typeof musicGrooveBus.hasSubscribers === 'function' && !musicGrooveBus.hasSubscribers()) return;
             if (!musicWindow || musicWindow.isDestroyed() || event.sender !== musicWindow.webContents) return;
             musicGrooveBus.publish(payload);
         });
