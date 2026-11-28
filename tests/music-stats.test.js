@@ -652,3 +652,107 @@ test('Batch 92: stats summary single-pass firstDay/hours/plays, resume path norm
     assert.equal(recentSum.tracks.length, 1);
     assert.equal(recentSum.tracks[0].path, 'C:\\Music\\B.flac');
 });
+
+test('Batch 99: stats has/top/forgotten/pruning, spectrum focus-before-hide, grooveBus zero-listener fast path, matchScore & IR presets', async () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { JSDOM } = require('jsdom');
+
+    // 1. music-stats: has(), top(), lastPlayed(), forgotten(), affinity(), and 400-day log pruning
+    const baseMs = Date.parse('2026-11-27T12:00:00');
+    const oldMs = baseMs - 45 * 86400000;
+    const store = new Map([
+        ['musicPlayStats', JSON.stringify({
+            v: 1,
+            t: {
+                'c:/m/hot.flac': [6, baseMs - 1000, 0, oldMs, 'C:\\M\\Hot.flac'],
+                'c:/m/old.flac': [4, oldMs, 0, oldMs - 1000, 'C:\\M\\Old.flac'],
+                'c:/m/skip.flac': [0, 0, 2, 0, 'C:\\M\\Skip.flac']
+            }
+        })]
+    ]);
+    const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+    const app = { playlist: [], currentTrackIndex: -1, isPlaying: false, isTrackLoading: false, playedSeconds: () => 0 };
+    const stats = setupMusicStats(app, { now: () => baseMs, storage, setTimer: () => 1, clearTimer() {}, observe: false });
+    assert.equal(stats.has('C:\\M\\Hot.flac'), true);
+    assert.equal(stats.has({ path: 'c:/m/skip.flac' }), true, 'skipped-only track counts as known for has()');
+    assert.equal(stats.has('C:\\M\\New.flac'), false);
+    assert.deepEqual(stats.top(2, { minPlays: 2 }), ['C:\\M\\Hot.flac', 'C:\\M\\Old.flac']);
+    assert.deepEqual(stats.lastPlayed(2), ['C:\\M\\Hot.flac', 'C:\\M\\Old.flac']);
+    assert.deepEqual(stats.forgotten({ minPlays: 3, days: 30, limit: 5 }), ['C:\\M\\Old.flac']);
+    assert.equal(stats.affinity('C:\\M\\Skip.flac'), 0);
+    assert.ok(stats.affinity('C:\\M\\Hot.flac') > 0.4);
+
+    // 2. music-spectrum: close() restores opener focus BEFORE removing .visible and avoids body.focus()
+    const dom = new JSDOM('<!doctype html><body><button id="opener">open</button></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        window.requestAnimationFrame = (fn) => { fn(0); return 0; };
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-spectrum.js'), 'utf8'));
+        const opener = doc.getElementById('opener');
+        opener.focus();
+        const order = [];
+        const origFocus = opener.focus.bind(opener);
+        opener.focus = (opts) => { order.push('focus'); return origFocus(opts); };
+        const specApp = {
+            playlist: [{ path: 'C:\\M\\Hot.flac', title: 'Hot' }],
+            currentTrackIndex: 0,
+            api: { readMusicAudioFile: () => new Promise(() => {}) }
+        };
+        window.MusicSpectrum.setupMusicSpectrum(specApp);
+        specApp.openSpectrum(0);
+        const ov = doc.querySelector('.music-stats-dialog');
+        const origRemove = ov.classList.remove.bind(ov.classList);
+        ov.classList.remove = (...args) => { if (args.includes('visible')) order.push('hide'); return origRemove(...args); };
+        ov.querySelector('.mstats-close').click();
+        assert.deepEqual(order, ['focus', 'hide'], 'spectrum close restores opener focus before removing .visible');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+
+    // 3. musicGrooveBus: validates and throttles with 0 subscribers, delivers copy when subscribed
+    const grooveBus = require('../modules/services/musicGrooveBus');
+    assert.equal(grooveBus.publish({ playing: true, data: [0.5], trackKey: 'a' }, 10000), true);
+    assert.equal(grooveBus.publish({ playing: true, data: [0.5], trackKey: 'a' }, 10010), false, 'throttled within 40ms even with 0 listeners');
+    assert.equal(grooveBus.publish({ playing: true, data: [2.0], trackKey: 'a' }, 10100), false, 'out-of-range sample rejected');
+    const seen = [];
+    const unsub = grooveBus.subscribe((snap) => seen.push(snap));
+    assert.equal(grooveBus.publish({ playing: true, data: [0.25, 0.75], trackKey: 'k1' }, 10200), true);
+    unsub();
+    assert.equal(seen.length, 1);
+    assert.deepEqual(seen[0], { playing: true, trackKey: 'k1', data: [0.25, 0.75] });
+
+    // 4. matchScore & musicEngineHandlers IR preset listing/lookup
+    const { calculateMatchScore } = require('../modules/lyrics/matchScore');
+    const exact = calculateMatchScore(
+        { title: 'Starlight', artist: 'Aimer / Sawano', album: 'Dawn', durationMs: 240000 },
+        { title: 'Starlight', artist: 'Aimer, Sawano', album: 'Dawn', durationMs: 240200 }
+    );
+    assert.equal(exact.score, 100);
+    assert.equal(exact.artistMatched, true);
+
+    const { registerMusicEngineHandlers } = require('../modules/ipc/musicEngineHandlers');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vmusic-ir-'));
+    try {
+        fs.writeFileSync(path.join(tmpDir, 'Hall.A.wav'), '');
+        fs.writeFileSync(path.join(tmpDir, 'Plate.FLAC'), '');
+        fs.writeFileSync(path.join(tmpDir, '.wav'), '');
+        fs.writeFileSync(path.join(tmpDir, 'notes.txt'), '');
+        const handlers = new Map();
+        registerMusicEngineHandlers({
+            ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
+            dialog: {},
+            audioEngineApi: async () => ({}),
+            webdavManager: {},
+            irPresetDir: tmpDir
+        });
+        const list = await handlers.get('music-list-ir-presets')();
+        assert.deepEqual(list.slice().sort(), ['Hall.A', 'Plate']);
+        assert.equal(await handlers.get('music-get-ir-preset-path')({}, 'Hall.A'), path.join(tmpDir, 'Hall.A.wav'));
+        assert.equal(await handlers.get('music-get-ir-preset-path')({}, 'notes'), null);
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});

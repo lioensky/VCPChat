@@ -294,3 +294,39 @@ test('Batch 92: pickSimilar artist/album/genre memoization matches repeated mult
     const gammaCount = picked.filter((t) => t.artist === 'Gamma').length;
     assert.ok(betaCount <= 2 && alphaCount <= 2 && gammaCount <= 2, `artistCap respected with cached firstArtist (${alphaCount}/${betaCount}/${gammaCount})`);
 });
+
+test('Batch 99: dailyMix and neverPlayed prefer musicStats.has() to avoid per-track stats.get() wrapper allocations', () => {
+    const library = Array.from({ length: 12 }, (_, i) => ({
+        path: `/lib/${i}.flac`,
+        title: `Track ${i}`,
+        artist: `Artist ${i % 6}`,
+        album: `Album ${i % 4}`
+    }));
+    let getCalls = 0;
+    let hasCalls = 0;
+    const known = new Set(['/lib/0.flac', '/lib/1.flac']);
+    const store = new Map();
+    const app = {
+        playlist: library,
+        currentTrackIndex: 0,
+        playModes: ['repeat'],
+        currentPlayMode: 0,
+        loadTrack: async () => {},
+        syncTrackIndexByPath() {},
+        musicStats: {
+            top: () => ['/lib/0.flac'],
+            lastPlayed: () => ['/lib/1.flac'],
+            affinity: (t) => (known.has(t.path) ? 0.5 : 0),
+            has: (t) => { hasCalls += 1; return known.has(t.path); },
+            get: (t) => { getCalls += 1; return known.has(t.path) ? { plays: 2, last: 1, skips: 0, first: 1 } : null; }
+        }
+    };
+    setupMusicRadio(app, { storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) } });
+    const mix = app.dailyMix({ size: 6 });
+    const unseen = app.neverPlayed({ size: 6 });
+    assert.equal(mix.length, 6);
+    assert.equal(unseen.length, 6);
+    assert.equal(getCalls, 0, 'dailyMix and neverPlayed avoid stats.get() when stats.has() is available');
+    assert.ok(hasCalls >= library.length, 'stats.has() is used for novelty and neverPlayed checks');
+    assert.ok(unseen.every((t) => !known.has(t.path)), 'neverPlayed excludes known tracks accurately');
+});

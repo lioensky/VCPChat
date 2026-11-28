@@ -714,3 +714,69 @@ test('Batch 85: WebDAV batch-renders server/file lists with escaping and caches 
     dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
     dom.window.close();
 });
+
+test('Batch 99: WebDAV modal and server dialog restore focus to opener before removing .active', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <button id="open-btn">WebDAV</button>
+        <div id="modal"><div id="servers"></div><div id="files"></div><div id="crumb"></div>
+            <button id="add">添加</button>
+        </div>
+        <div id="dialog">
+            <input id="webdav-server-name" />
+            <input id="webdav-server-url" />
+            <input id="webdav-server-username" />
+            <input id="webdav-server-password" />
+            <p id="status"></p>
+            <button id="cancel">取消</button>
+        </div>
+    </body>`, { runScripts: 'outside-only' });
+    const doc = dom.window.document;
+    for (const f of ['Musicmodules/music-player.js', 'Musicmodules/music-error-text.js', 'Musicmodules/music-webdav.js']) {
+        dom.window.eval(fs.readFileSync(f, 'utf8'));
+    }
+    const openBtn = doc.getElementById('open-btn');
+    const addBtn = doc.getElementById('add');
+    const app = {
+        playlist: [],
+        renderPlaylist() {},
+        updateAllCount() {},
+        addWebDavBtn: openBtn,
+        webdavModal: doc.getElementById('modal'),
+        webdavServerDialog: doc.getElementById('dialog'),
+        webdavServerList: doc.getElementById('servers'),
+        webdavFileList: doc.getElementById('files'),
+        webdavBreadcrumb: doc.getElementById('crumb'),
+        webdavAddServerBtn: addBtn,
+        webdavDialogStatus: doc.getElementById('status'),
+        webdavDialogCancel: doc.getElementById('cancel'),
+        webdavServers: [],
+        api: { listWebdavServers: async () => [] }
+    };
+    dom.window.setupWebDav(app);
+    app.setupWebDavHandlers();
+
+    openBtn.focus();
+    await app.openWebDavModal();
+    addBtn.focus();
+    addBtn.click();
+    assert.equal(doc.activeElement, doc.getElementById('webdav-server-name'));
+
+    const subOrder = [];
+    const origAddFocus = addBtn.focus.bind(addBtn);
+    addBtn.focus = (opts) => { subOrder.push('focus'); return origAddFocus(opts); };
+    const origSubRemove = app.webdavServerDialog.classList.remove.bind(app.webdavServerDialog.classList);
+    app.webdavServerDialog.classList.remove = (...args) => { if (args.includes('active')) subOrder.push('hide'); return origSubRemove(...args); };
+    app.webdavDialogCancel.click();
+    assert.deepEqual(subOrder, ['focus', 'hide'], 'server dialog restores focus to add button before removing .active');
+
+    const modalOrder = [];
+    const origOpenFocus = openBtn.focus.bind(openBtn);
+    openBtn.focus = (opts) => { modalOrder.push('focus'); return origOpenFocus(opts); };
+    const origModalRemove = app.webdavModal.classList.remove.bind(app.webdavModal.classList);
+    app.webdavModal.classList.remove = (...args) => { if (args.includes('active')) modalOrder.push('hide'); return origModalRemove(...args); };
+    app.closeWebDavModal();
+    assert.deepEqual(modalOrder, ['focus', 'hide'], 'WebDAV modal restores focus to opener before removing .active');
+
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    dom.window.close();
+});
