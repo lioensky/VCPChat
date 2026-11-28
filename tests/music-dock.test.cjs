@@ -2249,3 +2249,43 @@ test('Batch 89: dock caches drawer volume row refs and avoids offsetWidth reflow
         window.close();
     }
 });
+
+test('Batch 91: palette open focuses input before toggling md-cmd-open/body class and clones prebuilt rowProto with default music icon', () => {
+    const { window, doc, dock } = setup((a) => {
+        for (let i = 0; i < 12; i += 1) {
+            a.playlist.push({ path: `C:/p${i}.flac`, title: `Proto Track ${i}`, artist: 'Art', album: 'Alb' });
+        }
+    });
+    try {
+        const host = doc.getElementById('music-dock-root');
+        const input = doc.querySelector('.md-cmd-in');
+        const origFocus = input.focus.bind(input);
+        let focusSawHostClass = null;
+        let focusSawBodyClass = null;
+        let focusSawHidden = null;
+        input.focus = (...args) => {
+            focusSawHidden = doc.querySelector('.md-cmd').hidden;
+            focusSawHostClass = host.classList.contains('md-cmd-open');
+            focusSawBodyClass = doc.body.classList.contains('music-dock-cmd-open');
+            return origFocus(...args);
+        };
+        dock.openPalette();
+        assert.equal(focusSawHidden, false, '.md-cmd is unhidden before focus');
+        assert.equal(focusSawHostClass, false, 'input.focus runs before md-cmd-open dirties #music-dock-root');
+        assert.equal(focusSawBodyClass, false, 'input.focus runs before music-dock-cmd-open dirties body');
+        assert.equal(host.classList.contains('md-cmd-open'), true, 'md-cmd-open is applied after focus');
+        assert.equal(doc.body.classList.contains('music-dock-cmd-open'), true, 'music-dock-cmd-open is applied after focus');
+
+        // Typing song query creates rows with pre-populated music icon + corner-down-left icon
+        input.value = 'Proto Track';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const rows = doc.querySelectorAll('.md-cmd-row');
+        assert.equal(rows.length, 12);
+        assert.ok(rows[1].querySelector('.md-cmd-ri svg'), 'song row receives music SVG from rowProto');
+        assert.ok(rows[1].querySelector('.md-cmd-run svg'), 'song row receives enter SVG from rowProto');
+        assert.equal(rows[1].querySelector('.md-cmd-chip'), null, 'song row without hint skips unused kbd chip');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

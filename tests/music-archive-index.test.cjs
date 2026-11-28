@@ -426,3 +426,72 @@ test('Batch 82: sortSpec lazily builds title/artist comparators so cached calls 
     assert.equal(sp2.order, sp1.order);
     assert.equal(sp3.order, sp1.order);
 });
+
+test('Batch 91: >64-track query artist/album score cache matches reference, packed albumCompare handles all disc/no cases, and listRows skips unnumbered album sorts', () => {
+    const TrackOrder = require('../Musicmodules/music-track-order.js');
+    // 1. >64 tracks with repeated artists/albums: cached artist/album scoring matches small-pool reference
+    const tracks = Array.from({ length: 180 }, (_, i) => ({
+        path: `/m/a${i % 15}/t${i}.flac`,
+        title: `曲目 ${i + 1}${i % 9 === 0 ? ' Live' : ''}`,
+        artist: `Artist ${i % 12}`,
+        album: `Album ${i % 20}`
+    }));
+    const idxBig = Index.createIndex(tracks);
+    for (const [q, kind] of [
+        ['artist 1', 'artist'],
+        ['artist 1', 'all'],
+        ['album 1 live', 'all'],
+        ['album 12', 'album'],
+        ['a', 'all'],
+        ['artist 10 1', 'all']
+    ]) {
+        const cached = idxBig.query(q, { kind });
+        // Compare against small-slice reference by querying with only<=64 chunks or direct scoring check
+        const refAll = idxBig.query(q, { kind, only: tracks.map((_, i) => i) });
+        assert.ok(cached.length > 0 || q === 'artist 10 1');
+        // Verify exact match against a fresh index queried on 60-item subsets merged? Simpler: check every returned id matches!
+        assert.deepEqual(cached, refAll, `query("${q}", ${kind}) with cache matches only-list scan`);
+    }
+
+    // 2. Packed Int32Array albumCompare handles numbered vs unnumbered, disc-only unnumbered, and fallback tie-break
+    const ordTracks = [
+        { path: '/alb/CD2/Zeta.flac', title: 'Zeta' },           // disc=2, no=0
+        { path: '/alb/CD1/Beta.flac', title: 'Beta' },           // disc=1, no=0
+        { path: '/alb/CD1/Alpha.flac', title: 'Alpha' },         // disc=1, no=0
+        { path: '/alb/CD2/01 Intro.flac', title: 'Intro' },      // disc=2, no=1
+        { path: '/alb/CD1/02 Second.flac', title: 'Second' },    // disc=1, no=2
+        { path: '/alb/CD1/01 First.flac', title: 'First' }       // disc=1, no=1
+    ];
+    const cmp = TrackOrder.albumCompare(ordTracks, (a, b) => ordTracks[a].title.localeCompare(ordTracks[b].title));
+    const sortedIds = ordTracks.map((_, i) => i).sort(cmp);
+    assert.deepEqual(sortedIds, [5, 4, 3, 2, 1, 0], 'numbered (disc then track) precede unnumbered (disc then fallback)');
+
+    // 3. listRows(album) with sp.order skips albumCompare entirely when no album has disc/track numbers,
+    //    and accurately sorts albums that have disc-only or track-numbered entries
+    const plainTracks = Array.from({ length: 40 }, (_, i) => ({
+        path: `/plain/a${i % 4}/song_${40 - i}.flac`,
+        title: `Song ${40 - i}`,
+        artist: 'Art',
+        album: `Plain ${i % 4}`
+    }));
+    const idxPlain = Index.createIndex(plainTracks);
+    const spPlain = Index.sortSpec(idxPlain, { mode: 'title', tracks: plainTracks });
+    const origAlbumCmp = global.MusicTrackOrder.albumCompare;
+    let albumCmpCalls = 0;
+    global.MusicTrackOrder.albumCompare = (...args) => { albumCmpCalls += 1; return origAlbumCmp(...args); };
+    try {
+        const resPlain = Index.listRows({ tracks: plainTracks, index: idxPlain, kind: 'album', spec: spPlain });
+        assert.equal(albumCmpCalls, 0, 'unnumbered albums skip albumCompare when sp.order is present');
+        const refPlain = Index.listRows({ tracks: plainTracks, index: idxPlain, kind: 'album', spec: { ...spPlain, order: null } });
+        assert.deepEqual(resPlain, refPlain, 'unnumbered album rows match reference exactly');
+    } finally {
+        global.MusicTrackOrder.albumCompare = origAlbumCmp;
+    }
+
+    const mixedTracks = ordTracks.map((t) => ({ ...t, artist: 'Art', album: 'Mixed' }));
+    const idxMixed = Index.createIndex(mixedTracks);
+    const spMixed = Index.sortSpec(idxMixed, { mode: 'title', tracks: mixedTracks });
+    const resMixed = Index.listRows({ tracks: mixedTracks, index: idxMixed, kind: 'album', spec: spMixed });
+    const refMixed = Index.listRows({ tracks: mixedTracks, index: idxMixed, kind: 'album', spec: { ...spMixed, order: null } });
+    assert.deepEqual(resMixed, refMixed, 'mixed disc/track album rows match reference exactly');
+});

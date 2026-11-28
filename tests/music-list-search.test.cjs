@@ -48,3 +48,27 @@ test('Batch 53: searchTracks caches per-track haystack and invalidates when meta
     assert.equal(app.searchTracks(tracks, '夜曲').length, 0, 'mutated track title invalidates cached haystack');
     assert.equal(app.searchTracks(tracks, '七里香').length, 1);
 });
+
+test('Batch 91: searchTracks skips NFKC normalize on ASCII+CJK+hiragana tracks while still normalizing full-width chars', () => {
+    const app = { api: {} };
+    let normalizeCalls = 0;
+    const context = { app, window: {}, console };
+    vm.runInNewContext(
+        `const origNorm = String.prototype.normalize;
+         String.prototype.normalize = function (form) { __onNorm(); return origNorm.call(this, form); };
+         ${fs.readFileSync(path.join(__dirname, '..', 'Musicmodules', 'music-utils.js'), 'utf8')}
+         setupUtils(app);`,
+        { ...context, __onNorm: () => { normalizeCalls += 1; } }
+    );
+    const cjkTracks = [
+        { title: '晴天 Live.flac', artist: '周杰伦', album: '叶惠美' },
+        { title: 'さくら.mp3', artist: 'Artist 1', album: '春' }
+    ];
+    assert.equal(app.searchTracks(cjkTracks, '晴天').length, 1);
+    assert.equal(app.searchTracks(cjkTracks, 'さくら live').length, 0);
+    assert.equal(normalizeCalls, 0, 'ASCII + basic CJK + basic hiragana bypass NFKC normalize');
+
+    const fwTracks = [{ title: 'Ｌｉｖｅ ２０２４.flac', artist: 'Ｂａｎｄ', album: '' }];
+    assert.equal(app.searchTracks(fwTracks, 'live 2024').length, 1);
+    assert.ok(normalizeCalls > 0, 'full-width characters still run NFKC normalize');
+});
