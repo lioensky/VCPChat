@@ -364,16 +364,22 @@
                 resize();
                 // The environment map has to be in place before the warm-up, or every
                 // standard material recompiles the first time it appears.
-                world.prepareEnvironment?.(renderer);
+                const alive = () => !mode.destroyed && !!renderer;
+                if (typeof world.prepareEnvironmentAsync === 'function') {
+                    await world.prepareEnvironmentAsync(renderer, alive);
+                } else {
+                    world.prepareEnvironment?.(renderer);
+                }
+                if (!alive()) return;
                 // The lens draws the scene offscreen; without it only the water pass does.
-                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true, report: false });
-                if (mode.destroyed || !renderer) return;
+                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true, report: false, alive });
+                if (!alive()) return;
                 await U.breathe();
-                if (mode.destroyed || !renderer) return;
-                if (!canvasSmoothing) await optics?.precompile?.(renderer);
-                if (mode.destroyed || !renderer) return;
+                if (!alive()) return;
+                if (!canvasSmoothing) await optics?.precompile?.(renderer, alive);
+                if (!alive()) return;
                 // Lens programs included, so the first frame has nothing left to link.
-                await U.settlePrograms(renderer, () => !mode.destroyed && !!renderer);
+                await U.settlePrograms(renderer, alive);
                 if (mode.destroyed || !renderer) return;
                 await U.breathe();
                 if (mode.destroyed || !renderer) return;

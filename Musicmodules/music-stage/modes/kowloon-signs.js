@@ -1113,6 +1113,41 @@
     };
 
     // ---------- the module ---------------------------------------------------
+    const ATLAS_PARK_MS = 45000;
+    let parkedAtlas = null;
+    let parkedUnloadBound = false;
+    const dropCanvas = (c) => { if (c) { c.width = 0; c.height = 0; } };
+    const clearParkedAtlas = () => {
+        if (!parkedAtlas) return;
+        const entry = parkedAtlas;
+        parkedAtlas = null;
+        if (entry.timer) { clearTimeout(entry.timer); entry.timer = 0; }
+        dropCanvas(entry.baseSmall);
+        dropCanvas(entry.emit);
+        dropCanvas(entry.maskSmall);
+        dropCanvas(entry.haCanvas);
+    };
+    const takeParkedAtlas = (key) => {
+        if (!parkedAtlas || parkedAtlas.key !== key) return null;
+        const entry = parkedAtlas;
+        parkedAtlas = null;
+        if (entry.timer) { clearTimeout(entry.timer); entry.timer = 0; }
+        return entry;
+    };
+    const parkAtlas = (entry) => {
+        clearParkedAtlas();
+        if (!entry || global.document?.hidden || typeof global.setTimeout !== 'function') {
+            if (entry) { dropCanvas(entry.baseSmall); dropCanvas(entry.emit); dropCanvas(entry.maskSmall); dropCanvas(entry.haCanvas); }
+            return;
+        }
+        if (!parkedUnloadBound && typeof global.addEventListener === 'function') {
+            parkedUnloadBound = true;
+            global.addEventListener('beforeunload', clearParkedAtlas, { once: true });
+        }
+        entry.timer = global.setTimeout(clearParkedAtlas, ATLAS_PARK_MS);
+        entry.timer?.unref?.();
+        parkedAtlas = entry;
+    };
 
     const create = (T, ctx = {}) => {
         const scene = ctx.scene;
@@ -1192,39 +1227,64 @@
             { w: Math.round(ATLAS * 0.25), h: Math.round(ATLAS * 0.25 * 0.42 * 2) }, // ads: 2×2 slides
             { w: 64, h: 64 }, { w: 64, h: 64 }
         ];
-        let lo = 4, hi = energy ? 90 : 180, packed = pack(sizes(lo), ATLAS, 4);
-        for (let k = 0; k < 14; k += 1) {
-            const mid = (lo + hi) / 2, tryPack = pack(sizes(mid), ATLAS, 4);
-            if (tryPack.height <= ATLAS_H) { lo = mid; packed = tryPack; } else hi = mid;
+        const HA_W = energy ? 512 : 1024, HA_H = HA_W * 2, HC = HA_W / 4, HR = HA_H / 2;
+        const cacheKey = `${seed}|${energy ? 1 : 0}|${specs.length}|${ATLAS}x${ATLAS_H}|${HA_W}x${HA_H}`;
+        const cachedAtlas = takeParkedAtlas(cacheKey);
+        let packed, density;
+        if (cachedAtlas) {
+            packed = cachedAtlas.packed;
+            density = cachedAtlas.density;
+        } else {
+            let lo = 4, hi = energy ? 90 : 180;
+            packed = pack(sizes(lo), ATLAS, 4);
+            for (let k = 0; k < 14; k += 1) {
+                const mid = (lo + hi) / 2, tryPack = pack(sizes(mid), ATLAS, 4);
+                if (tryPack.height <= ATLAS_H) { lo = mid; packed = tryPack; } else hi = mid;
+            }
+            density = lo;
         }
-        let density = lo;
+        specs.forEach((spec, i) => { spec.rect = packed.rects[i]; });
+        const adRect = packed.rects[specs.length];
+        const slideW = adRect.w / 2, slideH = adRect.h / 2;
+        const metalRect = packed.rects[specs.length + 1], darkRect = packed.rects[specs.length + 2];
         // Only the light layer needs full resolution; paint the unlit surface
         // and the tube-channel mask straight at a quarter instead of full size + shrink.
         // Software 2D backing avoids flushing thousands of Skia GPU clip/gradient/text ops inside texSubImage2D.
         const sw = { willReadFrequently: true };
-        const baseSmall = makeCanvas(ATLAS / 4, ATLAS_H / 4), emit = makeCanvas(ATLAS, ATLAS_H), maskSmall = makeCanvas(ATLAS / 4, ATLAS_H / 4);
-        const L = { base: baseSmall.getContext('2d', sw), emit: emit.getContext('2d', sw), mask: maskSmall.getContext('2d', sw) };
-        L.base.setTransform(0.25, 0, 0, 0.25, 0, 0);
-        L.mask.setTransform(0.5, 0, 0, 0.5, 0, 0);
-        L.base.fillStyle = '#101010'; L.base.fillRect(0, 0, ATLAS, ATLAS_H);
-        L.emit.fillStyle = '#000'; L.emit.fillRect(0, 0, ATLAS, ATLAS_H);
-        L.mask.fillStyle = '#000'; L.mask.fillRect(0, 0, ATLAS / 2, ATLAS_H / 2);
-        const paintRandom = rngFor(ctx, `kowloon:paint:${seed}`);
-        specs.forEach((spec, i) => {
-            const r = packed.rects[i];
-            spec.rect = r;
-            if (spec.style === 'box') paintBoxSign(L, spec, r, paintRandom);
-            else paintNeonSign(L, spec, r, paintRandom);
-        });
-        const adRect = packed.rects[specs.length];
-        const slideW = adRect.w / 2, slideH = adRect.h / 2;
-        for (let k = 0; k < adSlides; k += 1) {
-            paintAd(L, AD_SLOGANS[(k + Math.floor(paintRandom() * 6)) % AD_SLOGANS.length],
-                { x: adRect.x + (k % 2) * slideW, y: adRect.y + Math.floor(k / 2) * slideH, w: slideW, h: slideH }, paintRandom, k);
+        const baseSmall = cachedAtlas ? cachedAtlas.baseSmall : makeCanvas(ATLAS / 4, ATLAS_H / 4);
+        const emit = cachedAtlas ? cachedAtlas.emit : makeCanvas(ATLAS, ATLAS_H);
+        const maskSmall = cachedAtlas ? cachedAtlas.maskSmall : makeCanvas(ATLAS / 4, ATLAS_H / 4);
+        const haCanvas = cachedAtlas ? cachedAtlas.haCanvas : makeCanvas(HA_W, HA_H);
+        const L = cachedAtlas ? null : { base: baseSmall.getContext('2d', sw), emit: emit.getContext('2d', sw), mask: maskSmall.getContext('2d', sw) };
+        const paintRandom = cachedAtlas ? null : rngFor(ctx, `kowloon:paint:${seed}`);
+        let atlasPainted = Boolean(cachedAtlas);
+        const beginAtlasPaint = () => {
+            L.base.setTransform(0.25, 0, 0, 0.25, 0, 0);
+            L.mask.setTransform(0.5, 0, 0, 0.5, 0, 0);
+            L.base.fillStyle = '#101010'; L.base.fillRect(0, 0, ATLAS, ATLAS_H);
+            L.emit.fillStyle = '#000'; L.emit.fillRect(0, 0, ATLAS, ATLAS_H);
+            L.mask.fillStyle = '#000'; L.mask.fillRect(0, 0, ATLAS / 2, ATLAS_H / 2);
+        };
+        const paintSignRange = (from, to) => {
+            for (let i = from; i < to; i += 1) {
+                const spec = specs[i];
+                if (spec.style === 'box') paintBoxSign(L, spec, spec.rect, paintRandom);
+                else paintNeonSign(L, spec, spec.rect, paintRandom);
+            }
+        };
+        const finishAtlasPaint = () => {
+            for (let k = 0; k < adSlides; k += 1) {
+                paintAd(L, AD_SLOGANS[(k + Math.floor(paintRandom() * 6)) % AD_SLOGANS.length],
+                    { x: adRect.x + (k % 2) * slideW, y: adRect.y + Math.floor(k / 2) * slideH, w: slideW, h: slideH }, paintRandom, k);
+            }
+            paintMetal(L, metalRect, paintRandom, '#3b3836');
+            paintMetal(L, darkRect, paintRandom, '#1c1b1a');
+        };
+        if (!atlasPainted && !ctx.asyncPaint) {
+            beginAtlasPaint();
+            paintSignRange(0, specs.length);
+            finishAtlasPaint();
         }
-        const metalRect = packed.rects[specs.length + 1], darkRect = packed.rects[specs.length + 2];
-        paintMetal(L, metalRect, paintRandom, '#3b3836');
-        paintMetal(L, darkRect, paintRandom, '#1c1b1a');
         const uvOf = (r, inset = 0.5) => [(r.x + inset) / ATLAS, 1 - (r.y + r.h - inset) / ATLAS_H, (r.x + r.w - inset) / ATLAS, 1 - (r.y + inset) / ATLAS_H];
         const metalUv = uvOf(metalRect, 4), darkUv = uvOf(darkRect, 4);
 
@@ -1378,7 +1438,6 @@
             group.add(mesh); meshes.push(mesh);
             return mesh;
         };
-        addMesh(hw, hardwareMat, 'Signs/hardware', 0);
         addMesh(glow, glowMat, 'Signs/glow', 2);
 
         // --- screens
@@ -1511,9 +1570,7 @@
             }
         });
         ab.setTag(0); hw.setTag(0);
-        // Rebuild the hardware mesh now that screen housings are in it.
-        meshes.forEach(m => { if (m.name === 'Signs/hardware') { group.remove(m); m.geometry.dispose(); } });
-        meshes.splice(meshes.findIndex(m => m.name === 'Signs/hardware'), 1);
+        // Build the hardware mesh once all sign, screen and holo housings are in it.
         addMesh(hw, hardwareMat, 'Signs/hardware', 0);
         const screenMat = new T.ShaderMaterial({
             name: 'kowloon:signs:screens', fog: true,
@@ -1596,8 +1653,6 @@
         }
         // Banner art: four columns, two slides each (top row, bottom row).
         // Masks only: R = the big copy, G = linework, B = the faint panel.
-        const HA_W = energy ? 512 : 1024, HA_H = HA_W * 2, HC = HA_W / 4, HR = HA_H / 2;
-        const haCanvas = makeCanvas(HA_W, HA_H);
         const paintHoloAds = () => {
             const g = haCanvas.getContext('2d', { willReadFrequently: true });
             const k = HC / 256;
@@ -1658,8 +1713,43 @@
             });
             g.globalCompositeOperation = 'source-over';
         };
-        paintHoloAds();
+        if (!atlasPainted && !ctx.asyncPaint) {
+            paintHoloAds();
+            atlasPainted = true;
+        }
         const haTex = texture(haCanvas);
+        const paintAsync = async (alive = () => true) => {
+            if (atlasPainted) return;
+            const U = global.MusicStageModeUtils;
+            const nowFn = () => (global.performance?.now?.() ?? Date.now());
+            beginAtlasPaint();
+            let sliceStart = nowFn();
+            const STEP = 4;
+            for (let i = 0; i < specs.length; i += STEP) {
+                if (!alive()) return;
+                paintSignRange(i, Math.min(specs.length, i + STEP));
+                if (i + STEP < specs.length && nowFn() - sliceStart >= 12 && typeof U?.breathe === 'function') {
+                    await U.breathe();
+                    if (!alive()) return;
+                    sliceStart = nowFn();
+                }
+            }
+            if (!alive()) return;
+            if (nowFn() - sliceStart >= 8 && typeof U?.breathe === 'function') {
+                await U.breathe();
+                if (!alive()) return;
+                sliceStart = nowFn();
+            }
+            finishAtlasPaint();
+            if (typeof U?.breathe === 'function') await U.breathe();
+            if (!alive()) return;
+            paintHoloAds();
+            atlasPainted = true;
+            baseTex.needsUpdate = true;
+            emitTex.needsUpdate = true;
+            maskTex.needsUpdate = true;
+            haTex.needsUpdate = true;
+        };
         haTex.minFilter = T.LinearMipmapLinearFilter; haTex.generateMipmaps = true;
         const holoAdMat = new T.ShaderMaterial({
             name: 'kowloon:signs:holo-ads', fog: true, transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide,
@@ -2065,6 +2155,7 @@
 
         return {
             group,
+            paintAsync,
             update,
             setPalette,
             setTier,
@@ -2076,6 +2167,13 @@
                 scene?.remove(group);
                 disposables.forEach(d => d.dispose?.());
                 disposables.length = 0;
+                dropCanvas(lyricCanvas);
+                dropCanvas(holoCanvas);
+                if (atlasPainted) {
+                    parkAtlas({ key: cacheKey, baseSmall, emit, maskSmall, haCanvas, packed, density, timer: 0 });
+                } else {
+                    dropCanvas(baseSmall); dropCanvas(emit); dropCanvas(maskSmall); dropCanvas(haCanvas);
+                }
             },
             stats() {
                 return {
@@ -2090,7 +2188,7 @@
         };
     };
 
-    const api = { create, _test: { chooseSlots, chooseHoloAds, designSign, hashString, mulberry, layoutRows, wordsOf, graphemes, REGIONS, VERTICAL_SHOPS, HORIZONTAL_SHOPS, ROOF_BRANDS } };
+    const api = { create, _test: { chooseSlots, chooseHoloAds, designSign, hashString, mulberry, layoutRows, wordsOf, graphemes, clearParkedAtlas, REGIONS, VERTICAL_SHOPS, HORIZONTAL_SHOPS, ROOF_BRANDS } };
     global.MusicStageKowloonSigns = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

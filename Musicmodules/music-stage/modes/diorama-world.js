@@ -3495,6 +3495,24 @@
             envCamera.update(renderer, envScene);
             envTarget.texture.needsPMREMUpdate = true;
         };
+        const prepareEnvironmentAsync = async (renderer, alive = () => true) => {
+            if (dead || !envDirty || !renderer) return;
+            const U = global.MusicStageModeUtils;
+            const faceCam = envCamera.children?.[0] || new T.PerspectiveCamera(90, 1, 1, 2000);
+            if (typeof U?.compilePasses === 'function') {
+                await U.compilePasses(renderer, [{ target: envTarget, scene: envScene, camera: faceCam }], () => !dead && alive());
+            } else if (typeof U?.compileReady === 'function') {
+                const prev = renderer.getRenderTarget();
+                try {
+                    renderer.setRenderTarget(envTarget);
+                    await U.compileReady(renderer, envScene, faceCam);
+                } finally {
+                    try { renderer.setRenderTarget(prev); } catch (_) {}
+                }
+            }
+            if (dead || !alive() || renderer.getContext?.()?.isContextLost?.()) return;
+            prepareEnvironment(renderer);
+        };
         const random = seededRandom('last-train-fixed-sky');
         const positions = [], colors = [], sizes = [], phases = [];
         // Lights of towns on the far shore come first in the buffer, so every
@@ -5724,7 +5742,7 @@
         };
         setPalette();
         return {
-            update, setPalette, renderReflection, updateCabin, prepareEnvironment,
+            update, setPalette, renderReflection, updateCabin, prepareEnvironment, prepareEnvironmentAsync,
             setCoverColour, coverSettling,
             // How hard it is raining (0..1), for any shader that shows it.
             rain: rainAmount,

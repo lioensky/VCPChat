@@ -1268,6 +1268,147 @@
         });
     };
 
+    // Hand the main thread back for a frame between heavy init steps so animations keep moving.
+    const breathe = () => new Promise((resolve) => {
+        let done = false;
+        const go = () => { if (!done) { done = true; resolve(); } };
+        global.requestAnimationFrame?.(() => global.setTimeout(go, 0));
+        global.setTimeout(go, 50);
+    });
+
+    const waitMaterialsReady = (renderer, waiting, alive = () => true) => new Promise((resolve) => {
+        const deadline = (global.performance?.now?.() ?? Date.now()) + 15000;
+        const check = () => {
+            try {
+                const gl = renderer.getContext?.();
+                if (!alive() || (gl && gl.isContextLost?.()) || (global.performance?.now?.() ?? Date.now()) > deadline) {
+                    waiting.clear();
+                } else {
+                    for (const material of waiting) {
+                        const program = renderer.properties.get(material)?.currentProgram;
+                        if (!program || program.isReady()) waiting.delete(material);
+                    }
+                }
+            } catch {
+                waiting.clear();
+            }
+            if (!waiting.size) resolve();
+            else global.setTimeout(check, 8);
+        };
+        check();
+    });
+
+    const compileReady = (renderer, scene, camera, alive = () => true) => {
+        if (!renderer.compileAsync || !renderer.properties) {
+            renderer.compile(scene, camera);
+            return Promise.resolve();
+        }
+        const waiting = renderer.compile(scene, camera);
+        return waitMaterialsReady(renderer, waiting, alive);
+    };
+
+    const compilePasses = async (renderer, passes, alive = () => true) => {
+        const list = Array.isArray(passes) ? passes.filter(Boolean) : [];
+        if (!list.length || !alive()) return;
+        const previous = renderer.getRenderTarget();
+        const parallel = Boolean(renderer.compileAsync && renderer.properties
+            && renderer.extensions?.has?.('KHR_parallel_shader_compile'));
+        try {
+            if (parallel) {
+                const waiting = new Set();
+                for (let i = 0; i < list.length; i += 1) {
+                    if (!alive() || renderer.getContext?.()?.isContextLost?.()) return;
+                    const pass = list[i];
+                    pass.before?.();
+                    renderer.setRenderTarget(pass.target ?? null);
+                    const mats = renderer.compile(pass.scene, pass.camera);
+                    if (mats && typeof mats[Symbol.iterator] === 'function') {
+                        for (const mat of mats) waiting.add(mat);
+                    }
+                }
+                renderer.setRenderTarget(previous);
+                if (waiting.size) await waitMaterialsReady(renderer, waiting, alive);
+            } else {
+                for (let i = 0; i < list.length; i += 1) {
+                    if (!alive() || renderer.getContext?.()?.isContextLost?.()) return;
+                    const pass = list[i];
+                    pass.before?.();
+                    renderer.setRenderTarget(pass.target ?? null);
+                    await compileReady(renderer, pass.scene, pass.camera, alive);
+                    if (!alive()) return;
+                    if (i + 1 < list.length) await breathe();
+                }
+            }
+        } finally {
+            try { renderer.setRenderTarget(previous); } catch (_) {}
+        }
+    };
+
+    const settlePrograms = async (renderer, alive = () => true, budget = 24) => {
+        let started = global.performance?.now?.() ?? Date.now();
+        const seen = new Set();
+        try {
+            const gl0 = renderer.getContext?.();
+            if (!gl0 || gl0.isContextLost()) {
+                console.warn('[MusicStage] WebGL context lost during shader warm-up');
+                return;
+            }
+            let khr = null;
+            try { khr = gl0.getExtension?.('KHR_parallel_shader_compile') || null; } catch (_) {}
+            const statusEnum = khr && typeof khr.COMPLETION_STATUS_KHR === 'number' ? khr.COMPLETION_STATUS_KHR : 0;
+            let queue = [];
+            for (const entry of [...(renderer.info?.programs || [])]) {
+                const program = entry?.program;
+                if (!program || seen.has(program)) continue;
+                seen.add(program);
+                queue.push(entry);
+            }
+            const pollDeadline = started + 12000;
+            while (queue.length) {
+                if (!alive()) return;
+                const gl = renderer.getContext?.();
+                if (!gl || gl.isContextLost()) {
+                    console.warn('[MusicStage] WebGL context lost during shader warm-up');
+                    return;
+                }
+                const allowDefer = Boolean(statusEnum && (global.performance?.now?.() ?? Date.now()) < pollDeadline);
+                const deferred = [];
+                for (let i = 0; i < queue.length; i += 1) {
+                    if (!alive()) return;
+                    const entry = queue[i];
+                    const program = entry.program;
+                    if (allowDefer && !gl.getProgramParameter(program, statusEnum)) {
+                        deferred.push(entry);
+                        continue;
+                    }
+                    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                        const shaderLog = (shader) => (shader && gl.getShaderInfoLog(shader)) || '';
+                        console.error('[MusicStage] shader program failed:', entry.name || entry.type || '',
+                            '\nprogram:', gl.getProgramInfoLog(program) || '',
+                            '\nvertex:', shaderLog(entry.vertexShader),
+                            '\nfragment:', shaderLog(entry.fragmentShader));
+                        continue;
+                    }
+                    entry.getUniforms?.();
+                    entry.getAttributes?.();
+                    const now = global.performance?.now?.() ?? Date.now();
+                    if (now - started > budget) {
+                        await breathe();
+                        if (!alive()) return;
+                        started = global.performance?.now?.() ?? Date.now();
+                    }
+                }
+                queue = deferred;
+                if (queue.length) {
+                    await breathe();
+                    started = global.performance?.now?.() ?? Date.now();
+                }
+            }
+        } catch (error) {
+            console.warn('[MusicStage] shader check skipped:', error);
+        }
+    };
+
     // Call after intentional in-place lyric edits; normal source replacement is
     // already tracked by array identity without hashing the whole song per frame.
     const invalidateLines = (lines) => {
@@ -1281,6 +1422,10 @@
         programsReady,
         cancelPrograms,
         warmPrograms,
+        breathe,
+        compileReady,
+        compilePasses,
+        settlePrograms,
         invalidateLines,
         isReducedMotion,
         finiteNumber,

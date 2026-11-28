@@ -809,8 +809,10 @@
         });
         const skyBakeMat = new T.ShaderMaterial({
             depthTest: false, depthWrite: false, blending: T.NoBlending,
+            uniforms: { uOctaves: { value: 7 } },
             vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
             fragmentShader: `
+                uniform int uOctaves;
                 varying vec2 vUv;
                 float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
                 float noise(vec3 p) {
@@ -822,12 +824,13 @@
                 }
                 float fbm(vec3 p) {
                     float sum = 0.0, gain = 0.5;
-                    for (int i = 0; i < 7; i++) { sum += gain * noise(p); p = p * 2.03 + vec3(7.1, 3.3, 5.7); gain *= 0.5; }
+                    for (int i = 0; i < 7; i++) { if (i >= uOctaves) break; sum += gain * noise(p); p = p * 2.03 + vec3(7.1, 3.3, 5.7); gain *= 0.5; }
                     return sum;
                 }
                 float ridge(vec3 p) {
                     float sum = 0.0, gain = 0.5;
                     for (int i = 0; i < 7; i++) {
+                        if (i >= uOctaves) break;
                         sum += gain * (1.0 - abs(noise(p) * 2.0 - 1.0));
                         p = p * 2.07 + vec3(1.7, 9.2, 4.4); gain *= 0.5;
                     }
@@ -1055,13 +1058,40 @@
         skyDome.renderOrder = -10;
         root.add(skyDome);
         // The cloud map is drawn once the renderer exists, and again after a lost context.
-        const prepare = (renderer) => {
+        const beginPrepare = () => {
             const quad = new T.Mesh(new T.PlaneGeometry(2, 2), skyBakeMat);
-            const previous = renderer.getRenderTarget();
-            renderer.setRenderTarget(skyMasks);
-            renderer.render(quad, new T.Camera());
-            renderer.setRenderTarget(previous);
-            quad.geometry.dispose();
+            const cam = new T.Camera();
+            let disposed = false;
+            const dispose = () => {
+                if (disposed) return;
+                disposed = true;
+                quad.geometry.dispose();
+            };
+            return {
+                pass: { target: skyMasks, scene: quad, camera: cam },
+                bake(renderer) {
+                    if (disposed || renderer.getContext?.()?.isContextLost?.()) return;
+                    const previous = renderer.getRenderTarget();
+                    try {
+                        renderer.setRenderTarget(skyMasks);
+                        renderer.render(quad, cam);
+                    } finally {
+                        try { renderer.setRenderTarget(previous); } catch (_) {}
+                        dispose();
+                    }
+                },
+                dispose
+            };
+        };
+        const prepare = async (renderer, alive = () => true) => {
+            const job = beginPrepare();
+            try {
+                await global.MusicStageModeUtils?.compilePasses?.(renderer, [job.pass], alive);
+                if (!alive() || renderer.getContext?.()?.isContextLost?.()) return;
+                job.bake(renderer);
+            } finally {
+                job.dispose();
+            }
         };
 
         /* ------------------------------------------------------------------------
@@ -2122,6 +2152,7 @@
                     vec3 base = floor(p - 0.5);
                     vec2 sum = vec2(0.0);
                     for (int i = 0; i < 8; i++) {
+                        if (uPresence < -1.0) break;
                         vec3 cell = base + vec3(mod(float(i), 2.0), mod(floor(float(i) * 0.5), 2.0), floor(float(i) * 0.25));
                         if (hash(cell + salt) > keep) continue;
                         vec3 at = cell + 0.5 + (vec3(hash(cell + 1.3 + salt), hash(cell + 2.7), hash(cell + 5.1)) - 0.5) * 0.5;
@@ -4339,6 +4370,7 @@
             redrawLyric: () => { glyphCacheKey = ''; },
             coverSettling: () => cover.settling(),
             prepare,
+            beginPrepare,
             update,
             resize(w, h, ratio) {
                 const oldGlyphResolution = glyphResolution();
@@ -4647,15 +4679,25 @@
                 world = createTunnelWorld(T, scene, services?.app);
                 await U.breathe();
                 if (mode.destroyed || !renderer) return;
-                world.prepare(renderer);
                 applyQuality();
                 resize();
                 world.setPalette(services?.app?.stagePalette || {});
-                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: !canvasSmoothing, report: false });
-                if (mode.destroyed || !renderer) return;
-                if (!canvasSmoothing) await optics?.precompile?.(renderer);
-                if (mode.destroyed || !renderer) return;
-                await U.settlePrograms(renderer, () => !mode.destroyed && !!renderer);
+                const alive = () => !mode.destroyed && !!renderer;
+                const skyJob = world.beginPrepare();
+                try {
+                    await U.precompile(T, renderer, scene, camera, {
+                        canvas: canvasSmoothing, offscreen: !canvasSmoothing, report: false,
+                        extraPasses: [skyJob.pass], alive
+                    });
+                    if (!alive()) return;
+                    skyJob.bake(renderer);
+                } finally {
+                    skyJob.dispose();
+                }
+                if (!alive()) return;
+                if (!canvasSmoothing) await optics?.precompile?.(renderer, alive);
+                if (!alive()) return;
+                await U.settlePrograms(renderer, alive);
                 if (mode.destroyed || !renderer) return;
                 await U.breathe();
                 if (mode.destroyed || !renderer) return;

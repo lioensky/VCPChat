@@ -387,92 +387,26 @@
      * The renderer's own wait throws from a timer once the renderer has been
      * disposed (a stage left before its warm-up finished); this one just stops.
      */
-    const compileReady = (renderer, scene, camera) => {
-        if (!renderer.compileAsync || !renderer.properties) {
-            renderer.compile(scene, camera);
-            return Promise.resolve();
-        }
-        const waiting = renderer.compile(scene, camera);
-        return new Promise((resolve) => {
-            const check = () => {
-                try {
-                    for (const material of waiting) {
-                        const program = renderer.properties.get(material)?.currentProgram;
-                        if (!program || program.isReady()) waiting.delete(material);
-                    }
-                } catch {
-                    waiting.clear();
-                }
-                if (!waiting.size) resolve();
-                else setTimeout(check, 10);
-            };
-            check();
-        });
-    };
+    const { breathe, compileReady, compilePasses, settlePrograms } = Runtime;
 
-    const precompile = async (T, renderer, scene, camera, { canvas = true, offscreen = true, report = true } = {}) => {
-        const previous = renderer.getRenderTarget();
+    const precompile = async (T, renderer, scene, camera, { canvas = true, offscreen = true, report = true, extraPasses = null, alive = () => true } = {}) => {
         const probe = offscreen ? new T.WebGLRenderTarget(1, 1, { type: T.HalfFloatType }) : null;
         try {
-            for (const target of [canvas ? null : undefined, probe || undefined]) {
-                if (target === undefined) continue;
-                renderer.setRenderTarget(target);
-                await compileReady(renderer, scene, camera);
+            const passes = [];
+            if (Array.isArray(extraPasses)) {
+                for (let i = 0; i < extraPasses.length; i += 1) {
+                    if (extraPasses[i]) passes.push(extraPasses[i]);
+                }
             }
+            if (canvas) passes.push({ target: null, scene, camera });
+            if (probe) passes.push({ target: probe, scene, camera });
+            await compilePasses(renderer, passes, alive);
         } catch (error) {
             console.warn('[MusicStage] shader warm-up skipped:', error);
         } finally {
-            renderer.setRenderTarget(previous);
             probe?.dispose();
         }
-        if (report) await settlePrograms(renderer);
-    };
-
-    /*
-     * Shader errors are not checked per program (that waits on the GPU
-     * process every time), so look once, after the warm-up, and say which
-     * program the driver refused and why.
-     *
-     * A driver without background compiling links a program the first time
-     * anything asks about it: here, or else in the first frame, which then
-     * asks about every program at once and stalls for the whole lot. So each
-     * program is asked here, and its uniform table read the way the first
-     * draw would, a slice at a time with a frame in between. With background
-     * compiling every program is ready by now and this costs nothing.
-     */
-    const settlePrograms = async (renderer, alive = () => true, budget = 24) => {
-        let started = global.performance?.now?.() ?? Date.now();
-        const seen = new Set();
-        try {
-            for (const entry of [...(renderer.info?.programs || [])]) {
-                if (!alive()) return;
-                const gl = renderer.getContext?.();
-                if (!gl || gl.isContextLost()) {
-                    console.warn('[MusicStage] WebGL context lost during shader warm-up');
-                    return;
-                }
-                const program = entry.program;
-                if (!program || seen.has(program)) continue;
-                seen.add(program);
-                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-                    const shaderLog = (shader) => (shader && gl.getShaderInfoLog(shader)) || '';
-                    console.error('[MusicStage] shader program failed:', entry.name || entry.type || '',
-                        '\nprogram:', gl.getProgramInfoLog(program) || '',
-                        '\nvertex:', shaderLog(entry.vertexShader),
-                        '\nfragment:', shaderLog(entry.fragmentShader));
-                    continue;
-                }
-                entry.getUniforms?.();
-                entry.getAttributes?.();
-                const now = global.performance?.now?.() ?? Date.now();
-                if (now - started > budget) {
-                    await breathe();
-                    started = global.performance?.now?.() ?? Date.now();
-                }
-            }
-        } catch (error) {
-            console.warn('[MusicStage] shader check skipped:', error);
-        }
+        if (report) await settlePrograms(renderer, alive);
     };
 
     /*
@@ -767,16 +701,6 @@
             }
         };
     };
-
-    // Hand the main thread back for a frame between the steps of building a
-    // 3D stage, so the curtain's animation keeps moving while it is built.
-    // A hidden window has no frames; the timer stands in for one.
-    const breathe = () => new Promise((resolve) => {
-        let done = false;
-        const go = () => { if (!done) { done = true; resolve(); } };
-        global.requestAnimationFrame?.(() => global.setTimeout(go, 0));
-        global.setTimeout(go, 50);
-    });
 
     // Where the song is, for a stage's small running caption: "03 / 32",
     // or what the stage is waiting through when no line is up yet.
@@ -1594,6 +1518,7 @@ void main() {
         createFrameCap, createStillGate, durationChanged,
         precompile,
         compileReady,
+        compilePasses,
         warmLensless,
         tier,
         clamp,

@@ -691,7 +691,14 @@
                 ctx.city = city; ctx.alley = alley;
                 await U.breathe();
                 if (mode.destroyed || !renderer) return;
-                if (global.MusicStageKowloonSigns?.create) signs = global.MusicStageKowloonSigns.create(T, ctx);
+                if (global.MusicStageKowloonSigns?.create) {
+                    ctx.asyncPaint = true;
+                    signs = global.MusicStageKowloonSigns.create(T, ctx);
+                    if (typeof signs?.paintAsync === 'function') {
+                        await signs.paintAsync(() => !mode.destroyed && !!renderer);
+                        if (mode.destroyed || !renderer) return;
+                    }
+                }
                 syncModules();
                 if (!alley) {
                     // 巷道模块还没并进来：先铺一块湿地面，好看楼体落地。
@@ -722,11 +729,12 @@
                 resize();
                 // 分层雾补丁必须在着色器预热前挂到所有材质上，否则首帧 hazeScan 会让预热结果全部作废并同步重编译。
                 alley?.prepareHaze?.();
-                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true, report: false });
-                if (mode.destroyed || !renderer) return;
+                const alive = () => !mode.destroyed && !!renderer;
+                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true, report: false, alive });
+                if (!alive()) return;
                 if (!canvasSmoothing) await optics?.precompile?.(renderer);
-                if (mode.destroyed || !renderer) return;
-                await U.settlePrograms(renderer, () => !mode.destroyed && !!renderer);
+                if (!alive()) return;
+                await U.settlePrograms(renderer, alive);
                 if (mode.destroyed || !renderer) return;
                 initialized = true;
                 dirty = true;
