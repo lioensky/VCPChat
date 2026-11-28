@@ -20,8 +20,15 @@
     const NONE_AFTER = 2500;     // 换歌后这么久还没有歌词，才说「没有歌词」
     const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i;
 
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const textOf = (line) => String((line && (line.text || line.original || line.fullText)) || '').trim();
+    const ESC_RE = /[&<>"']/g;
+    const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const WS_RE = /\s+/g;
+    const esc = (s) => String(s ?? '').replace(ESC_RE, (c) => ESC_MAP[c]);
+    const textOf = (line) => {
+        const raw = line && (line.text || line.original || line.fullText);
+        if (!raw) return '';
+        return typeof raw === 'string' ? raw.trim() : String(raw).trim();
+    };
     /* 这一行有能用的逐字时间才返回（每个字都有起止时间、拼起来和整行一样），否则按整行显示 */
     const wordsOf = (line) => {
         const words = line && Array.isArray(line.words) ? line.words : null;
@@ -33,7 +40,9 @@
             joined += w.text;
         }
         const lineText = textOf(line);
-        return joined.trim() === lineText.replace(/\s+/g, ' ').trim() || joined.replace(/\s+/g, '') === lineText.replace(/\s+/g, '') ? words : null;
+        const trimmedJoined = joined.trim();
+        if (trimmedJoined === lineText) return words;
+        return trimmedJoined === lineText.replace(WS_RE, ' ') || joined.replace(WS_RE, '') === lineText.replace(WS_RE, '') ? words : null;
     };
 
     /* 第几行在唱：最后一个 time <= t 的行；都还没到就是 -1 */
@@ -235,7 +244,12 @@
             r.index.style.setProperty('--at', String(k < 0 ? 0 : k / (n - 1)));
             r.index.classList.toggle('started', k >= 0);
         };
-        const clock = (t) => { t = Math.max(0, Math.floor(Number(t) || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+        const clock = (t) => {
+            t = Math.max(0, Math.floor(Number(t) || 0));
+            const m = (t / 60) | 0;
+            const s = t - m * 60;
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        };
         const indexAtY = (y) => {
             const n = state.indexN || 0;
             const box = indexBox || r.index.getBoundingClientRect();

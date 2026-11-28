@@ -377,7 +377,9 @@
     const SPRING_FLOW = springEase(300, 34);
     const hueOf = (str) => { const s = String(str); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 360; };
 
-    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const ESC_RE = /[&<>"']/g;
+    const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const esc = (s) => String(s == null ? '' : s).replace(ESC_RE, (c) => ESC_MAP[c]);
 
     /*
      * opts:
@@ -670,21 +672,17 @@
             node.item = -2;
             if (st.pool.length < 80) st.pool.push(node);
         };
+        const tileProto = document.createElement('div');
+        tileProto.className = 'aw-tile';
+        tileProto.setAttribute('role', 'gridcell');
+        tileProto.setAttribute('aria-selected', 'false');
+        tileProto.innerHTML = '<div class="aw-in"><div class="aw-art"><img alt="" draggable="false" decoding="async"><span class="aw-blank"></span></div><i class="aw-shade"></i><span class="aw-no"></span><div class="aw-cap"><b></b><span></span></div>'
+            + '<button type="button" class="aw-q" data-wall="quick" tabindex="-1" aria-label="播放"></button><button type="button" class="aw-qm" data-wall="quickmenu" tabindex="-1" aria-label="更多操作"></button></div>';
         const makeNode = () => {
-            const node = st.pool.pop();
-            if (node) return node;
-            const t = document.createElement('div');
-            t.className = 'aw-tile';
-            t.setAttribute('role', 'gridcell');
-            t.setAttribute('aria-selected', 'false');
-            t.innerHTML = '<div class="aw-in"><div class="aw-art"><img alt="" draggable="false" decoding="async"><span class="aw-blank"></span></div><i class="aw-shade"></i><span class="aw-no"></span><div class="aw-cap"><b></b><span></span></div>'
-                + '<button type="button" class="aw-q" data-wall="quick" tabindex="-1" aria-label="播放"></button><button type="button" class="aw-qm" data-wall="quickmenu" tabindex="-1" aria-label="更多操作"></button></div>';
-            const inner = t.firstChild;
-            return {
-                el: t, inner, img: inner.querySelector('img'), blank: inner.querySelector('.aw-blank'),
-                no: inner.querySelector('.aw-no'), title: inner.querySelector('.aw-cap b'), sub: inner.querySelector('.aw-cap span'),
-                item: -2, x: NaN, y: NaN, w: NaN, h: NaN, src: null, clsMask: 0, code: '', badge: null
-            };
+            const n = st.pool.pop();
+            if (n) return n;
+            const t = tileProto.cloneNode(true), inner = t.firstChild, a = inner.children[0], c = inner.children[3];
+            return { el: t, inner, img: a.children[0], blank: a.children[1], no: inner.children[2], title: c.children[0], sub: c.children[1], item: -2, x: NaN, y: NaN, w: NaN, h: NaN, src: null, tb: 0, clsMask: 0, code: '', badge: null };
         };
         const panel = document.createElement('div');
         panel.className = 'aw-panel';
@@ -851,54 +849,42 @@
             paintSeek();
         });
 
-        const fillContent = (node, idx, px) => {
-            const i = st.ids[idx];
-            const t = opts.track(i);
-            const changed = node.item !== idx;
+        const fillContent = (node, idx, px, fc = false) => {
+            const i = st.ids[idx], t = opts.track(i), changed = node.item !== idx;
             if (changed) {
                 node.item = idx;
                 const m = opts.meta(t, i);
-                node.title.textContent = m.title;
-                node.sub.textContent = m.artist || '';
-                node.code = m.code || '';
-                node.badge = null;
-                node.blank.textContent = m.title;
+                node.title.textContent = m.title; node.sub.textContent = m.artist || '';
+                node.code = m.code || ''; node.badge = null; node.blank.textContent = m.title;
                 node.el.style.setProperty('--aw-h', hueOf(m.title + '|' + (m.album || '')));
                 node.el.setAttribute('aria-label', m.title + (m.artist ? '，' + m.artist : ''));
-                node.src = null;
+                node.src = null; node.tb = 0;
             }
-            const src = opts.cover(t);
-            node.rawSrc = src || '';
+            const src = opts.cover(t) || '', tb = px <= 200 ? 192 : px <= 420 ? 384 : 768;
+            if (!fc && !changed && src === node.rawSrc && node.tb === tb && (node.src || !src)) return;
+            node.rawSrc = src; node.tb = tb;
             const url = src ? thumbs.get(src, px) : '';
             if (url !== node.src) {
                 node.src = url;
-                if (url) {
-                    node.img.src = url;
-                    node.el.classList.add('has-art');
-                } else {
-                    node.img.removeAttribute('src');
-                    node.el.classList.remove('has-art');
-                }
+                if (url) { node.img.src = url; node.el.classList.add('has-art'); }
+                else { node.img.removeAttribute('src'); node.el.classList.remove('has-art'); }
             }
             const wait = Boolean(src && !url && !thumbs.failed(src));
             if (wait !== node.wait) { node.wait = wait; node.el.classList.toggle('is-wait', wait); }
         };
         const applyCovers = () => {
-            const dpr = global.devicePixelRatio || 1;
-            const only = st.readySrcs.size ? st.readySrcs : null;
+            const dpr = global.devicePixelRatio || 1, only = st.readySrcs.size ? st.readySrcs : null;
             for (const node of st.nodes.values()) {
-                if (node.item < 0) continue;
-                if (only && !only.has(node.rawSrc)) continue;
-                fillContent(node, node.item, Math.max(node.w || 0, node.h || 0) * dpr);
+                if (node.item < 0 || (only && !only.has(node.rawSrc))) continue;
+                fillContent(node, node.item, Math.max(node.w || 0, node.h || 0) * dpr, true);
             }
             st.readySrcs.clear();
         };
 
         /* 焦点在大卡/定位键上时，大卡收起或那一格被回收，按钮离开文档，焦点会掉回 body：拉回墙本身，方向键接着能用 */
-        const layout = () => {
-            const a = document.activeElement;
-            const had = Boolean(a && a !== el && el.contains(a));
-            layoutTiles();
+        const layout = (rc = false) => {
+            const a = document.activeElement, had = Boolean(a && a !== el && el.contains(a));
+            layoutTiles(rc);
             if (had && st.on && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
         };
         /*
@@ -929,7 +915,7 @@
         };
         const keepSet = new Set();
         let locHide = true, locAway = false, hasOpen = false, camTf = '';
-        const layoutTiles = () => {
+        const layoutTiles = (rc = false) => {
             st.dirty = false;
             if (!st.g || !st.ids.length || !st.room.width) {
                 if (!locHide) locateBtn.hidden = locHide = true;
@@ -1003,7 +989,7 @@
                             ns.setProperty('--hx', (1 + 1.2 * st.gap / r.w).toFixed(4));
                             ns.setProperty('--hy', (1 + 1.2 * st.gap / r.h).toFixed(4));
                             ns.setProperty('--tw', Math.round(r.w) + 'px'); }
-                        fillContent(node, inst.item, Math.max(r.w, r.h) * dpr);
+                        fillContent(node, inst.item, Math.max(r.w, r.h) * dpr, rc);
                         const isSel = inst.id === sel, isExp = inst.id === exp, isPlay = inst.item === playPos;
                         const mask = (r.cols >= 4 ? 1 : r.cols >= 3 ? 2 : 4) | (isSel ? 8 : 0) | (isExp ? 16 : 0) | (isPlay ? (play.active ? 32 : 64) : 0);
                         const diff = mask ^ node.clsMask;
@@ -1089,7 +1075,7 @@
             } else if (!st.drag) { st.vel.x = st.vel.y = 0; }
             applyCamera();
             setMoving(moving || Boolean(st.drag && st.drag.moved));
-            if (st.dirty) { st.coverDirty = false; st.readySrcs.clear(); layout(); }
+            if (st.dirty) { const rc = st.coverDirty; st.coverDirty = false; st.readySrcs.clear(); layout(rc); }
             else if (st.coverDirty) { st.coverDirty = false; applyCovers(); }
             if (moving || st.drag) { st.last = now; st.raf = requestAnimationFrame(tick); }
             else st.last = 0;

@@ -35,17 +35,36 @@ function normalizeLyricMatchText(value) {
  * Normalizes title for match, preserving version tags (remix, ver, instrumental, etc.)
  * but removing standard featured artists.
  */
+function hasTailDot(s) {
+    const len = s.length;
+    const lo = len > 5 ? len - 5 : 0;
+    for (let i = len - 1; i >= lo; i -= 1) {
+        if (s.charCodeAt(i) === 46) return true;
+    }
+    return false;
+}
+
+function hasOpenBracket(s) {
+    for (let i = 0; i < s.length; i += 1) {
+        const c = s.charCodeAt(i);
+        if (c === 40 || c === 91 || c === 0xff08 || c === 0x3010) return true;
+    }
+    return false;
+}
+
 function normalizeTitleForMatch(value) {
     if (!value) return '';
-    return normalizeLyricMatchText(
-        String(value)
-            .replace(AUDIO_EXT_RE, '')
-            .replace(FEAT_PARENS_RE, '')
-            .replace(FEAT_TAIL_RE, '')
-            .replace(PARENS_CONTENT_RE, (match, content) => {
-                return VERSION_MARKER_RE.test(content) ? match : '';
-            })
-    );
+    let s = typeof value === 'string' ? value : String(value);
+    if (hasTailDot(s)) s = s.replace(AUDIO_EXT_RE, '');
+    const bracketed = hasOpenBracket(s);
+    if (bracketed) s = s.replace(FEAT_PARENS_RE, '');
+    if (s.indexOf('f') !== -1 || s.indexOf('F') !== -1) s = s.replace(FEAT_TAIL_RE, '');
+    if (bracketed) {
+        s = s.replace(PARENS_CONTENT_RE, (match, content) => {
+            return VERSION_MARKER_RE.test(content) ? match : '';
+        });
+    }
+    return normalizeLyricMatchText(s);
 }
 
 /**

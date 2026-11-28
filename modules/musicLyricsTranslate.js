@@ -32,13 +32,15 @@ let cacheTmpSeq = 0;
 function parseTranslations(text, expected) {
     const s = String(text || '');
     const candidates = [];
-    FENCE_RE.lastIndex = 0;
-    let fm;
-    while ((fm = FENCE_RE.exec(s)) !== null) {
-        const block = fm[1];
-        const bs = block.indexOf('[');
-        const be = block.lastIndexOf(']');
-        if (bs >= 0 && be > bs) candidates.push(block.slice(bs, be + 1));
+    if (s.indexOf('```') !== -1) {
+        FENCE_RE.lastIndex = 0;
+        let fm;
+        while ((fm = FENCE_RE.exec(s)) !== null) {
+            const block = fm[1];
+            const bs = block.indexOf('[');
+            const be = block.lastIndexOf(']');
+            if (bs >= 0 && be > bs) candidates.push(block.slice(bs, be + 1));
+        }
     }
     const start = s.indexOf('[');
     const end = s.lastIndexOf(']');

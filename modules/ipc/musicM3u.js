@@ -90,14 +90,16 @@ function parseM3u(text, { baseDir = '', platform = process.platform } = {}) {
             continue;
         }
         let file = line;
-        if (FILE_URL_RE.test(file)) {
-            const local = fileUrlToPath(file, platform);
-            if (!local) { skipped++; pending = null; continue; }
-            file = local;
-        } else if (SCHEME_URL_RE.test(file)) {
-            skipped++; pending = null; continue;
+        if (file.indexOf('://') !== -1) {
+            if (FILE_URL_RE.test(file)) {
+                const local = fileUrlToPath(file, platform);
+                if (!local) { skipped++; pending = null; continue; }
+                file = local;
+            } else if (SCHEME_URL_RE.test(file)) {
+                skipped++; pending = null; continue;
+            }
         }
-        if (platform === 'win32') file = file.replace(SLASH_RE, '\\');
+        if (platform === 'win32' && file.indexOf('/') !== -1) file = file.replace(SLASH_RE, '\\');
         if (!p.isAbsolute(file)) {
             if (!baseDir) { skipped++; pending = null; continue; }
             file = p.resolve(baseDir, file);
@@ -110,7 +112,11 @@ function parseM3u(text, { baseDir = '', platform = process.platform } = {}) {
     return { name, entries, skipped };
 }
 
-const oneLine = (s) => String(s || '').replace(ONE_LINE_RE, ' ').trim();
+const oneLine = (s) => {
+    const str = typeof s === 'string' ? s : String(s || '');
+    if (!str) return '';
+    return (str.indexOf('\n') !== -1 || str.indexOf('\r') !== -1 ? str.replace(ONE_LINE_RE, ' ') : str).trim();
+};
 
 // tracks: [{ path, title, artist, duration }]（duration 秒，可缺）
 function buildM3u(name, tracks) {

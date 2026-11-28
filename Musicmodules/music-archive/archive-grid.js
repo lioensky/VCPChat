@@ -102,10 +102,13 @@
             const d = opts.sections() || { key: '', list: [] };
             // 按内容比：只是曲库签名变了（刚播的一首进了「最近播放」之类），各节曲目没变就不重排
             let h = 0;
-            for (const sec of d.list) {
-                for (const c of String(sec.name || '')) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0;
-                for (let k = 0; k < sec.ids.length; k++) h = (Math.imul(h, 31) + sec.ids[k]) | 0;
-                h = (Math.imul(h, 31) + sec.ids.length) | 0;
+            for (let si = 0; si < d.list.length; si += 1) {
+                const sec = d.list[si];
+                const name = String(sec.name || '');
+                for (let ci = 0; ci < name.length; ci += 1) h = (Math.imul(h, 31) + name.charCodeAt(ci)) | 0;
+                const ids = sec.ids;
+                for (let k = 0; k < ids.length; k++) h = (Math.imul(h, 31) + ids[k]) | 0;
+                h = (Math.imul(h, 31) + ids.length) | 0;
             }
             const sig = d.list.length + '#' + h;
             if (!force && sig === st.key) return false;
@@ -148,15 +151,16 @@
             if (n) return n;
             const t = cellProto.cloneNode(true);
             const art = t.firstChild;
-            return { el: t, img: art.children[0], blank: art.children[1], no: art.children[2], title: t.children[1], sub: t.children[2], idx: -1, src: null, cls: '' };
+            return { el: t, img: art.children[0], blank: art.children[1], no: art.children[2], title: t.children[1], sub: t.children[2], idx: -1, src: null, tb: 0, cls: '' };
         };
+        const pad2 = (n) => (n < 10 ? '0' : '') + n;
         const headNode = (s) => {
             const sec = st.secs[s];
             const h = st.headPool.pop() || headProto.cloneNode(true);
             h.className = 'ag-head' + (st.revealOk ? ' ag-reveal' : (performance.now() < (st.enterUntil || 0) ? ' ag-entering' : ''));
             // Folia 式题头：左边一个超大的节名，右上角「第几节 / 共几节」编号，底下数量和一条结构线
             h.children[0].textContent = sec.name;
-            h.children[2].textContent = String(s + 1).padStart(2, '0') + ' / ' + String(st.secs.length).padStart(2, '0');
+            h.children[2].textContent = pad2(s + 1) + ' / ' + pad2(st.secs.length);
             h.children[1].textContent = sec.ids.length + ' 首' + (sec.sub ? ' · ' + sec.sub : '');
             return h;
         };
@@ -171,10 +175,14 @@
             if (rollRaf) { cancelAnimationFrame(rollRaf); rollRaf = 0; }
             if (pingRaf) { cancelAnimationFrame(pingRaf); pingRaf = 0; }
         };
-        const applyNodeCover = (n, t, dpr) => {
-            const src = opts.cover(t);
-            n.rawSrc = src || '';
-            const url = src ? thumbs.get(src, st.cell * dpr) : '';
+        const applyNodeCover = (n, t, dpr, forceCover = false) => {
+            const src = opts.cover(t) || '';
+            const px = st.cell * dpr;
+            const tb = px <= 200 ? 192 : px <= 420 ? 384 : 768;
+            if (!forceCover && src === n.rawSrc && n.tb === tb && (n.src || !src)) return;
+            n.rawSrc = src;
+            n.tb = tb;
+            const url = src ? thumbs.get(src, px) : '';
             if (url !== n.src) {
                 n.src = url;
                 if (url) { n.img.src = url; n.el.classList.add('has-art'); } else { n.img.removeAttribute('src'); n.el.classList.remove('has-art'); }
@@ -188,7 +196,7 @@
             for (const n of st.nodes.values()) {
                 if (n.idx < 0) continue;
                 if (only && !only.has(n.rawSrc)) continue;
-                applyNodeCover(n, opts.track(n.idx), dpr);
+                applyNodeCover(n, opts.track(n.idx), dpr, true);
             }
             readySrcs.clear();
         };
@@ -196,6 +204,7 @@
             st.raf = 0;
             if (!st.on || !st.rows.length) { st.renderDirty = false; st.coverDirty = false; readySrcs.clear(); sticky.hidden = true; locateBtn.hidden = true; return; }
             if (!st.renderDirty && st.coverDirty) { st.coverDirty = false; applyCovers(); return; }
+            const refreshCovers = st.coverDirty;
             st.renderDirty = false;
             st.coverDirty = false;
             readySrcs.clear();
@@ -280,8 +289,9 @@
                         n.el.style.setProperty('--aw-h', hueOf(m.title + '|' + (m.album || '')));
                         n.el.setAttribute('aria-label', m.title + (m.artist ? '，' + m.artist : ''));
                         n.src = null;
+                        n.tb = 0;
                     }
-                    applyNodeCover(n, t, dpr);
+                    applyNodeCover(n, t, dpr, refreshCovers);
                     const isSel = i === st.sel;
                     const isPlaying = i === play.index && play.active;
                     const isCurrent = i === play.index && !play.active;
@@ -314,7 +324,7 @@
                     sticky.dataset.s = String(r.s);
                     sticky.children[0].textContent = sec.name;
                     sticky.children[1].textContent = sec.ids.length + ' 首';
-                    sticky.children[2].textContent = String(r.s + 1).padStart(2, '0') + ' / ' + String(st.secs.length).padStart(2, '0');
+                    sticky.children[2].textContent = pad2(r.s + 1) + ' / ' + pad2(st.secs.length);
                     if (!reduced() && prev >= 0) {
                         const nextCls = r.s > prev ? 'ag-roll-up' : 'ag-roll-down';
                         const same = sticky.classList.contains(nextCls);

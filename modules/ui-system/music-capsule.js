@@ -57,7 +57,7 @@
         };
         const updateWidth = () => {
             if (disposed || root.hidden) return;
-            const currentTitle = title.textContent;
+            const currentTitle = lastTitleText !== null ? lastTitleText : title.textContent;
             if (measure.textContent !== currentTitle) measure.textContent = currentTitle;
             if (chromeMetricsDirty) {
                 const measured = readChromeWidth();
@@ -154,7 +154,7 @@
             event.stopPropagation();
         });
         root.addEventListener('click', event => {
-            const command = event.target.closest('[data-music-command]')?.dataset.musicCommand;
+            const command = event.target?.closest?.('[data-music-command]')?.dataset.musicCommand;
             if (!state.open || !command) return;
             api.sendMusicCapsuleCommand(command === 'toggle' ? (state.playing ? 'pause' : 'play') : command);
         });
