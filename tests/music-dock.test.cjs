@@ -2348,3 +2348,34 @@ test('Batch 97: dock ignores non-theme head/body mutations for syncGlow, palette
         window.close();
     }
 });
+
+test('Batch 101: queue caches window key on scroller._qWinKey (not DOM dataset) and batch-mounts initial rows via DocumentFragment', () => {
+    const { window, doc, app, dock } = setup((a) => {
+        for (let i = 0; i < 20; i += 1) {
+            a.playlist.push({ path: `C:/q101_${i}.flac`, title: `Q101 Track ${i}`, artist: 'Art' });
+        }
+        a.getUpNext = () => ({ manual: a.playlist.slice(0, 12), context: a.playlist.slice(12) });
+    });
+    try {
+        dock.openPanel('播放列表');
+        const scroller = doc.querySelector('.md-ql');
+        assert.ok(scroller, 'queue scroller rendered');
+        assert.equal(scroller.dataset.window, undefined, 'queue window key is stored on JS property instead of DOM dataset attribute');
+        assert.equal(typeof scroller._qWinKey, 'string', 'queue window key cached on scroller._qWinKey');
+        assert.ok(scroller.querySelectorAll('.md-qi').length > 0, 'queue rows mounted');
+
+        // Re-render into empty sizer uses a single DocumentFragment appendChild (not N per-row appends)
+        const sizer = scroller.querySelector('.md-ql-sizer');
+        let directAppends = 0;
+        const origAppend = sizer.appendChild.bind(sizer);
+        sizer.appendChild = (...args) => { directAppends += 1; return origAppend(...args); };
+        sizer.replaceChildren();
+        scroller._qWinKey = '';
+        doc.dispatchEvent(new window.CustomEvent('music-queue-change'));
+        assert.equal(directAppends, 1, 'empty-sizer initial queue mount batches via a single DocumentFragment appendChild');
+        assert.ok(sizer.querySelectorAll('.md-qi').length > 0, 'queue rows re-mounted cleanly');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

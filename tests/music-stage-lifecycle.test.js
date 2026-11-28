@@ -2594,3 +2594,72 @@ test('Batch 100: edge spectrum uses integer flat signatures, detects DPR change 
         dom.window.close();
     }
 });
+
+test('Batch 101: stage host quantizes 4-decimal audio CSS vars and avoids body.focus() on settings close', async () => {
+    const dom = createStageDom();
+    try {
+        installCanvasStub(dom.window);
+        // Add settings DOM nodes matching music.html
+        const root = dom.window.document.getElementById('music-stage');
+        const settingsWrap = dom.window.document.createElement('div');
+        settingsWrap.className = 'music-stage-settings';
+        settingsWrap.innerHTML = '<button class="music-stage-settings-toggle" type="button">调参</button>'
+            + '<div class="music-stage-settings-card" hidden><button class="music-stage-settings-close" type="button">关</button>'
+            + '<div class="music-stage-tuning-controls"></div><div class="music-stage-common-controls"></div>'
+            + '<div class="music-stage-mode-options"></div><button class="music-stage-settings-reset" type="button">重置</button>'
+            + '<span class="music-stage-settings-status"></span></div>';
+        root.appendChild(settingsWrap);
+
+        for (const dep of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'modes/tempera-manager.js', 'modes/sonnet-manager.js', 'modes/diorama-manager.js',
+            'modes/fume-manager.js', 'music-stage-advanced-modes.js',
+            'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const { app } = createApp();
+        app.currentVisualizerData = new Array(64).fill(0.5);
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+        await wait(dom.window, 20);
+
+        const cover = root.querySelector('.music-stage-cover');
+        const powerWrites = [];
+        const origSetProp = cover.style.setProperty.bind(cover.style);
+        cover.style.setProperty = (k, v, ...rest) => {
+            if (k === '--stage-audio-power') powerWrites.push(v);
+            return origSetProp(k, v, ...rest);
+        };
+
+        // Change audio to 0.6 -> writes once; tiny delta (< 0.00004) in same 4-decimal bucket skips; 0.95 updates
+        app.currentVisualizerData = new Array(64).fill(0.6);
+        app.stageHost.updateFrame(1000);
+        const afterFirst = powerWrites.length;
+        assert.ok(afterFirst >= 1, 'initial frame writes --stage-audio-power');
+        app.currentVisualizerData = new Array(64).fill(0.60001);
+        app.stageHost.updateFrame(1100);
+        assert.equal(powerWrites.length, afterFirst, 'sub-0.0001 audio delta skips redundant CSS var setProperty');
+        app.currentVisualizerData = new Array(64).fill(0.95);
+        app.stageHost.updateFrame(1200);
+        assert.ok(powerWrites.length > afterFirst, 'significant audio delta updates --stage-audio-power');
+
+        // Opening settings from document.body and closing never calls body.focus()
+        const doc = dom.window.document;
+        let bodyFocused = 0;
+        const origBodyFocus = doc.body.focus.bind(doc.body);
+        doc.body.focus = (...args) => { bodyFocused += 1; return origBodyFocus(...args); };
+        doc.activeElement?.blur?.();
+        root.querySelector('.music-stage-settings-toggle').click();
+        assert.equal(root.querySelector('.music-stage-settings-card').hidden, false);
+        root.querySelector('.music-stage-settings-close').click();
+        assert.equal(root.querySelector('.music-stage-settings-card').hidden, true);
+        assert.equal(bodyFocused, 0, 'closing stage settings never calls body.focus()');
+
+        app.stageHost.destroy();
+    } finally {
+        dom.window.close();
+    }
+});

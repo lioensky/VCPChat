@@ -756,3 +756,64 @@ test('Batch 99: stats has/top/forgotten/pruning, spectrum focus-before-hide, gro
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 });
+
+test('Batch 101: dupes/track-file/folders/stats-view restore opener focus before removing .visible and avoid body.focus()', async () => {
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body><button id="opener">open</button></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        window.requestAnimationFrame = (fn) => { fn(0); return 0; };
+        for (const f of ['music-dupes.js', 'music-track-file.js', 'music-folders.js', 'music-stats-view.js']) {
+            window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules', f), 'utf8'));
+        }
+        const opener = doc.getElementById('opener');
+        const origFocus = opener.focus.bind(opener);
+        let bodyFocused = 0;
+        const origBodyFocus = doc.body.focus.bind(doc.body);
+        doc.body.focus = (...args) => { bodyFocused += 1; return origBodyFocus(...args); };
+
+        const checkOrder = async (label, openFn, overlaySel, closeSel) => {
+            const order = [];
+            opener.focus = (opts) => { order.push('focus'); return origFocus(opts); };
+            origFocus();
+            await openFn();
+            const ov = doc.querySelector(overlaySel);
+            assert.ok(ov, `${label} mounted`);
+            const origRemove = ov.classList.remove.bind(ov.classList);
+            ov.classList.remove = (...args) => { if (args.includes('visible')) order.push('hide'); return origRemove(...args); };
+            ov.querySelector(closeSel).click();
+            assert.deepEqual(order, ['focus', 'hide'], `${label} restores opener focus before removing .visible`);
+            ov.remove();
+        };
+
+        const baseApp = {
+            playlist: [
+                { path: 'C:\\M\\A.flac', title: 'Same', artist: 'X', duration: 200 },
+                { path: 'C:\\M\\B.mp3', title: 'Same', artist: 'X', duration: 200 }
+            ],
+            currentTrackIndex: 0,
+            api: { musicLibraryFolders: async () => ({ ok: true, folders: [] }), showMusicInFolder: async () => ({ ok: true }) },
+            musicStats: { summary: () => ({ plays: 1, seconds: 60, activeDays: 1, hours: new Array(24).fill(0), tracks: [], daily: {} }) }
+        };
+        window.MusicTrackFile.setupMusicTrackFile(baseApp);
+        window.MusicFolders.setupMusicFolders(baseApp);
+        await checkOrder('MusicDupes', () => window.MusicDupes.open(baseApp), '.music-stats-dialog', '.mstats-close');
+        await checkOrder('MusicTrackFile', () => baseApp.openTrackInfo(baseApp.playlist[0]), '.music-stats-dialog', '.mstats-close');
+        await checkOrder('MusicFolders', async () => { baseApp.openLibraryFolders(); await new Promise((r) => setTimeout(r, 10)); }, '.music-stats-dialog', '.mstats-close');
+        await checkOrder('MusicStatsView', () => window.MusicStatsView.open(baseApp), '.music-stats-dialog', '.mstats-close');
+
+        // When opened with focus on document.body, closing blurs dialog element without calling body.focus()
+        opener.focus = origFocus;
+        doc.activeElement?.blur?.();
+        bodyFocused = 0;
+        window.MusicStatsView.open(baseApp);
+        const ov = doc.querySelector('.music-stats-dialog');
+        ov.querySelector('.mstats-close').click();
+        assert.equal(bodyFocused, 0, 'closing dialog opened from body never calls body.focus()');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

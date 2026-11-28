@@ -188,3 +188,48 @@ test('Batch 72: resetLyrics & beforeunload cancel 500ms lyric settle timer immed
     assert.equal(disposed, 1, 'beforeunload disposes current-lyrics IPC listener');
     assert.equal(app.disposeCurrentLyricsQuery, null);
 });
+
+test('Batch 101: resetLyrics skips redundant loading innerHTML rewrite and plainLyricLines caps at 400 lines', async () => {
+    let htmlWrites = 0;
+    let currentHtml = '';
+    const lyricsList = {
+        style: {},
+        childElementCount: 0,
+        firstElementChild: null,
+        get innerHTML() { return currentHtml; },
+        set innerHTML(v) {
+            htmlWrites += 1;
+            currentHtml = String(v);
+            if (currentHtml === '<li class="no-lyrics">正在加载歌词…</li>') {
+                this.childElementCount = 1;
+                this.firstElementChild = { className: 'no-lyrics', textContent: '正在加载歌词…' };
+            } else {
+                this.childElementCount = 0;
+                this.firstElementChild = null;
+            }
+        }
+    };
+    const rawPlain = Array.from({ length: 450 }, (_, i) => `Line ${i}`).join('\n');
+    const ctx = vm.createContext({ console, setTimeout, clearTimeout });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-lyrics.js'), 'utf8'), ctx);
+    const app = {
+        lyricsRequestToken: 0,
+        lyricsList,
+        currentLyrics: [],
+        playlist: [{ path: 'C:/a.flac', title: 'A', artist: 'X' }],
+        currentTrackIndex: 0,
+        api: {
+            getMusicLyrics: async () => rawPlain
+        }
+    };
+    ctx.setupLyrics(app);
+    await app.fetchAndDisplayLyrics('X', 'A');
+    assert.equal(app.currentLyricsPlainLines.length, 400, 'plainLyricLines stops early at 400 lines');
+    assert.equal(app.currentLyricsPlainLines[399], 'Line 399');
+
+    htmlWrites = 0;
+    app.resetLyrics();
+    assert.equal(htmlWrites, 1, 'first resetLyrics writes loading placeholder');
+    app.resetLyrics();
+    assert.equal(htmlWrites, 1, 'repeated resetLyrics skips redundant innerHTML write when already showing placeholder');
+});
