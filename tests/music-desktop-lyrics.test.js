@@ -903,3 +903,81 @@ test('Batch 104: desktop-lyrics quantizes --f integer progress without redundant
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 });
+
+test('Batch 123: desktop-lyrics tolerates Text node click and async save resets dirEnsured after ENOENT', async () => {
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const html = fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.html'), 'utf8');
+    const script = fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.js'), 'utf8');
+    const dom = new JSDOM(html, { pretendToBeVisual: true });
+    try {
+        const { window } = dom;
+        window.utilityAPI = {
+            onDesktopLyricsState: () => () => {},
+            onDesktopLyricsPrefs: () => () => {},
+            sendDesktopLyricsCommand: () => {}
+        };
+        const ctx = vm.createContext({
+            window, document: window.document, Date, console,
+            requestAnimationFrame: () => 1, cancelAnimationFrame: () => {}
+        });
+        ctx.window = window;
+        vm.runInContext(script, ctx);
+        const textNode = window.document.createTextNode('click-me');
+        window.document.body.appendChild(textNode);
+        assert.doesNotThrow(() => textNode.dispatchEvent(new window.MouseEvent('click', { bubbles: true })));
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+
+    // Async save resets dirEnsured on ENOENT so a later save recreates the deleted directory
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dl-b123-'));
+    const nestedDir = path.join(tmpDir, 'gone');
+    const stateFile = path.join(nestedDir, 'state.json');
+    try {
+        const handles = new Map();
+        const ons = new Map();
+        const musicWin = { isDestroyed: () => false, webContents: { send() {}, isDestroyed: () => false } };
+        const barWins = [];
+        class MiniWin {
+            constructor() {
+                this.handlers = new Map();
+                this.webContents = { on() {}, send() {}, setWindowOpenHandler() {}, isDestroyed: () => false };
+                barWins.push(this);
+            }
+            isDestroyed() { return false; }
+            setAlwaysOnTop() {}
+            setMenu() {}
+            loadFile() {}
+            once(e, fn) { this.handlers.set(e, fn); }
+            on(e, fn) { this.handlers.set(e, fn); }
+            setIgnoreMouseEvents() {}
+            showInactive() {}
+            getBounds() { return { x: 100, y: 100, width: 600, height: 140 }; }
+            close() { this.handlers.get('closed')?.(); }
+        }
+        const dl = createDesktopLyrics({
+            ipcMain: { handle: (c, fn) => handles.set(c, fn), on: (c, fn) => ons.set(c, fn) },
+            getMusicWindow: () => musicWin,
+            stateFile,
+            projectRoot: path.join(__dirname, '..'),
+            electronApi: { BrowserWindow: MiniWin, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1280, height: 720 } }), getAllDisplays: () => [] } }
+        });
+        await handles.get('music-desktop-lyrics-toggle')({ sender: musicWin.webContents }, true);
+        await new Promise((r) => setTimeout(r, 380));
+        assert.strictEqual(fs.existsSync(stateFile), true, 'initial async save succeeded');
+
+        // Delete parent directory while running, trigger failing async save (ENOENT), then save again
+        fs.rmSync(nestedDir, { recursive: true, force: true });
+        ons.get('music-desktop-lyrics-command')({ sender: barWins[0].webContents }, 'size', 40);
+        await new Promise((r) => setTimeout(r, 380));
+        ons.get('music-desktop-lyrics-command')({ sender: barWins[0].webContents }, 'size', 44);
+        await new Promise((r) => setTimeout(r, 380));
+        assert.strictEqual(fs.existsSync(stateFile), true, 'next async save recreated directory after ENOENT reset');
+        assert.strictEqual(JSON.parse(fs.readFileSync(stateFile, 'utf8')).size, 44);
+        dl.musicClosed();
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});

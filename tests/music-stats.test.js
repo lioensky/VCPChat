@@ -1229,3 +1229,52 @@ test('Batch 119: stats-view rank WeakMap cache/empty fast-path, UTC longestStrea
     const { decodeKrcLanguageTag } = require(path.join(__dirname, '../modules/lyrics/krcDecrypt.js'));
     assert.deepEqual(decodeKrcLanguageTag('[0,1000]<0,500,0>Hello'), { translations: [], romanizations: [] });
 });
+
+test('Batch 123: stats guards Object.prototype keys, radio single-indexOf & fast paths, and low-tier handle/scrim CSS drop backdrop-filter', () => {
+    const fs = require('node:fs');
+
+    // 1. music-stats: Object.prototype keys never match table/log/day.p even when table is non-empty
+    const store = new Map();
+    store.set('musicPlayStats', JSON.stringify({
+        v: 1,
+        t: { 'c:/m/real.flac': [2, 1_700_000_000_000, 0, 1_699_000_000_000, 'C:\\M\\real.flac'] }
+    }));
+    const app = { playlist: [], currentTrackIndex: -1, isPlaying: false, isTrackLoading: false, playedSeconds: () => 0 };
+    const stats = setupMusicStats(app, {
+        storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) },
+        observe: false
+    });
+    assert.equal(stats.has('toString'), false, 'prototype key toString is not treated as recorded');
+    assert.equal(stats.get('constructor'), null, 'prototype key constructor returns null');
+    assert.equal(stats.has('valueOf'), false, 'prototype key valueOf returns false');
+    assert.equal(stats.has('C:\\M\\real.flac'), true, 'real recorded track still matches');
+
+    // 2. music-radio: dotless recordingKey/isInstrumental/versionRank & startRadio single playlist scan
+    const Radio = require(path.join(__dirname, '../Musicmodules/music-radio.js'));
+    assert.equal(Radio.recordingKey({ title: 'NoExt', artist: 'Singer' }), 'noext\nsinger');
+    assert.equal(Radio.isInstrumental({ title: 'Song (Instrumental)', artist: 'A' }), true);
+    assert.ok(Radio.versionRank({ path: 'C:\\Music\\a.flac' }) > Radio.versionRank({ path: 'C:\\Music\\a.mp3' }));
+    const tracks = [
+        { path: 'C:\\a.flac', title: 'Alpha', artist: 'Band' },
+        { path: 'C:\\b.flac', title: 'Beta', artist: 'Band' }
+    ];
+    let indexOfCalls = 0;
+    const origIndexOf = tracks.indexOf.bind(tracks);
+    tracks.indexOf = (...a) => { indexOfCalls += 1; return origIndexOf(...a); };
+    const radioApp = {
+        playlist: tracks,
+        playFromContext() {},
+        isLiked: () => false
+    };
+    Radio.setupMusicRadio(radioApp, { storage: { getItem: () => null, setItem() {} } });
+    assert.equal(radioApp.startRadio(tracks[0]), true);
+    assert.equal(indexOfCalls, 1, 'startRadio scans playlist via indexOf once');
+
+    // 3. CSS low-tier blur cutoff for dock handle & palette scrim, and no duplicate skin rules
+    const dockCss = fs.readFileSync(path.join(__dirname, '../Musicmodules/music-dock/music-dock.css'), 'utf8');
+    assert.match(dockCss, /#music-dock-root\.md-fl-low \.md-hdl button\s*\{[^}]*backdrop-filter:\s*none;/);
+    const drawerCss = fs.readFileSync(path.join(__dirname, '../Musicmodules/music-dock/music-dock-drawer.css'), 'utf8');
+    assert.match(drawerCss, /body\.music-fl-low \.md-cmd-scrim[\s\S]*?backdrop-filter:\s*none;/);
+    const skinCss = fs.readFileSync(path.join(__dirname, '../Musicmodules/music-theme/music-stage-skin.css'), 'utf8');
+    assert.equal((skinCss.match(/body\.music-reduce-motion \.music-stage-mode-menu\s*\{/g) || []).length, 1);
+});
