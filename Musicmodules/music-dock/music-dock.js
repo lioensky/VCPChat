@@ -350,7 +350,11 @@
                 else node.style.removeProperty('--md-shift');
             }
         };
-        const syncFluid = () => {
+        const layoutFluid = () => {
+            if (fluid) { const m = measureProgressRange(); fluid.layout(); applyProgressRange(m); }
+            renderProgress();
+        };
+        const syncFluid = (deferLayout = false) => {
             const want = typeof global.createMusicDockFluid === 'function' && !lowQuality();
             if (want && !fluid) {
                 fluid = global.createMusicDockFluid({
@@ -369,26 +373,22 @@
                 fluid = null;
                 el.hdl.style.transform = '';
             }
-            // 先读主题色再切 md-fl-* / md-light 类，避免写类后立刻 getComputedStyle 触发全页样式重算，
-            // 并把全部样式变更合并到 fluid.layout() 之前的一次排版里。
+            // 先读主题色再切 md-fl-* / md-light 类，避免写类后立刻 getComputedStyle 触发全页样式重算
             syncGlow();
             host.classList.toggle('md-fl-on', Boolean(fluid));
             host.classList.toggle('md-fl-low', !fluid);
             document.body.classList.toggle('music-fl-low', !fluid);
             host.classList.toggle('md-q-ultimate', global.MusicStageConfig?.get?.()?.quality === 'ultimate');
             if (fluid) {
-                // 先完成全部类与状态写入，再连续执行只读测量与 fluid.layout()，最后统一写入进度区间，避免双连环强制重排。
                 fluid.setHidden(document.hidden === true);
                 fluid.setRingDocked(!state.panelOpen);
                 syncSolid();
                 syncRing();
                 lastRange = '';
                 cachedRange = null;
-                const measured = measureProgressRange();
-                fluid.layout();
-                applyProgressRange(measured);
-                renderProgress();
             }
+            if (deferLayout) cachedRange = applyProgressRange({ a: PROGRESS_INSET, b: 1 - PROGRESS_INSET, valid: false });
+            else if (fluid) layoutFluid();
         };
         // 节能档没有流体层：把同一套颜色混进实心播放条的进度底色和快捷胶囊的描边里。
         let lastGlowKey = '';
@@ -2207,7 +2207,7 @@
         renderVolume();
         state.expanded = shouldExpand();
         el.cap.classList.toggle('md-ex', state.expanded);
-        syncFluid();
+        syncFluid(true);
         const stageFluidKey = (cfg) => (cfg ? `${cfg.quality}|${cfg.themeMode}|${cfg.themeFile}|${cfg.themeVariant}` : '');
         let lastStageFluidKey = stageFluidKey(global.MusicStageConfig?.get?.());
         if (global.MusicStageConfig?.subscribe) {
@@ -2218,8 +2218,8 @@
                 syncFluid();
             }));
         }
-        // 字体和布局稳定后再量一次（流体层要对齐按钮的真实位置）。
-        bootRaf = requestAnimationFrame(() => { bootRaf = 0; if (!state.destroyed) animateCapsule(); });
+        // 启动首帧再读取真实胶囊位置，避免 DOMContentLoaded 里强制同步排版。
+        bootRaf = requestAnimationFrame(() => { bootRaf = 0; if (!state.destroyed) { cachedRange = null; layoutFluid(); } });
         // 预热抽屉：窗口空下来以后，在藏着的抽屉里把当前页签画一遍。第一次打开时样式规则和排版都已经算过一回，
         // 不会比以后每次都慢一大截。真打开时照常重画，这里画的东西不会被直接拿来用。
         const warmIdleIds = new Set();

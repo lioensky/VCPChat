@@ -221,8 +221,16 @@ function setupUI(app) {
         let from = 0;
         let to = Math.min(total, FALLBACK_ROWS);
         if (pitch > 0 && view > 0) {
-            from = Math.max(0, Math.floor(scrollTop / pitch) - BUFFER);
-            to = Math.min(total, Math.ceil((scrollTop + view) / pitch) + BUFFER);
+            const visFrom = Math.max(0, Math.floor(scrollTop / pitch));
+            const visTo = Math.min(total, Math.ceil((scrollTop + view) / pitch));
+            // 滞回窗口：40 行缓冲仍覆盖视口上下至少 12 行时跳过重排，滚动时零 DOM 改动
+            if (!force && windowEnd > windowStart && list.children.length === windowEnd - windowStart
+                && (windowStart === 0 || visFrom >= windowStart + 12)
+                && (windowEnd >= total || visTo <= windowEnd - 12)) {
+                return;
+            }
+            from = Math.max(0, visFrom - BUFFER);
+            to = Math.min(total, visTo + BUFFER);
             if (from > to) from = Math.max(0, to - FALLBACK_ROWS);
         }
         if (!force && from === windowStart && to === windowEnd && list.children.length === to - from) return;

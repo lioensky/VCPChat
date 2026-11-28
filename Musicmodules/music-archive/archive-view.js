@@ -168,7 +168,7 @@
             const col0 = columns[lane];
             if (col0 && col0.items.length) focusByColumn.set(col0.id, Model.wrap(row, col0.items.length));
             // 写 HUD 与播放态 DOM 之前先采集目录视口滚动位置，避免随后 list.rebuild() 写后即读触发强制同步布局
-            if (!laterList) list?.captureViewport?.();
+            if (!laterList && !root.hidden && isShown()) list?.captureViewport?.();
             state.scene?.jump(lane, row);
             state.scene?.refreshLabels?.();
             applyEmpty();
@@ -1329,14 +1329,15 @@
         const resize = () => {
             cachedCanvasRect = null;
             cachedRootRect = null;
-            const full = root.clientWidth || global.innerWidth;
+            const full = global.innerWidth || root.clientWidth;
             const inset = drawerInset(full);
             lastInset = inset;
             const w = full - inset;
-            const h = root.clientHeight || global.innerHeight;
+            const h = global.innerHeight || root.clientHeight;
             const sc = hudScale(h);
-            // 在修改 hud 宽高与断点类之前读取安全底距，避免写后立刻 getComputedStyle 触发全页样式重算
-            const safe = parseFloat(getComputedStyle(document.body).getPropertyValue('--music-dock-safe-bottom')) || 0;
+            // 优先读内联安全底距，未设时再回退 getComputedStyle，避免启动与切视图时强制整页样式/布局重算
+            const safe = parseFloat(document.body.style.getPropertyValue('--music-dock-safe-bottom')
+                || getComputedStyle(document.body).getPropertyValue('--music-dock-safe-bottom')) || 0;
             const hudW = w / sc;
             const hudH = h / sc;
             const lift = Math.round(safe / sc);

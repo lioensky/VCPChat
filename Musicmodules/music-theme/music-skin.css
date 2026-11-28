@@ -1376,6 +1376,7 @@ body.music-archive-on:not(.music-stage-active) #custom-title-bar {
     grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) 22px 52px;
     column-gap: 12px;
     align-items: center;
+    contain: layout style;
 }
 
 .sidebar-playlist li[data-cols="1"] > span {

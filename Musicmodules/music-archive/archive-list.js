@@ -225,7 +225,7 @@
             return top;
         };
         const captureViewport = () => {
-            if (!el.isConnected || el.hidden) return;
+            if (!el.isConnected || el.hidden || !state.rows.length) return;
             viewportHeight();
             recordScrollTop(readScrollTop());
             viewportOffsetTop();
@@ -807,7 +807,7 @@
             const first = Math.max(0, rowAt(top) - OVERSCAN);
             const last = Math.min(state.rows.length - 1, rowAt(top + h) + OVERSCAN);
             for (const [k, node] of state.rendered) {
-                if (k < first || k > last) { recycleNode(node); state.rendered.delete(k); }
+                if (k < first || k > last) { state.rendered.delete(k); if (node._r) staleRows.push(node); else recycleNode(node); }
             }
             // 吸附的首字母：二分查找当前可见第一行所属的分组，O(log H) 同时拿到当前组与下一组
             const heads = state.heads;
