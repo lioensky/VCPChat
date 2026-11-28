@@ -10,8 +10,10 @@ function setupSidebar(app) {
     const CSS_URL_ESC_RE = /["\\)]/g;
     const CSS_URL_ESC_MAP = { '"': '%22', '\\': '%5C', ')': '%29' };
     const esc = (s) => String(s ?? '').replace(ESC_RE, (c) => ESC_MAP[c]);
-    app.loadCustomPlaylists = async () => {
-        if (app.api?.getCustomPlaylists) {
+    app.loadCustomPlaylists = async (prefetched) => {
+        if (prefetched) {
+            app.customPlaylists = (await prefetched) || [];
+        } else if (app.api?.getCustomPlaylists) {
             app.customPlaylists = await app.api.getCustomPlaylists() || [];
         }
     };

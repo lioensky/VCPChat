@@ -985,7 +985,7 @@
         let listPref = null;
         try { listPref = localStorage.getItem(LIST_KEY); } catch (e) { listPref = null; }
         const listOpen = () => refs.hud.classList.contains('list-open');
-        const setListOpen = (open, { persist = true } = {}) => {
+        const setListOpen = (open, { persist = true, deferLayout = false } = {}) => {
             if (!list) return;
             refs.hud.classList.toggle('list-open', open);
             list.el.hidden = !open;
@@ -993,9 +993,9 @@
             if (persist) { listPref = open ? '1' : '0'; try { localStorage.setItem(LIST_KEY, listPref); } catch (e) { /* 只是记住 */ } }
             if (open) { list.render(); syncList(); }
             // 设置抽屉开着时目录开合会换档（见 resize 里的 midBeside）
-            if (lastInset) resize(); else syncSceneLayout();
+            if (lastInset) resize(); else if (deferLayout) scheduleSceneLayout(); else syncSceneLayout();
         };
-        const applyListDefault = () => setListOpen(listPref !== '0', { persist: false });
+        const applyListDefault = () => setListOpen(listPref !== '0', { persist: false, deferLayout: true });
 
         /* 列表选中某首：在对应的列里找到它，相机飞过去 */
         const goToTrack = (i, ctx, { pulse = true } = {}) => {
@@ -1186,11 +1186,11 @@
             state.mode = mode === 'classic' ? 'classic' : 'archive';
             const on = state.mode === 'archive';
             cancelClassicInit();
-            // 读主题变量只依赖 light-theme，提前到改 hidden / body 类之前，避免随后建场景立刻 getComputedStyle 触发全页样式重算
-            const initialTheme = on && (!state.scene || sceneQuality !== quality()) ? readTheme() : null;
-            root.hidden = !on;
+            // 先切 body 视图类把 .music-player-container 设为 content-visibility:hidden，保持 root.hidden 时读主题变量，避免首帧全页 392 节点样式重算
             document.body.classList.toggle('music-archive-on', on);
             document.body.classList.toggle('music-archive-off', !on);
+            const initialTheme = on && (!state.scene || sceneQuality !== quality()) ? readTheme() : null;
+            root.hidden = !on;
             app.isArchiveActive = on;
             if (persist) { try { localStorage.setItem(VIEW_KEY, state.mode); } catch (e) { /* 只是记住上次的视图 */ } schedulePlace(); }
             if (on) {
@@ -1335,9 +1335,8 @@
             const w = full - inset;
             const h = global.innerHeight || root.clientHeight;
             const sc = hudScale(h);
-            // 优先读内联安全底距，未设时再回退 getComputedStyle，避免启动与切视图时强制整页样式/布局重算
-            const safe = parseFloat(document.body.style.getPropertyValue('--music-dock-safe-bottom')
-                || getComputedStyle(document.body).getPropertyValue('--music-dock-safe-bottom')) || 0;
+            // --music-dock-safe-bottom 仅由底栏内联写在 body.style 上，直接读可免去启动与切视图时的同步 getComputedStyle 全页重算
+            const safe = parseFloat(document.body.style.getPropertyValue('--music-dock-safe-bottom')) || 0;
             const hudW = w / sc;
             const hudH = h / sc;
             const lift = Math.round(safe / sc);

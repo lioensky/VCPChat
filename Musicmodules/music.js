@@ -428,6 +428,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initialization ---
     const init = async () => {
+        // 先于渲染层各模块同步建 DOM 与 WebGL 上下文提前发起互不依赖的只读启动 IPC，
+        // 让主进程并行读曲库/歌单/主题并探测音频引擎，后面仍严格按原顺序应用结果。
+        const endpointPromise = app.api?.getAudioEngineEndpoint?.().catch((error) => {
+            console.warn('[Music] Failed to read audio engine endpoint:', error);
+            return null;
+        });
+        const themePromise = app.api?.getCurrentTheme?.().catch(() => null);
+        const hasPlaylistApi = Boolean(app.api?.getMusicPlaylist);
+        const playlistPromise = hasPlaylistApi ? app.api.getMusicPlaylist() : null;
+        const pendingPromise = hasPlaylistApi ? app.api?.getMusicPendingTrack?.() : null;
+        const customPlaylistsRawPromise = hasPlaylistApi ? app.api?.getCustomPlaylists?.() : null;
+        const initialStatePromise = hasPlaylistApi ? app.api?.getMusicState?.() : null;
+
         // Setup modules
         setupUtils(app);
         if (typeof setupAmbientPixi === 'function') {
@@ -469,18 +482,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.setupMusicDesktopLyrics?.(app); // 桌面歌词：开着时把当前行送给桌面上的歌词条
         app.setupWebDavHandlers();
         app.setupMediaSessionHandlers();
-
-        // 并行预发起互不依赖的启动 IPC（引擎地址、主题、曲库、待播请求、歌单、当前状态），
-        // 避免主进程读盘和引擎探测串行等待，后面仍严格按原顺序应用结果。
-        const endpointPromise = app.api?.getAudioEngineEndpoint?.().catch((error) => {
-            console.warn('[Music] Failed to read audio engine endpoint:', error);
-            return null;
-        });
-        const themePromise = app.api?.getCurrentTheme?.().catch(() => null);
-        const playlistPromise = app.api?.getMusicPlaylist?.();
-        const pendingPromise = app.api?.getMusicPlaylist ? app.api?.getMusicPendingTrack?.() : null;
-        const customPlaylistsPromise = app.api?.getMusicPlaylist ? app.loadCustomPlaylists() : null;
-        const initialStatePromise = app.api?.getMusicPlaylist ? app.api?.getMusicState?.() : null;
 
         // Initial values
         app.initBackgroundLayers();
@@ -549,7 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 restoreQueueAfterSidebar = !pendingTrack;
             }
 
-            await customPlaylistsPromise;
+            await app.loadCustomPlaylists?.(customPlaylistsRawPromise);
             app.renderSidebarContent('all');
             // 侧栏初始化会清掉当前列表，所以上次的上下文和手动队列放在它之后恢复。
             if (restoreQueueAfterSidebar) app.applySessionQueue?.();
