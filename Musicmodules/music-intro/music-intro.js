@@ -51,9 +51,18 @@
         : Boolean(global.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
 
     // ---------- 节点 ----------
-    const el = (tag, attrs = {}, parent) => {
+    const hasOwn = Object.prototype.hasOwnProperty;
+    const opStr = (v) => {
+        const q = Math.round(clamp01(v) * 1000);
+        return q <= 0 ? '0' : q >= 1000 ? '1' : String(q / 1000);
+    };
+    const el = (tag, attrs, parent) => {
         const node = document.createElementNS(NS, tag);
-        for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+        if (attrs) {
+            for (const k in attrs) {
+                if (hasOwn.call(attrs, k)) node.setAttribute(k, attrs[k]);
+            }
+        }
         if (parent) parent.appendChild(node);
         return node;
     };
@@ -228,7 +237,7 @@
             if (dot._cy !== cy) { dot._cy = cy; dot.setAttribute('cy', cy); }
         }
         // 收拢时辅助弧和轨道点退掉，只剩外环
-        const fadeOp = String(1 - collapse);
+        const fadeOp = opStr(1 - collapse);
         for (let i = 0; i < n.scanFadeNodes.length; i += 1) setStyleOp(n.scanFadeNodes[i], fadeOp);
         drawMark(n.scanMarkParts, t, 1.2, 0.26);
         const capA = outerStart + outerSweep;
@@ -245,7 +254,7 @@
             n.scanRings.setAttribute('transform', glitch ? `translate(${CX} ${CY}) scale(1.9) translate(${-CX} ${-CY})` : '');
             n.scanRings.style.filter = glitch ? 'blur(1.4px)' : '';
         }
-        setStyleOp(n.scanRings, glitch ? '0.32' : String(keys(K_SCAN_RING_OP, t)));
+        setStyleOp(n.scanRings, glitch ? '0.32' : opStr(keys(K_SCAN_RING_OP, t)));
 
         // 字距从很散收拢到正常
         const tracking = keys(K_SCAN_TRACK, t).toFixed(2);
@@ -257,9 +266,9 @@
             n.scanText.textContent = `${label} ${scanCount} 首`;
         }
         const textOut = 1 - smooth(progress(t, 1.02, 1.18));
-        setStyleOp(n.scanText, String(keys(K_SCAN_TEXT_IN, t) * textOut));
+        setStyleOp(n.scanText, opStr(keys(K_SCAN_TEXT_IN, t) * textOut));
         if (n._scanSub !== sub) { n._scanSub = sub; n.scanSub.textContent = sub; }
-        setStyleOp(n.scanSub, String(progress(t, 0.5, 0.7) * textOut));
+        setStyleOp(n.scanSub, opStr(progress(t, 0.5, 0.7) * textOut));
     };
 
     // ---------- 开场 ----------
@@ -296,13 +305,14 @@
             for (let i = 0; i < n.brand.length; i += 1) {
                 const line = n.brand[i];
                 const p = easeOut(progress(t, 3.3 + i * 0.08, 3.85 + i * 0.08));
-                if (line._bp !== p) {
-                    line._bp = p;
-                    line.setAttribute('opacity', String(clamp01(p * 3)));
-                    line.setAttribute('transform', `translate(${(1 - p) * 60} 0)`);
+                const pq = Math.round(p * 10000);
+                if (line._bpQ !== pq) {
+                    line._bpQ = pq;
+                    line.setAttribute('opacity', opStr(p * 3));
+                    line.setAttribute('transform', `translate(${((1 - p) * 60).toFixed(2)} 0)`);
                 }
             }
-            const markX = keys(K_MARK_X, t);
+            const markX = Math.round(keys(K_MARK_X, t) * 100) / 100;
             if (n._markX !== markX) {
                 n._markX = markX;
                 n.mark.setAttribute('transform', `translate(${markX} 0)`);
@@ -333,7 +343,7 @@
 
         // 扫描环：曲库计数跟着环收拢一起数上来
         const scanOn = t >= FULL.scan && t < FULL.welcome;
-        setStyleOp(n.scan, scanOn ? String(f >= frameOf(7.75) ? keys(K_SCAN_OUT, t) : 1) : '0');
+        setStyleOp(n.scan, scanOn ? (f >= frameOf(7.75) ? opStr(keys(K_SCAN_OUT, t)) : '1') : '0');
         if (scanOn) {
             const local = t - FULL.scan;
             renderScan(n, local, {
@@ -353,7 +363,7 @@
             setStyleOp(n.welcomeBlock, panelStr);
             setStyleOp(n.welcomeName, panelStr);
             setStyleOp(n.welcomeHead, String(ink));
-            const wRule = String(256 * easeOut(progress(t, 8.3, 8.7)));
+            const wRule = String(Math.round(256 * easeOut(progress(t, 8.3, 8.7)) * 100) / 100);
             if (n._wRule !== wRule) { n._wRule = wRule; n.welcomeRule.setAttribute('width', wRule); }
             const subOn = t >= 8.55 && !(f === frameOf(8.63) || f === frameOf(8.71));
             setStyleOp(n.welcomeSub, subOn ? '1' : '0');
@@ -361,30 +371,31 @@
             if (n._welcomeCount !== wCount) { n._welcomeCount = wCount; n.welcomeSub.textContent = `曲库 ${wCount} 首`; }
             setStyleOp(n.welcomeMark, t >= 8.4 ? '1' : '0');
             const exit = smooth(progress(t, FULL.exit, FULL.exit + 0.36));
-            if (n._wExit !== exit) {
-                n._wExit = exit;
-                n.welcomeInner.setAttribute('transform', `translate(${CX} ${CY}) scale(${1 - 0.46 * exit}) translate(${-CX} ${-CY})`);
+            const exitScale = (1 - 0.46 * exit).toFixed(4);
+            if (n._wExitScale !== exitScale) {
+                n._wExitScale = exitScale;
+                n.welcomeInner.setAttribute('transform', `translate(${CX} ${CY}) scale(${exitScale}) translate(${-CX} ${-CY})`);
             }
-            setStyleOp(n.welcome, String(1 - Math.pow(exit, 3)));
+            setStyleOp(n.welcome, opStr(1 - Math.pow(exit, 3)));
             const welcomeBlur = exit > 0 ? `blur(${(8 * exit).toFixed(2)}px)` : '';
             if (n._welcomeBlur !== welcomeBlur) { n._welcomeBlur = welcomeBlur; n.welcome.style.filter = welcomeBlur; }
         }
         // 白场，然后从左往右揭开露出主界面（没揭到的部分始终不透明）
         const white = smooth(progress(t, FULL.exit - 0.05, FULL.exit + 0.35));
-        setStyleOp(n.flash, String(white * ctx.flashPeak));
+        setStyleOp(n.flash, opStr(white * ctx.flashPeak));
         ctx.wipe = smooth(progress(t, FULL.exit + 0.35, FULL.end));
         return 1;
     };
 
     const renderShort = (n, t, ctx) => {
-        setStyleOp(n.scan, String(1 - smooth(progress(t, 1.45, 1.75))));
+        setStyleOp(n.scan, opStr(1 - smooth(progress(t, 1.45, 1.75))));
         renderScan(n, t, {
             speed: 1.5,
             count: ctx.count() * easeOut(progress(t, 0.1, 1.0)),
             sub: ctx.name || ''
         });
         const white = smooth(progress(t, 1.35, 1.8));
-        setStyleOp(n.flash, String(white * ctx.flashPeak));
+        setStyleOp(n.flash, opStr(white * ctx.flashPeak));
         ctx.wipe = smooth(progress(t, 1.8, SHORT.end));
         return 1;
     };
@@ -427,7 +438,7 @@
         let r, sweep, start, nextFileLabel = '', nextFileText = '';
         let nextFlashOp = '', nextScanOp = '', nextWhiteD = '', nextVeilOp = null;
         if (kind === 'enter') {
-            const backdropOpacity = String(t < releaseAt ? smooth(progress(t, 0, 0.14)) : 0);
+            const backdropOpacity = t < releaseAt ? opStr(smooth(progress(t, 0, 0.14))) : '0';
             if (n._lastBackdrop !== backdropOpacity) {
                 n._lastBackdrop = backdropOpacity;
                 n.svg.parentElement.style.setProperty('--mi-enter-backdrop', backdropOpacity);
@@ -436,26 +447,26 @@
             sweep = keys(ENTER_SWEEP, t) * DEG;
             start = keys(ENTER_START, t) * DEG + spin;
             nextWhiteD = arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG);
-            nextScanOp = t >= releaseAt ? '0' : String(smooth(progress(t, 0, 0.08)));
+            nextScanOp = t >= releaseAt ? '0' : opStr(smooth(progress(t, 0, 0.08)));
             nextFileLabel = loading || '进入舞台';
             nextFileText = typed(ctx.file, t, 0.04, 0.34);
             // 白场 90% 以上只维持约 110ms：0.45 起快速升到不透明，放开舞台后立刻开始退。
-            nextFlashOp = String(smooth(progress(t, 0.45, releaseAt)) * (1 - smooth(progress(t, releaseAt + 0.01, TRANSIT.enter - 0.1))));
+            nextFlashOp = opStr(smooth(progress(t, 0.45, releaseAt)) * (1 - smooth(progress(t, releaseAt + 0.01, TRANSIT.enter - 0.1))));
         } else if (kind === 'exit') {
             // 0.28 秒内纸色底盖严、圆环收拢；闸门（0.3）之后白场 0.1 秒升起，纸色底在白场后面撤掉，白场退去露出档案页。
             const gate = TRANSIT.exitGate;
-            nextFlashOp = String(smooth(progress(t, gate, gate + 0.1)) * (1 - smooth(progress(t, gate + 0.11, gate + 0.42))));
-            nextVeilOp = String(t < gate + 0.1 ? smooth(progress(t, 0.04, 0.28)) : 0);
+            nextFlashOp = opStr(smooth(progress(t, gate, gate + 0.1)) * (1 - smooth(progress(t, gate + 0.11, gate + 0.42))));
+            nextVeilOp = t < gate + 0.1 ? opStr(smooth(progress(t, 0.04, 0.28))) : '0';
             if (t < gate + 0.1) {
                 r = keys(EXIT_IN_R, t);
                 sweep = keys(EXIT_IN_SWEEP, t) * DEG;
                 start = keys(EXIT_IN_START, t) * DEG + spin;
-                nextScanOp = String(smooth(progress(t, 0, 0.08)));
+                nextScanOp = opStr(smooth(progress(t, 0, 0.08)));
             } else {
                 r = keys(EXIT_OUT_R, t);
                 sweep = keys(EXIT_OUT_SWEEP, t) * DEG;
                 start = keys(EXIT_OUT_START, t) * DEG + spin;
-                nextScanOp = String(1 - smooth(progress(t, gate + 0.1, gate + 0.38)));
+                nextScanOp = opStr(1 - smooth(progress(t, gate + 0.1, gate + 0.38)));
             }
             nextWhiteD = t < gate + 0.1 ? arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG) : '';
             nextFileLabel = loading || '返回';
@@ -464,12 +475,12 @@
             // 换模式：舞台在点击 0.17 秒后才开始建新模式，纸色底 0.14 秒就盖严；等新模式加载好后揭开
             const gate = TRANSIT.switchGate;
             nextFlashOp = '0';
-            nextVeilOp = String(smooth(progress(t, 0, 0.14)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch))));
+            nextVeilOp = opStr(smooth(progress(t, 0, 0.14)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch))));
             r = keys(SWITCH_R, t);
             sweep = keys(SWITCH_SWEEP, t) * DEG;
             start = keys(SWITCH_START, t) * DEG + spin;
             nextWhiteD = arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG);
-            nextScanOp = String(smooth(progress(t, 0, 0.1)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch - 0.1))));
+            nextScanOp = opStr(smooth(progress(t, 0, 0.1)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch - 0.1))));
             nextFileLabel = loading || '切换舞台';
             nextFileText = typed(ctx.file, t, 0.02, 0.18);
         }
@@ -760,7 +771,8 @@
                 document.body.classList.add('music-stage-entering');
                 const track = app?.playlist?.[app.currentTrackIndex];
                 // 过场中间写的是要播放的曲名（去掉扩展名）
-                const file = String(track?.title || '').replace(EXT_RE, '');
+                const rawTitle = String(track?.title || '');
+                const file = rawTitle.indexOf('.') !== -1 ? rawTitle.replace(EXT_RE, '') : rawTitle;
                 const hold = () => {
                     document.body.classList.remove('mi-stage-hold-exit');
                     document.body.classList.add('mi-stage-hold-enter');

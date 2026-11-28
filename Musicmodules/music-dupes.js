@@ -18,13 +18,19 @@
         const s = String(p || '');
         return (s.indexOf('\\') >= 0 ? s.replace(BSLASH_RE, '/') : s).toLowerCase();
     };
-    const isRemote = (t) => Boolean(t && (t.isRemote || HTTP_URL_RE.test(String(t.path || ''))));
+    const isRemote = (t) => {
+        if (!t) return false;
+        if (t.isRemote) return true;
+        const p = String(t.path || '');
+        return p.indexOf('://') !== -1 && HTTP_URL_RE.test(p);
+    };
 
     function dupeKey(t, recKeyFn) {
         const fn = recKeyFn !== undefined ? recKeyFn : radio().recordingKey;
         const k = fn ? fn(t) : '';
         if (k) return k;
-        const title = norm(String((t && t.title) || '').replace(AUDIO_EXT, ''));
+        const rawTitle = String((t && t.title) || '');
+        const title = norm(rawTitle.indexOf('.') !== -1 ? rawTitle.replace(AUDIO_EXT, '') : rawTitle);
         const dur = Math.round(Number(t && t.duration) || 0);
         const size = Number(t && t.size) || 0;
         return title && dur && size ? `${title}\n#${dur}\n#${size}` : '';
@@ -55,7 +61,7 @@
 
     const spec = (t) => {
         const p = String(t.path || '');
-        const m = EXT_RE.exec(p);
+        const m = p.indexOf('.') !== -1 ? EXT_RE.exec(p) : null;
         let out = m ? m[1].toUpperCase() : '';
         if (t.bitsPerSample && t.sampleRate) {
             const sr = `${t.bitsPerSample}/${(t.sampleRate / 1000).toFixed(1).replace(TRAILING_ZERO_RE, '')}`;
@@ -109,7 +115,8 @@
             const back = previousFocus;
             previousFocus = null;
             if (!isImmediate) {
-                if (back && back !== doc.body && back.isConnected && !o.contains(back) && typeof back.focus === 'function') {
+                if (back && back !== doc.body && back.isConnected && !o.contains(back)
+                    && !back.closest?.('[inert], [hidden]') && typeof back.focus === 'function') {
                     try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
                 } else {
                     const active = doc.activeElement;

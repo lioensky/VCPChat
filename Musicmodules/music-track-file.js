@@ -28,7 +28,13 @@
         if (!(b > 0)) return '';
         return b >= 1024 * 1024 * 1024 ? `${(b / 1024 / 1024 / 1024).toFixed(2)} GB` : b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
     };
-    const extOf = (p) => { const m = EXT_RE.exec(String(p || '').split(QUERY_HASH_RE)[0]); return m ? m[1].toUpperCase() : ''; };
+    const extOf = (p) => {
+        let s = String(p || '');
+        if (s.indexOf('?') !== -1 || s.indexOf('#') !== -1) s = s.split(QUERY_HASH_RE)[0];
+        if (s.indexOf('.') === -1) return '';
+        const m = EXT_RE.exec(s);
+        return m ? m[1].toUpperCase() : '';
+    };
 
     // 对话框里的每一行 [标签, 内容]；没有的信息不列（旧曲库没有采样率这些字段）
     const describeTrack = (track, stat) => {
@@ -111,7 +117,8 @@
             const back = previousFocus;
             previousFocus = null;
             if (!isImmediate) {
-                if (back && back !== doc.body && back.isConnected && !o.contains(back) && typeof back.focus === 'function') {
+                if (back && back !== doc.body && back.isConnected && !o.contains(back)
+                    && !back.closest?.('[inert], [hidden]') && typeof back.focus === 'function') {
                     try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
                 } else {
                     const active = doc.activeElement;

@@ -103,8 +103,10 @@
             const el = entry.el;
             const k = kind();
             const evap = el.classList.contains('mtst-evap');
-            el.className = `mtst mtst-${k}${entry.shown ? ' mtst-in' : ''}${evap ? ' mtst-evap' : ''}`;
-            el.setAttribute('role', k === 'error' ? 'alert' : 'status');
+            const nextClass = `mtst mtst-${k}${entry.shown ? ' mtst-in' : ''}${evap ? ' mtst-evap' : ''}`;
+            if (el.className !== nextClass) el.className = nextClass;
+            const nextRole = k === 'error' ? 'alert' : 'status';
+            if (el.getAttribute('role') !== nextRole) el.setAttribute('role', nextRole);
             const action = entry.opts.action;
             if (action?.countdown && entry.countdown == null) entry.countdown = Math.max(1, Math.round(action.countdown));
             const count = action?.countdown && entry.countdown != null ? ` ${entry.countdown}` : '';
@@ -225,15 +227,19 @@
             render();
             host.appendChild(entry.el);
             entry.shown = true;
-            entry.inRaf = requestAnimationFrame(() => {
-                entry.inRaf = 0;
-                if (!entry.closed) entry.el?.classList.add('mtst-in');
-            });
+            if (typeof requestAnimationFrame === 'function') {
+                entry.inRaf = requestAnimationFrame(() => {
+                    entry.inRaf = 0;
+                    if (!entry.closed) entry.el?.classList.add('mtst-in');
+                });
+            } else {
+                entry.el.classList.add('mtst-in');
+            }
             entry.el.addEventListener('pointerenter', () => { entry.hovered = true; pause(); });
             entry.el.addEventListener('pointerleave', () => { entry.hovered = false; arm(); });
             entry.el.addEventListener('click', (event) => {
-                if (event.target.closest('.mtst-x')) close();
-                else if (event.target.closest('.mtst-act')) runAction();
+                if (event.target?.closest?.('.mtst-x')) close();
+                else if (event.target?.closest?.('.mtst-act')) runAction();
             });
             arm();
         };
@@ -328,7 +334,10 @@
             closing.clear();
         }
     };
-    global.addEventListener?.('beforeunload', clear, { once: true });
+    global.addEventListener?.('beforeunload', () => {
+        clear();
+        iconProtoCache.clear();
+    }, { once: true });
 
     global.MusicToast = Object.freeze({ show, dismiss, clear, setPosition });
 })(window);

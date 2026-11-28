@@ -220,8 +220,8 @@
         });
         menu.addEventListener('pointermove', (event) => {
             const item = event.target?.closest?.('.mfs-item');
-            if (!item || !menu.contains(item) || item.getAttribute('aria-disabled') === 'true') return;
-            if (doc.activeElement !== item) item.focus({ preventScroll: true });
+            if (!item || doc.activeElement === item || !menu.contains(item) || item.getAttribute('aria-disabled') === 'true') return;
+            item.focus({ preventScroll: true });
         });
         menu.append(frag);
         doc.body.append(menu);
@@ -269,6 +269,8 @@
         if (!openState) return;
         const { menu, trigger } = openState;
         openState = null;
+        // 取消尚未播完的 bud 动画，避免提前收起残留 svg 滤镜叠层或 .mf-budding
+        global.MusicFluid?.cancel?.(menu);
         // 先拍菜单几何快照再写触发器类名与属性，避免先写后读触发同步回流
         const snap = global.MusicFluid?.enabled?.() ? global.MusicFluid.snapshot?.(menu) : null;
         trigger.setAttribute('aria-expanded', 'false');
@@ -318,10 +320,12 @@
         event.preventDefault();
         event.stopPropagation();
     };
+    const isNode = (n) => Boolean(n && typeof n.nodeType === 'number');
     const onDocPointerDown = (event) => {
         if (!openState) return;
-        if (openState.menu.contains(event.target) || openState.trigger.contains(event.target)) return;
-        const lbl = event.target?.closest?.('label[for]');
+        const t = event.target;
+        if (isNode(t) && (openState.menu.contains(t) || openState.trigger.contains(t))) return;
+        const lbl = t?.closest?.('label[for]');
         if (lbl && openState.select.id && lbl.getAttribute('for') === openState.select.id) return;
         close(false);
     };
@@ -333,7 +337,7 @@
         if (!forId) return;
         const target = doc.getElementById(forId);
         const entry = target && DRESSED.get(target);
-        if (!entry || target.disabled || entry.trigger.contains(event.target)) return;
+        if (!entry || target.disabled || (isNode(event.target) && entry.trigger.contains(event.target))) return;
         event.preventDefault();
         event.stopPropagation();
         entry.trigger.focus({ preventScroll: true });
@@ -342,7 +346,9 @@
     };
     const reflow = () => { if (openState) close(false); };
     const onDocScroll = (event) => {
-        if (openState && !openState.menu.contains(event.target)) close(false);
+        if (!openState) return;
+        const t = event.target;
+        if (!isNode(t) || !openState.menu.contains(t)) close(false);
     };
     doc.addEventListener('keydown', onDocKeyDown, true);
     doc.addEventListener('pointerdown', onDocPointerDown, true);

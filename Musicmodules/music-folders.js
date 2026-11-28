@@ -175,7 +175,8 @@
             const back = previousFocus;
             previousFocus = null;
             if (!isImmediate) {
-                if (back && back !== doc.body && back.isConnected && !o.contains(back) && typeof back.focus === 'function') {
+                if (back && back !== doc.body && back.isConnected && !o.contains(back)
+                    && !back.closest?.('[inert], [hidden]') && typeof back.focus === 'function') {
                     try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
                 } else {
                     const active = doc.activeElement;
@@ -361,14 +362,26 @@
             const rescan = el('button', 'minfo-btn', '立即重新扫描');
             rescan.type = 'button';
             rescan.addEventListener('click', async () => {
-                const r = await call({ op: 'rescan' }).catch(() => null);
-                toast(r && r.ok ? '已开始在后台对一遍磁盘，有变化会自动更新' : (r?.message || '没能开始扫描'), { kind: r && r.ok ? 'success' : 'error' });
+                if (rescan.disabled) return;
+                rescan.disabled = true;
+                try {
+                    const r = await call({ op: 'rescan' }).catch(() => null);
+                    toast(r && r.ok ? '已开始在后台对一遍磁盘，有变化会自动更新' : (r?.message || '没能开始扫描'), { kind: r && r.ok ? 'success' : 'error' });
+                } finally {
+                    if (rescan.isConnected) rescan.disabled = false;
+                }
             });
             actions.appendChild(rescan);
             if (typeof app.api?.addMusicFolder === 'function') {
                 const add = el('button', 'minfo-btn', '添加文件夹');
                 add.type = 'button';
-                add.addEventListener('click', async () => { try { await app.api.addMusicFolder(); } catch (e) { /* 取消了 */ } render(); });
+                add.addEventListener('click', async () => {
+                    if (add.disabled) return;
+                    add.disabled = true;
+                    try { await app.api.addMusicFolder(); } catch (e) { /* 取消了 */ }
+                    finally { if (add.isConnected) add.disabled = false; }
+                    render();
+                });
                 actions.appendChild(add);
             }
             dialog.appendChild(actions);

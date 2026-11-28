@@ -17,7 +17,13 @@
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
     const CTRL_WS_RE = /[\r\n\t]+/g;
-    const cleanName = (s) => String(s || '').replace(CTRL_WS_RE, ' ').trim().slice(0, 24);
+    const cleanName = (s) => {
+        const str = String(s || '');
+        const normalized = (str.indexOf('\n') !== -1 || str.indexOf('\r') !== -1 || str.indexOf('\t') !== -1)
+            ? str.replace(CTRL_WS_RE, ' ')
+            : str;
+        return normalized.trim().slice(0, 24);
+    };
     const hasOwn = Object.prototype.hasOwnProperty;
     const bandsEqual = (a, b) => {
         const ba = a || {};
@@ -174,19 +180,34 @@
             const suggestion = v.startsWith(PREFIX) ? v.slice(PREFIX.length) : `我的 EQ ${n}`;
             const overlay = doc.createElement('div');
             overlay.className = 'dialog-overlay music-dialog music-eq-name';
-            overlay.innerHTML = `
-                <div class="dialog glass-panel" role="dialog" aria-modal="true" aria-labelledby="music-eq-name-t">
-                    <h3 id="music-eq-name-t">存为 EQ 预设</h3>
-                    <input type="text" maxlength="24" aria-label="预设名字" placeholder="比如：耳机、音箱、人声">
-                    <p class="music-dialog-msg"></p>
-                    <div class="dialog-actions">
-                        <button type="button" class="dialog-btn cancel">取消</button>
-                        <button type="button" class="dialog-btn confirm">存</button>
-                    </div>
-                </div>`;
-            const input = overlay.querySelector('input');
-            const note = overlay.querySelector('.music-dialog-msg');
-            const ok = overlay.querySelector('.dialog-btn.confirm');
+            const dialog = doc.createElement('div');
+            dialog.className = 'dialog glass-panel';
+            dialog.setAttribute('role', 'dialog');
+            dialog.setAttribute('aria-modal', 'true');
+            dialog.setAttribute('aria-labelledby', 'music-eq-name-t');
+            const heading = doc.createElement('h3');
+            heading.id = 'music-eq-name-t';
+            heading.textContent = '存为 EQ 预设';
+            const input = doc.createElement('input');
+            input.type = 'text';
+            input.setAttribute('maxlength', '24');
+            input.setAttribute('aria-label', '预设名字');
+            input.placeholder = '比如：耳机、音箱、人声';
+            const note = doc.createElement('p');
+            note.className = 'music-dialog-msg';
+            const actions = doc.createElement('div');
+            actions.className = 'dialog-actions';
+            const cancelBtn = doc.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'dialog-btn cancel';
+            cancelBtn.textContent = '取消';
+            const ok = doc.createElement('button');
+            ok.type = 'button';
+            ok.className = 'dialog-btn confirm';
+            ok.textContent = '存';
+            actions.append(cancelBtn, ok);
+            dialog.append(heading, input, note, actions);
+            overlay.appendChild(dialog);
             input.value = suggestion;
             const refresh = () => {
                 const name = cleanName(input.value);
@@ -250,13 +271,13 @@
                 if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1 && e.target !== input) e.stopPropagation();
             };
             closeActivePrompt = (immediate = false) => finish(null, immediate);
-            overlay.querySelector('.dialog-btn.cancel').addEventListener('click', () => finish(null));
+            cancelBtn.addEventListener('click', () => finish(null));
             ok.addEventListener('click', () => { if (!ok.disabled) finish(input.value); });
             overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) finish(null); });
             doc.body.appendChild(overlay);
             global.addEventListener('keydown', onKey, true);
             openRaf = global.requestAnimationFrame?.(() => { openRaf = 0; if (!done) overlay.classList.add('visible'); }) || 0;
-            focusTimer = setTimeout(() => { focusTimer = 0; if (!done) { try { input.focus(); input.select(); } catch (e) { /* 没关系 */ } } }, 30);
+            focusTimer = setTimeout(() => { focusTimer = 0; if (!done) { try { input.focus({ preventScroll: true }); input.select(); } catch (e) { /* 没关系 */ } } }, 30);
         };
 
         // 操作项被选中时：在 change 到达下拉自己的处理之前拦下（捕获阶段，挂在 document 上），做完把下拉还原成实际状态
