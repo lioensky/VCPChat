@@ -1,6 +1,6 @@
 /**
  * Frontend Pele/Mermaid diagram normalization and opt-in sidecar AI repair.
- * Pure frontend helpers: no VCP backend protocol or tool injection involved.
+ * Repair requests explicitly disable VCP and native tool use.
  */
 
 import { decodeHtmlEntities, shouldTreatCodeTagAsMermaid } from '../chat/contentTransforms.js';
@@ -141,6 +141,7 @@ export function buildMermaidRepairMessages(code, errorMessage) {
         {
             role: 'system',
             content: [
+                '[[VCPToolUse=Forbidden]]',
                 '你是前端图表语法修复助手。前端使用 **Pele** 渲染器（兼容 Mermaid 核心语法，词法解析对引号、关键字和块闭合较严格）。',
                 '请根据给定的渲染报错和 `^` 指针位置，理解出错原因并做最小必要的完整修正，保留原有结构、节点含义与文案。',
                 '',
@@ -605,6 +606,8 @@ async function requestRepairCompletion({ chatUrl, headers, model, messages, sign
             body: JSON.stringify({
                 model,
                 messages,
+                tool_choice: 'none',
+                function_call: null,
                 temperature: 0.1,
                 max_tokens: 4096,
                 stream: false,

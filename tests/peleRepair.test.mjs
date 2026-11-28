@@ -113,12 +113,13 @@ test('normalizePeleSource limits subgraph rewrite to flowchart/graph and handles
     assert.equal(normalizePeleSource(multilineLabel), multilineLabel);
 });
 
-test('buildMermaidRepairMessages builds clean tool-free repair messages without VCPToolUseForbidden', () => {
+test('buildMermaidRepairMessages forbids VCP tool use in the system message', () => {
     const messages = buildMermaidRepairMessages('flowchart TD\n  A -> B', 'Parse error on line 2');
     assert.equal(messages.length, 2);
     assert.equal(messages[0].role, 'system');
+    assert.equal(messages[0].content.split('\n')[0], '[[VCPToolUse=Forbidden]]');
     assert.equal(messages[1].role, 'user');
-    assert.doesNotMatch(messages[0].content + messages[1].content, /VCPToolUseForbidden|<<<\[TOOL_REQUEST\]>>>/);
+    assert.doesNotMatch(messages[1].content, /\[\[VCPToolUse=Forbidden\]\]/);
     assert.match(messages[1].content, /Parse error on line 2/);
     assert.match(messages[1].content, /A -> B/);
 });
@@ -390,6 +391,14 @@ test('repairMermaidDiagram feeds secondary Pele compiler error into second attem
     });
 
     assert.equal(requests.length, 2);
+    for (const body of requests) {
+        assert.equal(body.messages[0].role, 'system');
+        assert.equal(body.messages[0].content.split('\n')[0], '[[VCPToolUse=Forbidden]]');
+        assert.equal(body.tool_choice, 'none');
+        assert.equal(body.function_call, null);
+        assert.equal(Object.hasOwn(body, 'tools'), false);
+        assert.equal(Object.hasOwn(body, 'functions'), false);
+    }
     assert.equal(requests[1].messages.length, 4);
     assert.match(requests[1].messages[3].content, /最新报错如下/);
     assert.equal(res.ok, true);
