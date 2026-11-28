@@ -15,7 +15,15 @@
     function setupMusicLikes(app) {
         if (!app || app.toggleLike) return;
         const lists = () => (Array.isArray(app.customPlaylists) ? app.customPlaylists : (app.customPlaylists = []));
-        app.likedPlaylist = () => lists().find((p) => String(p.id) === LIKED_ID) || null;
+        app.likedPlaylist = () => {
+            const list = lists();
+            const n = list.length;
+            if (n > 0 && list[0] && String(list[0].id) === LIKED_ID) return list[0];
+            for (let i = 1; i < n; i += 1) {
+                if (list[i] && String(list[i].id) === LIKED_ID) return list[i];
+            }
+            return null;
+        };
         const ensure = () => {
             let pl = app.likedPlaylist();
             if (!pl) {
@@ -149,9 +157,12 @@
                 const track = app.playlist?.[app.contextMenuTrackIndex];
                 const on = app.isLiked(track);
                 item.classList.toggle('is-liked', on);
-                labelEl.textContent = on ? '取消喜欢' : '喜欢';
-                likeOnEl.style.display = on ? '' : 'none';
-                likeOffEl.style.display = on ? 'none' : '';
+                const nextLabel = on ? '取消喜欢' : '喜欢';
+                if (labelEl.textContent !== nextLabel) labelEl.textContent = nextLabel;
+                const onDisp = on ? '' : 'none';
+                const offDisp = on ? 'none' : '';
+                if (likeOnEl.style.display !== onDisp) likeOnEl.style.display = onDisp;
+                if (likeOffEl.style.display !== offDisp) likeOffEl.style.display = offDisp;
             };
             (global.MusicAppHooks || require('./music-app-hooks.js')).before(app, 'showContextMenu', 'likes', () => paint());
         }

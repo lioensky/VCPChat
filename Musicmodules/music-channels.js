@@ -132,6 +132,18 @@
             overlay = null;
             refs = null;
             global.removeEventListener('keydown', onKey, true);
+            const back = previousFocus;
+            previousFocus = null;
+            if (!isImmediate) {
+                const canRestore = back && back !== doc.body && back.isConnected
+                    && !o.contains(back) && !back.closest?.('[inert], [hidden]')
+                    && typeof back.focus === 'function';
+                if (canRestore) {
+                    try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
+                } else if (o.contains(doc.activeElement)) {
+                    try { doc.activeElement.blur?.(); } catch (e) { /* noop */ }
+                }
+            }
             o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) o.remove();
@@ -139,15 +151,12 @@
                 closingOverlay = o;
                 closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === o) closingOverlay = null; o.remove(); }, 320);
             }
-            const back = previousFocus;
-            previousFocus = null;
-            if (!isImmediate && back && back.isConnected && typeof back.focus === 'function') { try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
         };
         const onKey = (e) => {
             if (doc.querySelector('.dialog-overlay.music-dialog:not([data-closing])')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
-                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                const focusables = overlay.querySelectorAll('button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])');
                 if (focusables.length) {
                     const first = focusables[0], last = focusables[focusables.length - 1];
                     const active = doc.activeElement;
@@ -164,7 +173,8 @@
         const open = () => {
             if (!doc || overlay) return;
             flushClosing();
-            previousFocus = doc.activeElement;
+            const active = doc.activeElement;
+            previousFocus = active && active !== doc.body ? active : null;
             overlay = el('div', 'dialog-overlay music-stats-dialog');
             const dialog = el('div', 'dialog glass-panel mstats minfo mchan');
             dialog.setAttribute('role', 'dialog');
@@ -199,7 +209,9 @@
             slider.addEventListener('dblclick', () => set({ balance: 0 })); // 双击回到居中
             bal.appendChild(slider);
             const ends = el('div', 'mchan-ends');
-            ['左', '双击居中', '右'].forEach((t) => ends.appendChild(el('span', '', t)));
+            ends.appendChild(el('span', '', '左'));
+            ends.appendChild(el('span', '', '双击居中'));
+            ends.appendChild(el('span', '', '右'));
             bal.appendChild(ends);
             dialog.appendChild(bal);
 

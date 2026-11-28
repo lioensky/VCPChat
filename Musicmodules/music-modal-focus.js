@@ -92,30 +92,41 @@
     const sync = (o) => {
         const open = isOpen(o);
         if (open) openOverlays.add(o); else openOverlays.delete(o);
-        const wantInert = !open;
-        if (o.inert !== wantInert) o.inert = wantInert;
-        if (open && !openers.has(o)) {
-            const from = document.activeElement;
-            openers.set(o, from && from !== document.body && !o.contains(from) ? remember(from) : null);
-            // 打开的代码可能在去掉 inert 之前就 focus 过（那次会落空），这里补上
-            focusInside(o);
-            cancelFocusRaf(o);
-            const id = global.requestAnimationFrame?.(() => {
-                focusRafs.delete(o);
-                if (isOpen(o)) focusInside(o);
-            });
-            if (id) focusRafs.set(o, id);
-        } else if (!open && openers.has(o)) {
+        if (open) {
+            if (o.inert !== false) o.inert = false;
+            if (!openers.has(o)) {
+                const from = document.activeElement;
+                openers.set(o, from && from !== document.body && !o.contains(from) ? remember(from) : null);
+                // 打开的代码可能在去掉 inert 之前就 focus 过（那次会落空），这里补上
+                focusInside(o);
+                cancelFocusRaf(o);
+                const id = global.requestAnimationFrame?.(() => {
+                    focusRafs.delete(o);
+                    if (isOpen(o)) focusInside(o);
+                });
+                if (id) focusRafs.set(o, id);
+            }
+            return;
+        }
+        // 关闭时先恢复焦点（或 blur 弹窗内焦点），再设 inert=true，避免浏览器因 inert 先清空焦点导致闪烁
+        if (openers.has(o)) {
             cancelFocusRaf(o);
             const back = recall(openers.get(o));
             openers.delete(o);
-            const lost = document.activeElement === document.body || o.contains(document.activeElement);
-            if (lost && back && back.isConnected && !back.closest('[inert], [hidden]')) back.focus({ preventScroll: true });
+            const inside = o.contains(document.activeElement);
+            const lost = document.activeElement === document.body || inside;
+            if (lost) {
+                const canRestore = back && back !== document.body && back.isConnected
+                    && !o.contains(back) && !back.closest('[inert], [hidden]');
+                if (canRestore) back.focus({ preventScroll: true });
+                else if (inside) document.activeElement?.blur?.();
+            }
         }
+        if (o.inert !== true) o.inert = true;
     };
 
     const watch = () => {
-        const overlays = [...document.querySelectorAll(OVERLAY)];
+        const overlays = document.querySelectorAll(OVERLAY);
         const observer = new MutationObserver((records) => {
             for (const r of records) if (r.target.matches?.(OVERLAY)) sync(r.target);
         });

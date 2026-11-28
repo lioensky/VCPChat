@@ -14,8 +14,12 @@ function formatPlaylistPrompt(tracks, limit = DEFAULT_LIMIT) {
     const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_LIMIT;
     const seen = new Set();
     const shown = [];
-    for (const track of tracks) {
-        const title = String(track?.title || '').replace(AUDIO_EXT, '').replace(WS_RE, ' ').trim();
+    for (let i = 0, len = tracks.length; i < len; i += 1) {
+        const raw = tracks[i]?.title;
+        if (!raw) continue;
+        const s = String(raw);
+        const noExt = s.indexOf('.') >= 0 ? s.replace(AUDIO_EXT, '') : s;
+        const title = noExt.replace(WS_RE, ' ').trim();
         if (!title || seen.has(title)) continue;
         seen.add(title);
         if (shown.length < cap) shown.push(title);

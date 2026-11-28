@@ -9,9 +9,20 @@
 
     const restoredQueue = (before, now, library) => {
         const alive = new Set(library || []);
-        const out = (before || []).filter((t) => alive.has(t));
-        const seen = new Set(out);
-        for (const t of now || []) if (!seen.has(t)) { seen.add(t); out.push(t); }
+        const out = [];
+        const seen = new Set();
+        if (before) {
+            for (let i = 0; i < before.length; i += 1) {
+                const t = before[i];
+                if (alive.has(t) && !seen.has(t)) { seen.add(t); out.push(t); }
+            }
+        }
+        if (now) {
+            for (let i = 0; i < now.length; i += 1) {
+                const t = now[i];
+                if (!seen.has(t)) { seen.add(t); out.push(t); }
+            }
+        }
         return out;
     };
 

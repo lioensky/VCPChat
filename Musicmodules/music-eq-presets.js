@@ -67,8 +67,13 @@
         let delOpt = null;
         const select = () => app.eqPresetSelect || doc?.getElementById?.('eq-preset-select');
         const syncPresetsObject = () => {
-            for (const k of Object.keys(app.eqPresets)) if (k.startsWith(PREFIX)) delete app.eqPresets[k];
-            for (const p of presets) app.eqPresets[PREFIX + p.name] = { ...p.bands };
+            for (const k in app.eqPresets) {
+                if (hasOwn.call(app.eqPresets, k) && k.startsWith(PREFIX)) delete app.eqPresets[k];
+            }
+            for (let i = 0; i < presets.length; i += 1) {
+                const p = presets[i];
+                app.eqPresets[PREFIX + p.name] = { ...p.bands };
+            }
         };
         const render = () => {
             const sel = select();
@@ -86,12 +91,15 @@
                 ops.append(saveOpt, delOpt);
                 sel.append(group, ops);
             }
-            group.replaceChildren(...presets.map((p) => {
+            const frag = doc.createDocumentFragment();
+            for (let i = 0; i < presets.length; i += 1) {
+                const p = presets[i];
                 const o = doc.createElement('option');
                 o.value = PREFIX + p.name;
                 o.textContent = p.name;
-                return o;
-            }));
+                frag.appendChild(o);
+            }
+            group.replaceChildren(frag);
             if (group.hidden !== !presets.length) group.hidden = !presets.length;
             syncDelete();
         };
@@ -157,7 +165,8 @@
             if (!doc || asking) return;
             flushClosing();
             asking = true;
-            const previousFocus = doc.activeElement;
+            const active = doc.activeElement;
+            const previousFocus = active && active !== doc.body ? active : null;
             const sel = select();
             const v = String(sel?.value || '');
             let n = presets.length + 1;
@@ -202,6 +211,16 @@
                 if (focusTimer) { clearTimeout(focusTimer); focusTimer = 0; }
                 flushClosing();
                 global.removeEventListener('keydown', onKey, true);
+                if (!isImmediate) {
+                    const canRestore = previousFocus && previousFocus !== doc.body && previousFocus.isConnected
+                        && !overlay.contains(previousFocus) && !previousFocus.closest?.('[inert], [hidden]')
+                        && typeof previousFocus.focus === 'function';
+                    if (canRestore) {
+                        try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
+                    } else if (overlay.contains(doc.activeElement)) {
+                        try { doc.activeElement.blur?.(); } catch (e) { /* noop */ }
+                    }
+                }
                 overlay.dataset.closing = '1';
                 overlay.classList.remove('visible');
                 if (isImmediate) overlay.remove();
@@ -209,14 +228,13 @@
                     closingOverlay = overlay;
                     closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === overlay) closingOverlay = null; overlay.remove(); }, 320);
                 }
-                if (!isImmediate && previousFocus && previousFocus.isConnected && typeof previousFocus.focus === 'function') { try { previousFocus.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ } }
                 if (name) save(name);
             };
             const onKey = (e) => {
                 if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(null); return; }
                 if (e.key === 'Enter' && !e.isComposing && doc.activeElement === input) { e.preventDefault(); e.stopPropagation(); if (!ok.disabled) finish(input.value); return; }
                 if (e.key === 'Tab') {
-                    const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                    const focusables = overlay.querySelectorAll('button:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])');
                     if (focusables.length) {
                         const first = focusables[0], last = focusables[focusables.length - 1];
                         const active = doc.activeElement;

@@ -209,30 +209,36 @@ function addServer(config) {
 
 // 移除服务器
 function removeServer(serverId) {
-    servers = servers.filter(s => s.id !== serverId);
+    const kept = [];
+    for (let i = 0; i < servers.length; i += 1) {
+        if (servers[i].id !== serverId) kept.push(servers[i]);
+    }
+    servers = kept;
     lastConfiguredKey = null;
     saveServers().catch(err => console.error('[WebDAV] Failed to save:', err.message));
 }
 
 // 列出所有服务器（不返回密码）
 function listServers() {
-    return servers.map(s => ({
-        id: s.id,
-        name: s.name,
-        url: s.url,
-        username: s.username
-        // 不返回密码
-    }));
+    const out = new Array(servers.length);
+    for (let i = 0; i < servers.length; i += 1) {
+        const s = servers[i];
+        out[i] = { id: s.id, name: s.name, url: s.url, username: s.username };
+    }
+    return out;
 }
 
 // 根据 ID 获取完整服务器配置
 function getServerById(serverId) {
-    return servers.find(s => s.id === serverId);
+    for (let i = 0; i < servers.length; i += 1) {
+        if (servers[i].id === serverId) return servers[i];
+    }
+    return undefined;
 }
 
 // 获取服务器凭据（包含密码，供后端使用）
 function getServerCredentials(serverId) {
-    const server = servers.find(s => s.id === serverId);
+    const server = getServerById(serverId);
     if (!server) return null;
     return {
         id: server.id,
@@ -276,14 +282,18 @@ async function listDirectory(config) {
         if (result.status === 'success') {
             // 规范化返回格式
             const rawEntries = Array.isArray(result.entries) ? result.entries : [];
-            const entries = rawEntries.map(e => ({
-                name: e.display_name,
-                href: e.href,
-                url: e.url,
-                isDir: e.is_dir,
-                contentLength: e.content_length,
-                contentType: e.content_type
-            }));
+            const entries = new Array(rawEntries.length);
+            for (let i = 0; i < rawEntries.length; i += 1) {
+                const e = rawEntries[i];
+                entries[i] = {
+                    name: e.display_name,
+                    href: e.href,
+                    url: e.url,
+                    isDir: e.is_dir,
+                    contentLength: e.content_length,
+                    contentType: e.content_type
+                };
+            }
             return { status: 'success', entries, path: result.path };
         } else {
             lastConfiguredKey = null;
@@ -338,7 +348,8 @@ async function scanAudioFiles(config, progressCallback) {
             }
             
             const entries = Array.isArray(result.entries) ? result.entries : [];
-            for (const entry of entries) {
+            for (let i = 0; i < entries.length; i += 1) {
+                const entry = entries[i];
                 if (entry.isDir) {
                     if (entry.href) await scanDir(entry.href);
                 } else {

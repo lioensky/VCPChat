@@ -5,6 +5,7 @@
     'use strict';
 
     const TAU = Math.PI * 2;
+    const DEFAULT_COLOR = Object.freeze({ r: 0, g: 195, b: 255 });
     const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
     const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -133,7 +134,9 @@
             this.kickCooldown = 0;
             this.width = 1;
             this.height = 1;
-            this.lastStaticKey = '';
+            this.lastStaticW = -1;
+            this.lastStaticH = -1;
+            this.lastStaticColor = -1;
             this.initialized = false;
             this.destroyed = false;
             this.initPromise = null;
@@ -245,8 +248,11 @@
                 canvas.style.height = '100%';
                 canvas.style.pointerEvents = 'none';
 
-                this.container.innerHTML = '';
-                this.container.appendChild(canvas);
+                if (typeof this.container.replaceChildren === 'function') this.container.replaceChildren(canvas);
+                else {
+                    this.container.innerHTML = '';
+                    this.container.appendChild(canvas);
+                }
 
                 this.stage = pixiApp.stage;
 
@@ -272,7 +278,7 @@
             if (w === this.width && h === this.height) return;
             this.width = w;
             this.height = h;
-            this.lastStaticKey = '';
+            this.lastStaticW = -1;
             this.pixiApp.renderer.resize(w, h);
         }
 
@@ -333,15 +339,20 @@
                 : (0.05 + (reduced ? 0 : Math.sin(Date.now() * 0.0012) * 0.035));
 
             // 2. 颜色计算
-            const { r, g, b } = app.visualizerColor || { r: 0, g: 195, b: 255 };
+            const { r, g, b } = app.visualizerColor || DEFAULT_COLOR;
             const primaryColor = (r << 16) | (g << 8) | b;
             const softColor = (Math.min(255, r + 45) << 16) | (Math.min(255, g + 45) << 8) | Math.min(255, b + 45);
 
-            // 暂停且降低动态时涟漪与呼吸均静止：首帧落稳且气泡清零后直接跳过重复重绘与 WebGL 提交
+            // 暂停且降低动态时涟漪与呼吸均静止：首帧落稳且气泡清零后直接跳过重复重绘与 WebGL 提交（整数比较零分配）
             const isStatic = !isPlaying && reduced && this.smoothBass < 0.001 && !this.bubbles.length && !this.hadBubbles;
-            const staticKey = isStatic ? `${this.width}x${this.height}|${primaryColor}` : '';
-            if (isStatic && staticKey === this.lastStaticKey) return;
-            this.lastStaticKey = staticKey;
+            if (isStatic) {
+                if (this.lastStaticW === this.width && this.lastStaticH === this.height && this.lastStaticColor === primaryColor) return;
+                this.lastStaticW = this.width;
+                this.lastStaticH = this.height;
+                this.lastStaticColor = primaryColor;
+            } else {
+                this.lastStaticW = -1;
+            }
 
             // 3. 中心位置与基础尺寸
             const cx = this.width * 0.50;

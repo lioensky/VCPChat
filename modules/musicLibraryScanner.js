@@ -47,7 +47,8 @@ async function collectAudioFiles(rootDir, { signal, unreadable } = {}) {
         // 同一目录内按名字排，目录按深度优先接在后面：结果顺序只取决于磁盘内容，不取决于谁先解析完。
         entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
         const subdirs = [];
-        for (const entry of entries) {
+        for (let i = 0; i < entries.length; i += 1) {
+            const entry = entries[i];
             const fullPath = path.join(dir, entry.name);
             if (entry.isDirectory()) subdirs.push(fullPath);
             else if (SUPPORTED_FORMATS.has(path.extname(entry.name).toLowerCase())) found.push(fullPath);
@@ -66,7 +67,10 @@ async function mapLimit(items, limit, fn) {
             results[index] = await fn(items[index], index);
         }
     };
-    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+    const count = Math.min(limit, items.length);
+    const workers = new Array(count);
+    for (let i = 0; i < count; i += 1) workers[i] = run();
+    await Promise.all(workers);
     return results;
 }
 
@@ -168,9 +172,20 @@ async function scanFolder(options) {
     // 不当成「文件已删除」。解析失败的曲目同理沿用上次的结果。
     const unreadable = [];
     // filePaths：只读这几个文件（拖进窗口的单曲），不遍历文件夹
-    const files = Array.isArray(filePaths)
-        ? [...new Set(filePaths.filter((f) => typeof f === 'string' && isAudioFile(f)))]
-        : await collectAudioFiles(folderPath, { signal, unreadable });
+    let files;
+    if (Array.isArray(filePaths)) {
+        const seenFiles = new Set();
+        files = [];
+        for (let i = 0; i < filePaths.length; i += 1) {
+            const f = filePaths[i];
+            if (typeof f === 'string' && isAudioFile(f) && !seenFiles.has(f)) {
+                seenFiles.add(f);
+                files.push(f);
+            }
+        }
+    } else {
+        files = await collectAudioFiles(folderPath, { signal, unreadable });
+    }
     const total = files.length;
     onStart?.({ total, folderPath });
     const stats = { total, parsed: 0, reused: 0, failed: 0, kept: 0, unreadable: unreadable.length, elapsedMs: 0, aborted: false };
@@ -180,10 +195,11 @@ async function scanFolder(options) {
     const isWin = process.platform === 'win32';
     const keptFromUnreadable = () => {
         if (!unreadable.length) return [];
-        const bases = unreadable.map((dir) => {
-            const trimmed = dir.replace(TRAIL_SEP_RE, '');
-            return { len: trimmed.length, target: isWin ? trimmed.toLowerCase() : trimmed };
-        });
+        const bases = new Array(unreadable.length);
+        for (let i = 0; i < unreadable.length; i += 1) {
+            const trimmed = unreadable[i].replace(TRAIL_SEP_RE, '');
+            bases[i] = { len: trimmed.length, target: isWin ? trimmed.toLowerCase() : trimmed };
+        }
         const listed = new Set(files);
         const kept = [];
         for (const track of known.values()) {
@@ -340,7 +356,10 @@ async function scanFolder(options) {
     }
 
     flushBatch();
-    const foundTracks = slots.filter(Boolean);
+    const foundTracks = [];
+    for (let i = 0; i < slots.length; i += 1) {
+        if (slots[i]) foundTracks.push(slots[i]);
+    }
     if (!signal?.aborted) {
         try { stats.folderCovers = await fillFolderCovers(foundTracks); } catch (_) { /* 只是补封面 */ }
     }
