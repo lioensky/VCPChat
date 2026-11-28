@@ -351,17 +351,15 @@
          * steady：曲库只是变多了（扫描途中一批批进来）。这时不把目录拉回选中行，
          * 而是让眼前最上面那首歌留在原来的位置，上面多出来的歌不把正在看的内容顶走。
          */
-        // 选中的筛选下方液态线：换筛选时滑过去，只量文字本身（先读几何再建标记，避免首帧写后读重排）。
+        const kindVisible = () => el.isConnected && !el.hidden && !document.body.classList.contains('music-archive-off');
         const placeKindMark = () => {
-            const box = el.querySelector('[data-l="kinds"]');
-            const on = box?.querySelector('[data-kind].on');
-            if (!box || !on || !on.firstChild || !global.MusicFluid?.slide) return;
+            if (!kindVisible()) return;
+            const box = r.kinds, on = box?.querySelector('[data-kind].on');
+            if (!box || !on?.firstChild || !global.MusicFluid?.slide) return;
             const range = document.createRange();
             range.selectNodeContents(on);
-            const t = range.getBoundingClientRect();
-            const b = box.getBoundingClientRect();
+            const t = range.getBoundingClientRect(), b = box.getBoundingClientRect();
             if (!t.width || !b.width) return;
-            // 档案页整体可能被缩放过：量出来的是屏幕上的尺寸，换回这一层自己的像素
             const k = box.offsetWidth / b.width || 1;
             let mark = box.querySelector('.archive-kind-mark');
             if (!mark) {
@@ -379,10 +377,13 @@
                 ? requestAnimationFrame(() => { kindMarkRaf = 0; placeKindMark(); })
                 : (placeKindMark(), 0);
         };
-        // 目录收起时量不到宽度；展开、窗口变宽窄、字体换好时再落一次位
         let kindResizeObserver = null;
         if (typeof global.ResizeObserver === 'function' && r.kinds) {
-            kindResizeObserver = new global.ResizeObserver(() => scheduleKindMark());
+            kindResizeObserver = new global.ResizeObserver((entries) => {
+                const rect = entries?.[entries.length - 1]?.contentRect;
+                if (!kindVisible() || (rect && !(rect.width > 0))) return;
+                scheduleKindMark();
+            });
             kindResizeObserver.observe(r.kinds);
         }
         // 「为你」：最近播放、每日推荐、最常听、很久没听、还没听过
@@ -1075,6 +1076,7 @@
             if (inSetKind) { state.selectedRow = k; return; }
             const moved = k !== state.selectedRow;
             state.selectedRow = k;
+            if (!el.isConnected || el.hidden || !state.rows.length) return;
             const h = viewportHeight();
             const wasFresh = !scrollTopDirty;
             let top = readScrollTop();

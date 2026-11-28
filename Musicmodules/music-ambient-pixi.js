@@ -206,8 +206,10 @@
             if (this.initPromise) return this.initPromise;
 
             this.initPromise = (async () => {
-                const PIXI = global.PIXI;
+                const PIXI = global.PIXI || await global.MusicStageRuntime?.ensurePixi?.();
+                if (this.destroyed || this.pixiApp) return;
                 if (!PIXI) {
+                    this.initPromise = null;
                     console.warn('[AmbientPixi] PIXI.js is not loaded.');
                     return;
                 }

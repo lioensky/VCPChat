@@ -972,8 +972,7 @@
         </div>
     </div>
 
-    <!-- 确保 JS 在 body 结束前加载 -->
-    <script src="../node_modules/pixi.js/dist/pixi.min.js"></script>
+    <!-- 确保 JS 在 body 结束前加载（PixiJS 仅在经典视图背景声纹或 Pixi 舞台模式需要时按需加载，避免阻塞首页启动） -->
     <script src="../vendor/three.min.js"></script>
     <script src="socket.io.min.js"></script>
     <script src="music-stage/music-stage-runtime.js"></script>

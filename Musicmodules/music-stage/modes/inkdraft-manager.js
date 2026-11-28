@@ -2466,6 +2466,10 @@ void main() {
         const onLost = () => { lostContext = true; };
         const onRestored = () => { lostContext = false; glState?.resetCanvases(); redraw(); };
         const boot = async () => {
+            if (!global.PIXI && typeof global.MusicStageRuntime?.ensurePixi === 'function') {
+                await global.MusicStageRuntime.ensurePixi();
+            }
+            if (mode.destroyed) return;
             const { PIXI, Effects, InkPixi } = pixiParts();
             if (!PIXI || !Effects || !InkPixi) { fail(); return; }
             let app = null;

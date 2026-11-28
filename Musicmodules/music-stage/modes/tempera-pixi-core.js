@@ -289,7 +289,8 @@
 
         async init() {
             if (this.initialized || this.destroyed) return;
-            const PIXI = global.PIXI;
+            const PIXI = global.PIXI || await global.MusicStageRuntime?.ensurePixi?.();
+            if (this.destroyed) return;
             if (!PIXI) throw new Error('PIXI is not loaded');
 
             // A renderer parked by a stage that just went away is reused when

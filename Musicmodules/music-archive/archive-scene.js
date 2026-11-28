@@ -454,6 +454,7 @@ void main() {
          */
         const wantPost = tier.antialias;
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier.antialias && !wantPost, depth: !wantPost, stencil: false, powerPreference: 'high-performance', alpha: false });
+        if (renderer.debug) renderer.debug.checkShaderErrors = false;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
@@ -1360,17 +1361,47 @@ vec3 archiveUntone(vec3 y) {
          * 取出时才用到的封面材质、卡面标题也一起预先编译（临时挂一张 1×1 的白图、临时显示），之后第一次取出不再卡一下。
          */
         let disposed = false;
+        const compileTimers = new Set();
         let shadersReady = typeof renderer.compileAsync !== 'function';
         if (!shadersReady) {
             const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+            white.colorSpace = THREE.SRGBColorSpace;
             white.needsUpdate = true;
             const borrowMap = !artMat.map;
             if (borrowMap) { artMat.map = white; artMat.needsUpdate = true; }
-            const shown = [coverGroup, fittings, labels[0]?.mesh].filter(Boolean);
+            const shown = [coverGroup, fittings, stickerMesh, labels[0]?.mesh].filter(Boolean);
             const was = shown.map((o) => o.visible);
             shown.forEach((o) => { o.visible = true; });
-            const jobs = [renderer.compileAsync(scene, camera)];
-            if (post.on) jobs.push(renderer.compileAsync(post.scene, post.camera));
+            // 走后期时场景实际渲染进半浮点离屏目标 post.rt（线性空间、无色调映射），画布只画 post.scene；
+            // 编译前切到对应目标，避免首帧因程序缓存键不匹配被迫同步重编整套卡盒着色器。
+            const compileForTarget = (targetRt, sc, cam) => {
+                if (typeof renderer.setRenderTarget === 'function') renderer.setRenderTarget(targetRt);
+                if (typeof renderer.compile === 'function' && renderer.properties) {
+                    const waiting = renderer.compile(sc, cam);
+                    if (!waiting || typeof waiting.forEach !== 'function') return Promise.resolve();
+                    return new Promise((resolve) => {
+                        const check = () => {
+                            if (disposed) { resolve(); return; }
+                            try {
+                                for (const m of waiting) {
+                                    const prog = renderer.properties.get(m)?.currentProgram;
+                                    if (!prog || prog.isReady()) waiting.delete(m);
+                                }
+                            } catch (_) {
+                                waiting.clear();
+                            }
+                            if (!waiting.size) { resolve(); return; }
+                            const id = setTimeout(() => { compileTimers.delete(id); check(); }, 10);
+                            compileTimers.add(id);
+                        };
+                        check();
+                    });
+                }
+                return renderer.compileAsync(sc, cam);
+            };
+            const jobs = [compileForTarget(post.on ? post.rt : null, scene, camera)];
+            if (post.on) jobs.push(compileForTarget(null, post.scene, post.camera));
+            if (typeof renderer.setRenderTarget === 'function') renderer.setRenderTarget(null);
             shown.forEach((o, i) => { o.visible = was[i]; });
             const done = () => {
                 white.dispose();
@@ -1746,6 +1777,8 @@ vec3 archiveUntone(vec3 y) {
         const dispose = () => {
             if (disposed) return;
             disposed = true;
+            for (const id of compileTimers) clearTimeout(id);
+            compileTimers.clear();
             for (const layer of layers) { layer.geometry.dispose(); layer.dispose?.(); }
             for (const m of [cassetteMat, frameMat, artMat, captionMat, etchMat, stickerMat]) m.dispose();
             if (post.on) { post.rt.dispose(); post.mat.dispose(); post.scene.children[0].geometry.dispose(); host.classList.remove('archive-post-atmos'); }

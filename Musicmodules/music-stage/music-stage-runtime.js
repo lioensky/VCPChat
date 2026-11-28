@@ -909,6 +909,54 @@
         return Boolean(mediaQuery?.matches);
     };
 
+    const PIXI_SCRIPT_SRC = '../node_modules/pixi.js/dist/pixi.min.js';
+    let pixiLoadPromise = null;
+    const ensurePixi = () => {
+        if (global.PIXI) return Promise.resolve(global.PIXI);
+        if (pixiLoadPromise) return pixiLoadPromise;
+        const doc = global.document;
+        if (!doc || typeof doc.createElement !== 'function') return Promise.resolve(null);
+        pixiLoadPromise = new Promise((resolve) => {
+            const finish = () => {
+                if (global.PIXI) {
+                    resolve(global.PIXI);
+                } else {
+                    pixiLoadPromise = null;
+                    resolve(null);
+                }
+            };
+            const existing = doc.querySelector?.('script[data-vmusic-pixi]')
+                || doc.querySelector?.('script[src*="pixi.min.js"]');
+            if (existing) {
+                if (existing.dataset?.vmusicPixiLoaded === '1') { finish(); return; }
+                existing.addEventListener('load', finish, { once: true });
+                existing.addEventListener('error', () => { pixiLoadPromise = null; resolve(null); }, { once: true });
+                return;
+            }
+            const script = doc.createElement('script');
+            if (script.dataset) script.dataset.vmusicPixi = '1';
+            script.src = PIXI_SCRIPT_SRC;
+            script.async = true;
+            script.addEventListener('load', () => {
+                if (script.dataset) script.dataset.vmusicPixiLoaded = '1';
+                finish();
+            }, { once: true });
+            script.addEventListener('error', () => {
+                script.remove?.();
+                pixiLoadPromise = null;
+                resolve(null);
+            }, { once: true });
+            const parent = doc.body || doc.head || doc.documentElement;
+            if (!parent || typeof parent.appendChild !== 'function') {
+                pixiLoadPromise = null;
+                resolve(null);
+                return;
+            }
+            parent.appendChild(script);
+        });
+        return pixiLoadPromise;
+    };
+
     // Call after intentional in-place lyric edits; normal source replacement is
     // already tracked by array identity without hashing the whole song per frame.
     const invalidateLines = (lines) => {
@@ -916,6 +964,7 @@
     };
 
     global.MusicStageRuntime = Object.freeze({
+        ensurePixi,
         invalidateLines,
         isReducedMotion,
         finiteNumber,
