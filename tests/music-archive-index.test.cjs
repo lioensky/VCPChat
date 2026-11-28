@@ -495,3 +495,34 @@ test('Batch 91: >64-track query artist/album score cache matches reference, pack
     const refMixed = Index.listRows({ tracks: mixedTracks, index: idxMixed, kind: 'album', spec: { ...spMixed, order: null } });
     assert.deepEqual(resMixed, refMixed, 'mixed disc/track album rows match reference exactly');
 });
+
+test('Batch 106: O(N) counting-sort artistRankOf matches exact Collator+titleRank order including numeric ties and empty artists', () => {
+    const tracks = [
+        { path: '/0', title: 'Track 10', artist: 'Singer 2' },
+        { path: '/1', title: 'Track 2', artist: 'Singer 10' },
+        { path: '/2', title: 'Track 1', artist: '' },
+        { path: '/3', title: 'Track 3', artist: 'singer 2' },
+        { path: '/4', title: 'Track 2', artist: 'Singer 2' },
+        { path: '/5', title: 'Alpha', artist: '' },
+        { path: '/6', title: 'Beta', artist: 'Singer 1' }
+    ];
+    const idx = Index.createIndex(tracks);
+    const spTitle = Index.sortSpec(idx, { mode: 'title', tracks });
+    const spArtist = Index.sortSpec(idx, { mode: 'artist', tracks });
+    // Expected: Singer 1 (6), then Singer 2 / singer 2 ties ordered by titleRank (4: Track 2, 3: Track 3, 0: Track 10),
+    // then Singer 10 (1), then empty artists ordered by titleRank (5: Alpha, 2: Track 1).
+    assert.deepEqual([...spArtist.order], [6, 4, 3, 0, 1, 5, 2], 'artist counting sort matches exact Collator + titleRank tie-break');
+    for (let k = 0; k < spArtist.order.length - 1; k += 1) {
+        assert.ok(spArtist.cmp(spArtist.order[k], spArtist.order[k + 1]) < 0, 'artist cmp strictly agrees with packed order');
+    }
+    // prepareSort('artist') produces identical order
+    const idx2 = Index.createIndex(tracks);
+    const step = Index.prepareSort(idx2, 'artist');
+    while (!step(50)) { /* drain */ }
+    assert.deepEqual([...Index.sortSpec(idx2, { mode: 'artist', tracks }).order], [...spArtist.order]);
+    // familyOf Latin / Kana / other
+    assert.equal(spTitle.family('A'), 'latin');
+    assert.equal(spTitle.family('Z'), 'latin');
+    assert.equal(spTitle.family('あ'), 'kana');
+    assert.equal(spTitle.family('#'), '#');
+});

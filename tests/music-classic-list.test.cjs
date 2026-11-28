@@ -1335,17 +1335,27 @@ test('Batch 103: music-ui reuses same-tick scrollTop snapshot & builds positionO
         window.setupUtils(app);
         window.setupUI(app);
 
-        // Two back-to-back synchronous renders share a single same-tick scrollTop read
+        // Back-to-back and cross-tick renders without scroll event reuse cached scrollTop (0 extra reflows)
         const rev = tracks.slice().reverse();
         scrollReads = 0;
         app.renderPlaylist(tracks);
         app.renderPlaylist(rev);
         assert.equal(scrollReads, 1, 'back-to-back synchronous renderPlaylist calls read scrollTop only once');
 
-        // After microtask expires, fresh render reads scrollTop again
         await Promise.resolve();
         app.renderPlaylist(tracks);
-        assert.equal(scrollReads, 2, 'subsequent tick reads fresh scrollTop');
+        assert.equal(scrollReads, 1, 'subsequent tick without scroll event keeps cached scrollTop without forced reflow');
+
+        // A real scroll event marks cache dirty so the next render reads fresh scrollTop
+        scrollVal = 240;
+        list.dispatchEvent(new window.Event('scroll'));
+        app.renderPlaylist(rev);
+        assert.equal(scrollReads, 2, 'scroll event invalidates cache and reads fresh scrollTop');
+
+        // Batch 106: searchTracks single-word fast path and multi-word query parity
+        assert.equal(app.searchTracks(tracks, '  t10  ').length, 11);
+        assert.equal(app.searchTracks(tracks, 't10   a').length, 11);
+        assert.equal(app.searchTracks(tracks, 't10 missing').length, 0);
         window.dispatchEvent(new window.Event('beforeunload'));
     } finally {
         dom.window.close();

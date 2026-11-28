@@ -1098,3 +1098,66 @@ test('Batch 102: watchTrails mirrors .mf-trail-on on host row, CSS eliminates ho
         dom.window.close();
     }
 });
+
+test('Batch 106: dynamic .mtst-layer mount defers record() to rAF, fluid-select skips added .md-ql, and panel CSS applies contain:strict on .md-cmd-list', async () => {
+    const panelCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-panel.css'), 'utf8');
+    assert.match(panelCss, /\.md-cmd-list\s*\{[^}]*width:\s*100%;[^}]*contain:\s*strict;/, '.md-cmd-list uses width: 100% + contain: strict');
+
+    const dom = new JSDOM('<!doctype html><body><div class="md-body"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    const rafs = [];
+    window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+    window.cancelAnimationFrame = () => {};
+    window.Element.prototype.animate = () => ({ cancel() {} });
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        // 1. Dynamically mounted .mtst-layer with first toast already inside does 0 sync getBoundingClientRect
+        let t1Reads = 0;
+        let t1Anims = 0;
+        let t1Top = 220;
+        const layer = doc.createElement('div');
+        layer.className = 'mtst-layer';
+        const t1 = doc.createElement('div');
+        t1.getBoundingClientRect = () => { t1Reads += 1; return { top: t1Top, left: 0, width: 200, height: 40 }; };
+        t1.animate = () => { t1Anims += 1; return { cancel() {} }; };
+        layer.appendChild(t1);
+        doc.body.appendChild(layer);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Reads, 0, 'dynamic .mtst-layer mount skips synchronous getBoundingClientRect inside bodyObs');
+        assert.equal(rafs.length, 1, 'dynamic .mtst-layer schedules one rAF baseline record');
+
+        rafs.splice(0).forEach((fn) => fn(16));
+        assert.equal(t1Reads, 1, 'rAF records initial toast top');
+        t1Top = 172;
+        const t2 = doc.createElement('div');
+        t2.getBoundingClientRect = () => ({ top: 220, left: 0, width: 200, height: 40 });
+        t2.animate = () => ({ cancel() {} });
+        layer.appendChild(t2);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Anims, 1, 'subsequent stacked toast still triggers FLIP shift animation');
+
+        // 2. Appending .md-ql inside .md-body does not trigger getElementsByTagName("select") scan
+        const bodyHost = doc.querySelector('.md-body');
+        const ql = doc.createElement('div');
+        ql.className = 'md-ql';
+        const child = doc.createElement('div');
+        child.textContent = 'row';
+        ql.appendChild(child);
+        let selectScans = 0;
+        const origGetTag = ql.getElementsByTagName.bind(ql);
+        ql.getElementsByTagName = (tag) => {
+            if (String(tag).toLowerCase() === 'select') selectScans += 1;
+            return origGetTag(tag);
+        };
+        bodyHost.appendChild(ql);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(selectScans, 0, 'music-fluid-select skips scanning added .md-ql container');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
