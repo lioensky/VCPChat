@@ -45,23 +45,30 @@
     const buildFallbackWords = (line) => {
         if (!line?.fullText) return EMPTY_WORDS;
         const graphemes = splitGraphemes(line.fullText);
-        const visibleCount = Math.max(1, graphemes.filter((char) => char.trim()).length);
+        const len = graphemes.length;
+        let visibleTotal = 0;
+        for (let i = 0; i < len; i += 1) {
+            if (graphemes[i].trim()) visibleTotal += 1;
+        }
+        const visibleCount = visibleTotal > 0 ? visibleTotal : 1;
         const duration = Math.max(0.4, line.endTime - line.startTime);
         let visibleIndex = 0;
-
-        return graphemes.map((char, index) => {
+        const out = new Array(len);
+        for (let index = 0; index < len; index += 1) {
+            const char = graphemes[index];
             const isSpace = !char.trim();
             const ordinal = visibleIndex;
             if (!isSpace) visibleIndex += 1;
             const startRatio = ordinal / visibleCount;
             const endRatio = isSpace ? startRatio : visibleIndex / visibleCount;
-            return {
+            out[index] = {
                 text: char,
                 startTime: line.startTime + duration * startRatio,
                 endTime: line.startTime + duration * Math.max(endRatio, startRatio + 0.01),
                 index
             };
-        });
+        }
+        return out;
     };
 
     const normalizeLine = (line, index, lines) => {
@@ -121,13 +128,21 @@
             words
         };
         normalized.resolvedWords = words.length ? words : buildFallbackWords(normalized);
-        normalized.vocalEndTime = normalized.resolvedWords.reduce((latest, word) => {
-            const syllableEnd = (word.syllables || []).reduce(
-                (end, syllable) => Math.max(end, finiteNumber(syllable.endTime, end)),
-                finiteNumber(word.endTime, latest)
-            );
-            return Math.max(latest, finiteNumber(word.endTime, latest), syllableEnd);
-        }, startTime);
+        let latestVocal = startTime;
+        const rWords = normalized.resolvedWords;
+        for (let wi = 0; wi < rWords.length; wi += 1) {
+            const word = rWords[wi];
+            const wEnd = finiteNumber(word.endTime, latestVocal);
+            if (wEnd > latestVocal) latestVocal = wEnd;
+            const syls = word.syllables;
+            if (syls && syls.length) {
+                for (let si = 0; si < syls.length; si += 1) {
+                    const sEnd = finiteNumber(syls[si].endTime, latestVocal);
+                    if (sEnd > latestVocal) latestVocal = sEnd;
+                }
+            }
+        }
+        normalized.vocalEndTime = latestVocal;
         return normalized;
     };
 
@@ -550,7 +565,12 @@
         if (!Array.isArray(source) || !source.length) return EMPTY_LINES;
         let cached = plainLinesCache.get(source);
         if (!cached) {
-            cached = Object.freeze(source.map(text => String(text ?? '').trim()).filter(readableText));
+            const list = [];
+            for (let i = 0; i < source.length; i += 1) {
+                const text = String(source[i] ?? '').trim();
+                if (readableText(text)) list.push(text);
+            }
+            cached = Object.freeze(list);
             plainLinesCache.set(source, cached);
         }
         return cached;
@@ -652,10 +672,10 @@
         let lastLabel = '';
         let settledIdle = false;
         let lastPlaying = null;
-        let lastPowerText = '';
-        let lastPhaseText = '';
-        const lastBarScale = new Array(barCount).fill('');
-        const lastBarOpacity = new Array(barCount).fill('');
+        let lastPowerQ = -1;
+        let lastPhaseQ = NaN;
+        const lastBarScaleQ = new Int32Array(barCount).fill(-1);
+        const lastBarOpacityQ = new Int32Array(barCount).fill(-1);
         let cachedSpecLen = -1;
         let barLo = null;
         let barHi = null;
@@ -705,16 +725,16 @@
                 lastPlaying = playing;
                 root.classList.toggle('is-playing', playing);
             }
-            const powerText = power.toFixed(3);
-            if (powerText !== lastPowerText) {
-                lastPowerText = powerText;
-                root.style.setProperty('--interlude-power', powerText);
+            const powerQ = Math.round(power * 1000);
+            if (powerQ !== lastPowerQ) {
+                lastPowerQ = powerQ;
+                root.style.setProperty('--interlude-power', (powerQ / 1000).toFixed(3));
             }
             // Same absolute phase on pause: no change of angular speed that jumps the ring.
-            const phaseText = `${((time * 3) % 360).toFixed(2)}deg`;
-            if (phaseText !== lastPhaseText) {
-                lastPhaseText = phaseText;
-                root.style.setProperty('--interlude-phase', phaseText);
+            const phaseQ = Math.round(((time * 3) % 360) * 100);
+            if (phaseQ !== lastPhaseQ) {
+                lastPhaseQ = phaseQ;
+                root.style.setProperty('--interlude-phase', `${(phaseQ / 100).toFixed(2)}deg`);
             }
             const motionScale = Math.min(1, motion);
             const staticFrame = !playing || motionScale <= 0;
@@ -753,16 +773,16 @@
                     }
                     settled = energy * motionScale;
                 }
-                const lengthStr = (0.28 + settled * 0.72).toFixed(3);
-                if (lengthStr !== lastBarScale[index]) {
-                    lastBarScale[index] = lengthStr;
+                const lengthQ = Math.round((0.28 + settled * 0.72) * 1000);
+                if (lengthQ !== lastBarScaleQ[index]) {
+                    lastBarScaleQ[index] = lengthQ;
                     // Translate from the centre first; scaling only changes the stroke length.
-                    bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${lengthStr})`;
+                    bar.style.transform = `rotate(var(--interlude-angle)) translateY(calc(-1 * var(--interlude-radius))) scaleY(${(lengthQ / 1000).toFixed(3)})`;
                 }
-                const opStr = (0.3 + settled * 0.5).toFixed(3);
-                if (opStr !== lastBarOpacity[index]) {
-                    lastBarOpacity[index] = opStr;
-                    bar.style.opacity = opStr;
+                const opQ = Math.round((0.3 + settled * 0.5) * 1000);
+                if (opQ !== lastBarOpacityQ[index]) {
+                    lastBarOpacityQ[index] = opQ;
+                    bar.style.opacity = (opQ / 1000).toFixed(3);
                 }
             }
         };

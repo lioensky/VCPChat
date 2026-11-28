@@ -578,8 +578,17 @@
         const prevMode = current.modes[modeId] || {};
         const merged = { ...prevMode, ...(patch || {}) };
         const nextMode = normalizeMode(merged, DEFAULTS.modes[modeId] || {});
-        const nextKeys = Object.keys(nextMode);
-        if (nextKeys.length === Object.keys(prevMode).length && nextKeys.every((key) => Object.is(prevMode[key], nextMode[key]))) {
+        const hasOwn = Object.prototype.hasOwnProperty;
+        let prevCount = 0;
+        for (const key in prevMode) if (hasOwn.call(prevMode, key)) prevCount += 1;
+        let nextCount = 0;
+        let same = true;
+        for (const key in nextMode) {
+            if (!hasOwn.call(nextMode, key)) continue;
+            nextCount += 1;
+            if (same && !Object.is(prevMode[key], nextMode[key])) same = false;
+        }
+        if (same && nextCount === prevCount) {
             return clone(current);
         }
         current = {
@@ -596,8 +605,12 @@
 
     const toggleMode = (modeId, enabled) => {
         if (!MODE_IDS.has(modeId)) return clone(current);
-        const enabledModes = current.enabledModes.filter((id) => id !== modeId);
-        if (enabled && !enabledModes.includes(modeId)) enabledModes.push(modeId);
+        const src = current.enabledModes;
+        const enabledModes = [];
+        for (let i = 0; i < src.length; i += 1) {
+            if (src[i] !== modeId) enabledModes.push(src[i]);
+        }
+        if (enabled) enabledModes.push(modeId);
         return update({ enabledModes });
     };
 

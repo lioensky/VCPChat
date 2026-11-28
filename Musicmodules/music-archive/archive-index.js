@@ -268,8 +268,16 @@
             return best;
         };
         // 单槽增量收窄缓存：连续打字（如 A -> Ar -> Artist 1）的新词严格是上次查询词的超串或追加词时，
-        // 数学上必为上次全量命中集的子集，直接在上次命中集上打分，免去每次按键重扫 5000+ 曲库。
+        // 数学上必为上次全量命中集的子集，直接在上次命中集上打分，免去每次按键重扫 5000+ 曲库；
+        // 词项完全一致（如尾随空格 "Artist "）时直接切分复用上次结果。
         let lastQuery = null;
+        const sameTerms = (a, b) => {
+            if (a.length !== b.length) return false;
+            for (let k = 0; k < a.length; k += 1) {
+                if (a[k].term !== b[k].term) return false;
+            }
+            return true;
+        };
         const canNarrowFrom = (prev, kindCode, terms) => {
             if (!prev || prev.kindCode !== kindCode || terms.length < prev.terms.length) return false;
             for (let k = 0; k < prev.terms.length; k += 1) {
@@ -305,15 +313,24 @@
                 q = smart.text;
                 if (!norm(q).trim()) return pool.slice(0, limit);
             }
-            const rawTerms = norm(q).split(WS_SPLIT_RE).filter(Boolean);
+            const rawParts = norm(q).split(WS_SPLIT_RE);
+            const terms = [];
+            for (let i = 0; i < rawParts.length; i += 1) {
+                const term = rawParts[i];
+                if (term) terms.push({ term, ascii: ASCII_TERM_RE.test(term) });
+            }
             const kindCode = kind === 'artist' ? 1 : kind === 'album' ? 2 : 0;
-            if (!rawTerms.length) return only ? pool.slice(0, limit) : [];
-            const terms = rawTerms.map((term) => ({ term, ascii: ASCII_TERM_RE.test(term) }));
+            if (!terms.length) return only ? pool.slice(0, limit) : [];
             const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : entries.length;
             if (cap === 0) return [];
             const cacheable = !only && !hasSmart;
-            if (cacheable && canNarrowFrom(lastQuery, kindCode, terms)) {
-                pool = lastQuery.matchedIds;
+            if (cacheable && lastQuery && lastQuery.kindCode === kindCode) {
+                if (sameTerms(lastQuery.terms, terms) && lastQuery.cap >= cap) {
+                    return lastQuery.topOut.slice(0, cap);
+                }
+                if (canNarrowFrom(lastQuery, kindCode, terms)) {
+                    pool = lastQuery.matchedIds;
+                }
             }
             const scanLen = pool ? pool.length : entries.length;
             const useFieldCache = scanLen > 64;
@@ -381,22 +398,27 @@
                         const i = pool ? pool[idxPos] : idxPos;
                         const e = entries[i];
                         if (!e) continue;
-                        let best0 = scoreField(e.title, e.titlePy, e.titleIni, 3, t0, a0);
-                        if (best0 < 200) {
-                            let sa;
-                            if (aMap0) {
-                                sa = aMap0.get(e.artist);
-                                if (sa === undefined) { sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0); aMap0.set(e.artist, sa); }
-                            } else sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0);
-                            if (sa > best0) best0 = sa;
-                        }
-                        if (best0 < 100) {
-                            let sal;
-                            if (alMap0) {
-                                sal = alMap0.get(e.album);
-                                if (sal === undefined) { sal = scoreField(e.album, e.albumPy, e.albumIni, 1, t0, a0); alMap0.set(e.album, sal); }
-                            } else sal = scoreField(e.album, e.albumPy, e.albumIni, 1, t0, a0);
-                            if (sal > best0) best0 = sal;
+                        // 先查按歌手缓存的得分：当歌手前缀命中（200 分）时，仅标题前缀命中（300 分）能超越，
+                        // 跳过 5000 首歌上标题全串/拼音/首字母与专辑扫描（数学上完全等价）。
+                        let sa0;
+                        if (aMap0) {
+                            sa0 = aMap0.get(e.artist);
+                            if (sa0 === undefined) { sa0 = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0); aMap0.set(e.artist, sa0); }
+                        } else sa0 = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0);
+                        let best0;
+                        if (sa0 === 200) {
+                            best0 = (e.title && e.title.startsWith(t0)) ? 300 : 200;
+                        } else {
+                            best0 = scoreField(e.title, e.titlePy, e.titleIni, 3, t0, a0);
+                            if (sa0 > best0) best0 = sa0;
+                            if (best0 < 100) {
+                                let sal;
+                                if (alMap0) {
+                                    sal = alMap0.get(e.album);
+                                    if (sal === undefined) { sal = scoreField(e.album, e.albumPy, e.albumIni, 1, t0, a0); alMap0.set(e.album, sal); }
+                                } else sal = scoreField(e.album, e.albumPy, e.albumIni, 1, t0, a0);
+                                if (sal > best0) best0 = sal;
+                            }
                         }
                         if (!best0) continue;
                         let total = best0;
@@ -404,24 +426,27 @@
                             const termObj = terms[t];
                             const term = termObj.term;
                             const ascii = termObj.ascii;
-                            let best = scoreField(e.title, e.titlePy, e.titleIni, 3, term, ascii);
-                            if (best < 200) {
-                                let sa;
-                                if (aMaps) {
-                                    const am = aMaps[t];
-                                    sa = am.get(e.artist);
-                                    if (sa === undefined) { sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii); am.set(e.artist, sa); }
-                                } else sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii);
+                            let sa;
+                            if (aMaps) {
+                                const am = aMaps[t];
+                                sa = am.get(e.artist);
+                                if (sa === undefined) { sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii); am.set(e.artist, sa); }
+                            } else sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii);
+                            let best;
+                            if (sa === 200) {
+                                best = (e.title && e.title.startsWith(term)) ? 300 : 200;
+                            } else {
+                                best = scoreField(e.title, e.titlePy, e.titleIni, 3, term, ascii);
                                 if (sa > best) best = sa;
-                            }
-                            if (best < 100) {
-                                let sal;
-                                if (alMaps) {
-                                    const alm = alMaps[t];
-                                    sal = alm.get(e.album);
-                                    if (sal === undefined) { sal = scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii); alm.set(e.album, sal); }
-                                } else sal = scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii);
-                                if (sal > best) best = sal;
+                                if (best < 100) {
+                                    let sal;
+                                    if (alMaps) {
+                                        const alm = alMaps[t];
+                                        sal = alm.get(e.album);
+                                        if (sal === undefined) { sal = scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii); alm.set(e.album, sal); }
+                                    } else sal = scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii);
+                                    if (sal > best) best = sal;
+                                }
                             }
                             if (!best) { total = 0; break; }
                             total += best;
@@ -435,8 +460,10 @@
                         if (matchedIds) matchedIds.push(i);
                     }
                 }
-                if (cacheable) lastQuery = { kindCode, terms, matchedIds };
-                if (!totalHits) return [];
+                if (!totalHits) {
+                    if (cacheable) lastQuery = { kindCode, terms, matchedIds, cap: entries.length, topOut: [] };
+                    return [];
+                }
                 const want = Math.min(totalHits, cap);
                 const out = new Array(want);
                 let pos = 0;
@@ -446,6 +473,7 @@
                     const take = Math.min(b.length, want - pos);
                     for (let k = 0; k < take; k += 1) out[pos++] = b[k];
                 }
+                if (cacheable) lastQuery = { kindCode, terms, matchedIds, cap: totalHits <= cap ? entries.length : cap, topOut: out.slice() };
                 return out;
             }
             const hits = [];
@@ -464,11 +492,11 @@
                 hits.push({ i, total, order });
                 if (matchedIds) matchedIds.push(i);
             }
-            if (cacheable) lastQuery = { kindCode, terms, matchedIds };
             hits.sort((a, b) => b.total - a.total || a.order - b.order);
-            const capped = hits.length > cap ? hits.slice(0, cap) : hits;
-            const out = new Array(capped.length);
-            for (let k = 0; k < capped.length; k++) out[k] = capped[k].i;
+            const cappedLen = hits.length > cap ? cap : hits.length;
+            const out = new Array(cappedLen);
+            for (let k = 0; k < cappedLen; k++) out[k] = hits[k].i;
+            if (cacheable) lastQuery = { kindCode, terms, matchedIds, cap: hits.length <= cap ? entries.length : cap, topOut: out.slice() };
             return out;
         };
 

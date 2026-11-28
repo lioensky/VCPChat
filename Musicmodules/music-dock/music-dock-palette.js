@@ -260,8 +260,15 @@
                 tpl.innerHTML = iconHtml(name, size);
                 iconTplCache.set(k, tpl);
             }
+            const first = tpl.firstChild;
+            if (first && !first.nextSibling) {
+                const clone = first.cloneNode(true);
+                if (target.firstChild && !target.firstChild.nextSibling) target.replaceChild(clone, target.firstChild);
+                else { target.textContent = ''; target.appendChild(clone); }
+                return;
+            }
             target.textContent = '';
-            for (let n = tpl.firstChild; n; n = n.nextSibling) target.appendChild(n.cloneNode(true));
+            for (let n = first; n; n = n.nextSibling) target.appendChild(n.cloneNode(true));
         };
 
         const songItem = (track, group, knownIndex) => {
@@ -556,7 +563,12 @@
             let items = [];
             if (!raw.trim()) {
                 // 没输入时只放最近找过的歌和歌单；播放、切歌这些底栏上都有，不在这里列一排。
-                items.push(...recentItems({ songsAndPlaylistsOnly: true }).filter((it) => !String(it.id).startsWith('cmd') && (it.queueable || String(it.id).startsWith('playlist:'))).slice(0, 8));
+                const rec = recentItems({ songsAndPlaylistsOnly: true });
+                for (let i = 0; i < rec.length && items.length < 8; i += 1) {
+                    const it = rec[i];
+                    const idStr = String(it.id);
+                    if (!idStr.startsWith('cmd') && (it.queueable || idStr.startsWith('playlist:'))) items.push(it);
+                }
             } else {
                 const songs = [];
                 const playlists = [];
@@ -567,7 +579,9 @@
                 const qTextLower = q.text ? lower(q.text) : '';
                 let commandPrefix = false;
                 if (onlyText) {
-                    const textWords = qTextLower.split(WS_SPLIT_RE).filter(Boolean);
+                    const rawWords = qTextLower.split(WS_SPLIT_RE);
+                    const textWords = [];
+                    for (let i = 0; i < rawWords.length; i += 1) if (rawWords[i]) textWords.push(rawWords[i]);
                     const allCmds = getCommands();
                     const matchedCmds = [];
                     for (let i = 0; i < allCmds.length; i += 1) {

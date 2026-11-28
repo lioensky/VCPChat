@@ -557,13 +557,33 @@
             if (watched.has(layer)) return;
             watched.add(layer);
             record(layer);
+            let recordRaf = 0;
             const layerObs = new global.MutationObserver(() => {
                 const motion = enabled() && typeof global.Element?.prototype?.animate === 'function';
+                if (!motion) return;
+                const children = layer.children;
+                if (!children.length) return;
+                // 仅当层内已有先前测过位置的旧提示条时才同步读取并做 FLIP 补间；
+                // 空层新挂单条提示时无任何旧条需要让位，延后到下一帧记录位置，避免在列表/排序 DOM 变脏的微任务里强制全页同步回流。
+                let hasPrev = false;
+                for (let i = 0; i < children.length; i += 1) {
+                    if (tops.has(children[i])) { hasPrev = true; break; }
+                }
+                if (!hasPrev) {
+                    if (!recordRaf && typeof global.requestAnimationFrame === 'function') {
+                        recordRaf = global.requestAnimationFrame(() => {
+                            recordRaf = 0;
+                            if (layer.isConnected) record(layer);
+                        });
+                    }
+                    return;
+                }
                 const shifts = [];
-                for (const el of layer.children) {
+                for (let i = 0; i < children.length; i += 1) {
+                    const el = children[i];
                     const before = tops.get(el);
                     const now = el.getBoundingClientRect().top;
-                    if (motion && before != null && Math.abs(before - now) > 1) shifts.push([el, before - now]);
+                    if (before != null && Math.abs(before - now) > 1) shifts.push([el, before - now]);
                     tops.set(el, now);
                 }
                 for (let i = 0; i < shifts.length; i += 1) {
@@ -572,7 +592,10 @@
                 }
             });
             layerObs.observe(layer, { childList: true });
-            addCleanup(() => layerObs.disconnect());
+            addCleanup(() => {
+                if (recordRaf && typeof global.cancelAnimationFrame === 'function') { global.cancelAnimationFrame(recordRaf); recordRaf = 0; }
+                layerObs.disconnect();
+            });
         };
         for (const layer of doc.querySelectorAll('body > .mtst-layer')) attach(layer);
         const bodyObs = new global.MutationObserver((records) => {
