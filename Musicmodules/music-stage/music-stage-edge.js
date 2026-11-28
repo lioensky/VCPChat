@@ -20,17 +20,20 @@
         // The spectrum lives in the outer band of the window, so each side has a
         // strip canvas of its own instead of one canvas the size of the window.
         const edgeStrips = {};
-        EDGE_SIDES.forEach((side, index) => {
+        let hasAllEdgeContexts = true;
+        for (let index = 0; index < EDGE_SIDES.length; index += 1) {
+            const side = EDGE_SIDES[index];
             const canvas = index === 0 ? elements.edgeCanvas : elements.edgeCanvas?.cloneNode(false);
+            if (index > 0 && canvas?.hasAttribute?.('id')) canvas.removeAttribute('id');
             const context = canvas?.getContext?.('2d', { alpha: true });
-            if (!canvas || !context) return;
+            if (!canvas || !context) { hasAllEdgeContexts = false; continue; }
             if (index > 0) {
                 elements.edgeCanvas.after(canvas);
                 scope?.add?.(() => canvas.remove());
             }
             edgeStrips[side] = { canvas, context, x: 0, y: 0, width: 0, height: 0, lookup: null, flatLayoutRev: 0, flatColorRev: 0, flatStyle: -1 };
-        });
-        const edgeContext = EDGE_SIDES.every((side) => edgeStrips[side]?.context) ? edgeStrips.top.context : null;
+        }
+        const edgeContext = hasAllEdgeContexts && edgeStrips.top ? edgeStrips.top.context : null;
         // The orbiting light of the edge ring: its gradient is drawn once and
         // turned by the compositor, instead of the ring being restyled and its
         // masked gradient painted again at every step of the orbit.
@@ -336,11 +339,17 @@
             ctx2d.stroke();
             ctx2d.lineWidth = 1.05;
             ctx2d.strokeStyle = mainStroke;
-            ctx2d.shadowColor = lightGlow ? 'transparent' : mainShadow;
-            ctx2d.shadowBlur = lightGlow ? 0 : 3.5;
-            ctx2d.stroke();
-            ctx2d.shadowBlur = 0;
-            ctx2d.shadowColor = 'transparent';
+            if (lightGlow) {
+                ctx2d.shadowBlur = 0;
+                ctx2d.shadowColor = 'transparent';
+                ctx2d.stroke();
+            } else {
+                ctx2d.shadowColor = mainShadow;
+                ctx2d.shadowBlur = 3.5;
+                ctx2d.stroke();
+                ctx2d.shadowBlur = 0;
+                ctx2d.shadowColor = 'transparent';
+            }
         };
 
         const release = () => {
@@ -437,6 +446,7 @@
                     && palRef.r === edgeCanvasState.lastR && palRef.g === edgeCanvasState.lastG && palRef.b === edgeCanvasState.lastB)
                 || (!palRef && visRef && visRef === edgeCanvasState.lastVisRef
                     && visRef.r === edgeCanvasState.lastR && visRef.g === edgeCanvasState.lastG && visRef.b === edgeCanvasState.lastB)
+                || (!palRef && !visRef && edgeCanvasState.lastAccentRef === null && edgeCanvasState.lastVisRef === null)
             );
             // Gate throttled playing frames before touching canvas sizing or accent resolution.
             if (frame.isPlaying) {

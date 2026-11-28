@@ -51,12 +51,18 @@
     }
 
     const spec = (t) => {
-        const ext = (String(t.path).match(EXT_RE) || [])[1];
-        const parts = [ext ? ext.toUpperCase() : ''];
-        if (t.bitsPerSample && t.sampleRate) parts.push(`${t.bitsPerSample}/${(t.sampleRate / 1000).toFixed(1).replace(TRAILING_ZERO_RE, '')}`);
-        else if (t.bitrate) parts.push(`${Math.round(t.bitrate / 1000)}k`);
-        if (isRemote(t)) parts.push('WebDAV');
-        return parts.filter(Boolean).join(' · ');
+        const p = String(t.path || '');
+        const m = EXT_RE.exec(p);
+        let out = m ? m[1].toUpperCase() : '';
+        if (t.bitsPerSample && t.sampleRate) {
+            const sr = `${t.bitsPerSample}/${(t.sampleRate / 1000).toFixed(1).replace(TRAILING_ZERO_RE, '')}`;
+            out = out ? `${out} · ${sr}` : sr;
+        } else if (t.bitrate) {
+            const br = `${Math.round(t.bitrate / 1000)}k`;
+            out = out ? `${out} · ${br}` : br;
+        }
+        if (isRemote(t)) out = out ? `${out} · WebDAV` : 'WebDAV';
+        return out;
     };
     const folderOf = (t) => {
         const p = String(t.path || '');

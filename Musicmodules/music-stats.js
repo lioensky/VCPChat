@@ -67,22 +67,21 @@
             if (raw && raw.v === 1 && raw.d && typeof raw.d === 'object') log = raw.d;
         } catch (e) { log = {}; }
         let logCount = Object.keys(log).length;
-        // 缓存当前小时窗口对应的本地日期与小时号，播放时每秒 tick 免去重复构造 Date 和拼串（跨小时自动重算，兼顾夏令时）
+        // 缓存当前小时窗口对应的本地日期与小时号，播放时每秒 tick 免去重复构造 Date、拼串与临时对象分配（跨小时自动重算，兼顾夏令时）
         let cachedHourStart = -1;
         let cachedHourEnd = -1;
         let cachedHourDayKey = '';
         let cachedHourNum = 0;
-        const dayAndHour = (t) => {
-            if (t >= cachedHourStart && t < cachedHourEnd) return { k: cachedHourDayKey, h: cachedHourNum };
+        const syncHourCache = (t) => {
+            if (t >= cachedHourStart && t < cachedHourEnd) return;
             const d = new Date(t);
             const h = d.getHours();
             cachedHourDayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             cachedHourNum = h;
             cachedHourStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
             cachedHourEnd = cachedHourStart + 3600000;
-            return { k: cachedHourDayKey, h: cachedHourNum };
         };
-        const dayKey = (t) => dayAndHour(t).k;
+        const dayKey = (t) => { syncHourCache(t); return cachedHourDayKey; };
         const dayOfKey = (k) => {
             let day = log[k];
             if (!day) {
@@ -156,7 +155,7 @@
         const currentTrack = () => {
             return Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] || null : null;
         };
-        const duration = () => Number(app.lastKnownDuration) || Number(currentTrack()?.duration) || 0;
+        const duration = (track) => Number(app.lastKnownDuration) || Number((track !== undefined ? track : currentTrack())?.duration) || 0;
         const position = () => { try { return Number(app.playedSeconds?.()) || 0; } catch (e) { return 0; } };
         const close = () => {
             if (!session) return;
@@ -173,7 +172,7 @@
             if (session && session.path !== path) close();
             if (!session) session = { path, listened: 0, counted: false, lastTick: at, lastPos: position() };
             const pos = position();
-            const d = duration();
+            const d = duration(t);
             // 单曲循环：同一首又从头开始了，上一遍结束、新的一遍开始
             if (session.counted && pos + 5 < session.lastPos && pos < 5) {
                 session = { path, listened: 0, counted: false, lastTick: at, lastPos: pos };
@@ -182,9 +181,9 @@
                 const step = Math.min(5, Math.max(0, (at - session.lastTick) / 1000));
                 session.listened += step;
                 if (step > 0) {
-                    const dh = dayAndHour(at);
-                    const day = dayOfKey(dh.k);
-                    day.s[dh.h] += step;
+                    syncHourCache(at);
+                    const day = dayOfKey(cachedHourDayKey);
+                    day.s[cachedHourNum] += step;
                     unsaved += step;
                     if (unsaved >= 30) { unsaved = 0; save(); } // 听歌时长每半分钟存一次
                 }
@@ -318,7 +317,7 @@
                 const daily = {}; // 每天听了几秒（听歌日历用）
                 const from = days > 0 ? dayKey(now() - (days - 1) * DAY) : '';
                 for (const k in log) {
-                    if (!Object.prototype.hasOwnProperty.call(log, k)) continue;
+                    if (!hasOwn.call(log, k)) continue;
                     if (!firstDay || k < firstDay) firstDay = k;
                     if (from && k < from) continue;
                     const day = log[k];
@@ -337,7 +336,7 @@
                     const dayP = day && day.p;
                     if (dayP) {
                         for (const p in dayP) {
-                            if (!Object.prototype.hasOwnProperty.call(dayP, p)) continue;
+                            if (!hasOwn.call(dayP, p)) continue;
                             const n = dayP[p];
                             plays.set(p, (plays.get(p) || 0) + n);
                             dayPlays += n;
@@ -351,16 +350,16 @@
                     plays.clear();
                     count = 0;
                     for (const k in table) {
-                        if (!Object.prototype.hasOwnProperty.call(table, k)) continue;
+                        if (!hasOwn.call(table, k)) continue;
                         const e = table[k];
                         if (e[0] > 0) { plays.set(k, e[0]); count += e[0]; }
                     }
                 }
                 const tracks = [];
-                plays.forEach((n, k) => {
+                for (const [k, n] of plays) {
                     const e = table[k];
                     tracks.push({ path: e ? e[4] : k, plays: n, last: e ? e[1] : 0 });
-                });
+                }
                 tracks.sort((a, b) => b.plays - a.plays || b.last - a.last);
                 for (let h = 0; h < 24; h += 1) hours[h] = Math.round(hours[h]);
                 return { seconds: Math.round(seconds), plays: count, activeDays, hours, tracks, since: firstDay, daily };

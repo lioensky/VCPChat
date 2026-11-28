@@ -46,13 +46,18 @@ function parseTranslations(text, expected) {
     if (!candidates.length) throw new Error('模型没有返回译文列表');
     let arr;
     let parsed = false;
-    for (const raw of candidates) {
-        try { arr = JSON.parse(raw); parsed = true; break; } catch (_) { /* 尝试下一候选 */ }
+    for (let i = 0; i < candidates.length; i += 1) {
+        try { arr = JSON.parse(candidates[i]); parsed = true; break; } catch (_) { /* 尝试下一候选 */ }
     }
     if (!parsed) throw new Error('模型返回的译文不是合法的 JSON');
     if (!Array.isArray(arr)) throw new Error('模型返回的译文不是列表');
     if (arr.length !== expected) throw new Error(`译文行数对不上（${arr.length}/${expected}）`);
-    return arr.map((v) => (typeof v === 'string' ? v.trim() : ''));
+    const out = new Array(expected);
+    for (let i = 0; i < expected; i += 1) {
+        const v = arr[i];
+        out[i] = typeof v === 'string' ? v.trim() : '';
+    }
+    return out;
 }
 
 function completionsUrl(serverUrl) {
@@ -96,7 +101,9 @@ function createLyricsTranslator({ getSettings, getCacheDir, fetchImpl = globalTh
 
     async function translate({ lines, title = '', artist = '', force = false } = {}) {
         if (!Array.isArray(lines) || !lines.length) return { status: 'error', message: '没有歌词' };
-        const clean = lines.slice(0, MAX_LINES).map((l) => String(l ?? '').slice(0, 500));
+        const cleanLen = lines.length < MAX_LINES ? lines.length : MAX_LINES;
+        const clean = new Array(cleanLen);
+        for (let i = 0; i < cleanLen; i += 1) clean[i] = String(lines[i] ?? '').slice(0, 500);
         const key = keyOf(clean);
         const dir = getCacheDir && getCacheDir();
         const file = dir ? path.join(dir, `${key}.json`) : null;

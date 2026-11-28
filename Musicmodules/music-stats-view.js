@@ -215,7 +215,10 @@
             img.decoding = 'async';
             img.loading = 'lazy';
             let k = 0;
-            img.onerror = () => { if (++k < tries.length) img.src = tries[k]; else img.remove(); };
+            img.onerror = () => {
+                if (!img.isConnected) return;
+                if (++k < tries.length) img.src = tries[k]; else img.remove();
+            };
             img.src = tries[0];
             box.appendChild(img);
             return box;
@@ -225,7 +228,8 @@
             box.appendChild(el('h4', '', heading));
             if (!rows.length) { box.appendChild(el('p', 'mstats-none', '—')); return box; }
             const ol = el('ol');
-            rows.forEach((row) => {
+            for (let i = 0; i < rows.length; i += 1) {
+                const row = rows[i];
                 const li = el('li');
                 const btn = el('button', 'mstats-row');
                 btn.type = 'button';
@@ -237,67 +241,83 @@
                 btn.addEventListener('click', () => { close(); run(); });
                 li.appendChild(btn);
                 ol.appendChild(li);
-            });
+            }
             box.appendChild(ol);
             return box;
         };
 
+        const HOUR_AXIS = ['0', '6', '12', '18', '24'];
+        const hasAnyKey = (obj) => {
+            if (!obj) return false;
+            for (const k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) return true;
+            return false;
+        };
         const render = () => {
             if (!overlay) return;
             const body = overlay.querySelector('.mstats-body');
-            body.innerHTML = '';
-            overlay.querySelectorAll('.mstats-range button').forEach((b) => {
+            const rangeBtns = overlay.querySelectorAll('.mstats-range button');
+            for (let i = 0; i < rangeBtns.length; i += 1) {
+                const b = rangeBtns[i];
                 const on = Number(b.dataset.days) === range;
                 b.classList.toggle('active', on);
                 b.setAttribute('aria-pressed', on ? 'true' : 'false');
-            });
+            }
+            const bodyFrag = doc.createDocumentFragment();
             const stats = app.musicStats;
             const s = stats && typeof stats.summary === 'function' ? stats.summary({ days: range }) : null;
             if (!s || (!s.seconds && !s.plays)) {
-                body.appendChild(el('p', 'mstats-empty', range ? '这段时间还没有听歌记录。' : '还没有听歌记录。'));
+                bodyFrag.appendChild(el('p', 'mstats-empty', range ? '这段时间还没有听歌记录。' : '还没有听歌记录。'));
                 // 这段时间没有、但以前有：给个直达「全部」的按钮，别让人以为记录丢了
                 const all = range ? stats?.summary?.({ days: 0 }) : null;
                 if (all && (all.seconds || all.plays)) {
                     const more = el('button', 'minfo-btn mstats-more', `看全部记录（${all.plays} 次）`);
                     more.type = 'button';
                     more.addEventListener('click', () => { const b = overlay?.querySelector('.mstats-range button[data-days="0"]'); if (b) b.click(); else { range = 0; render(); } });
-                    body.appendChild(more);
+                    bodyFrag.appendChild(more);
                 }
-                body.appendChild(el('p', 'mstats-note', '一首歌放到一半（或满 4 分钟）算听了一次；记录只存在这台电脑上。'));
+                bodyFrag.appendChild(el('p', 'mstats-note', '一首歌放到一半（或满 4 分钟）算听了一次；记录只存在这台电脑上。'));
+                body.replaceChildren(bodyFrag);
                 return;
             }
             const totals = el('div', 'mstats-totals');
-            [[formatDuration(s.seconds), '听歌时长'], [`${s.plays}`, '听完的歌（次）'], [`${s.activeDays}`, '有听歌的天数']].forEach(([v, k]) => {
+            const addTotal = (v, k) => {
                 const cell = el('div', 'mstats-total');
                 cell.appendChild(el('strong', '', v));
                 cell.appendChild(el('span', '', k));
                 totals.appendChild(cell);
-            });
-            body.appendChild(totals);
+            };
+            addTotal(formatDuration(s.seconds), '听歌时长');
+            addTotal(String(s.plays), '听完的歌（次）');
+            addTotal(String(s.activeDays), '有听歌的天数');
+            bodyFrag.appendChild(totals);
 
-            const max = Math.max(...s.hours);
+            let max = 0;
+            let peak = 0;
+            for (let h = 0; h < s.hours.length; h += 1) {
+                if (s.hours[h] > max) { max = s.hours[h]; peak = h; }
+            }
             if (max > 0) {
-                const peak = s.hours.indexOf(max);
                 const chart = el('section', 'mstats-hours');
                 chart.appendChild(el('h4', '', `一天里最常在${hourName(peak)}听`));
                 const bars = el('div', 'mstats-bars');
                 bars.setAttribute('role', 'img');
                 bars.setAttribute('aria-label', `24 小时听歌分布，最多在 ${peak} 点`);
-                s.hours.forEach((v, h) => {
+                for (let h = 0; h < s.hours.length; h += 1) {
+                    const v = s.hours[h];
                     const bar = el('i', h === peak ? 'peak' : '');
                     bar.style.setProperty('--h', `${Math.max(v > 0 ? 6 : 2, Math.round((v / max) * 100))}%`);
                     bar.title = `${h}:00–${h + 1}:00　${formatDuration(v)}`;
                     bars.appendChild(bar);
-                });
+                }
                 chart.appendChild(bars);
                 const axis = el('div', 'mstats-axis');
-                ['0', '6', '12', '18', '24'].forEach((t) => axis.appendChild(el('span', '', t)));
+                for (let i = 0; i < HOUR_AXIS.length; i += 1) axis.appendChild(el('span', '', HOUR_AXIS[i]));
                 chart.appendChild(axis);
-                body.appendChild(chart);
+                bodyFrag.appendChild(chart);
             }
 
             // 近一年、全部：画一张听歌日历（最近 53 周），看哪段时间听得多
-            if ((range === 0 || range >= 365) && s.daily && Object.keys(s.daily).length) {
+            if ((range === 0 || range >= 365) && hasAnyKey(s.daily)) {
                 const weeks = calendarWeeks(s.daily);
                 const cal = el('section', 'mstats-cal');
                 let listened = 0;
@@ -309,18 +329,25 @@
                 cal.appendChild(el('h4', '', `最近一年有 ${listened} 天在听歌${streak > 1 ? `，最长连着听了 ${streak} 天` : ''}`));
                 const months = el('div', 'mstats-cal-months');
                 months.setAttribute('aria-hidden', 'true');
-                weeks.forEach((col, w) => {
-                    const first = col.find((c) => c.date === 1 && !c.future);
-                    const label = el('span', '', first && w < weeks.length - 1 ? `${first.month + 1}月` : '');
-                    months.appendChild(label);
-                });
+                for (let w = 0; w < weeks.length; w += 1) {
+                    const col = weeks[w];
+                    let first = null;
+                    if (w < weeks.length - 1) {
+                        for (let d = 0; d < col.length; d += 1) {
+                            if (col[d].date === 1 && !col[d].future) { first = col[d]; break; }
+                        }
+                    }
+                    months.appendChild(el('span', '', first ? `${first.month + 1}月` : ''));
+                }
                 cal.appendChild(months);
                 const grid = el('div', 'mstats-cal-grid');
                 grid.setAttribute('role', 'img');
                 grid.setAttribute('aria-label', `听歌日历：最近一年有 ${listened} 天在听歌`);
                 const gridFrag = doc.createDocumentFragment();
-                for (const col of weeks) {
-                    for (const c of col) {
+                for (let wi = 0; wi < weeks.length; wi += 1) {
+                    const col = weeks[wi];
+                    for (let di = 0; di < col.length; di += 1) {
+                        const c = col[di];
                         const cell = el('i', c.future ? 'future' : `l${c.level}`);
                         if (!c.future) cell.title = `${c.key}　${c.seconds ? '听了 ' + formatDuration(c.seconds) : '没听'}`;
                         gridFrag.appendChild(cell);
@@ -333,17 +360,18 @@
                 for (let l = 0; l <= 4; l++) legend.appendChild(el('i', `l${l}`));
                 legend.appendChild(el('span', '', '多'));
                 cal.appendChild(legend);
-                body.appendChild(cal);
+                bodyFrag.appendChild(cal);
             }
 
-            const r = rank(s, app.playlist || []);
-            const tops = el('div', 'mstats-tops');
             const lib = app.playlist || [];
+            const r = rank(s, lib);
+            const tops = el('div', 'mstats-tops');
             tops.appendChild(list('最常听的歌', r.songs, (row) => [title(row.track), firstArtist(row.track), () => app.loadTrack?.(row.index), row.track]));
             tops.appendChild(list('最常听的歌手', r.artists, (row) => [row.name, '', () => app.goToGroup?.(row.index, 'artist'), lib[row.index], true]));
             tops.appendChild(list('最常听的专辑', r.albums, (row) => [row.name, row.artist, () => app.goToGroup?.(row.index, 'album'), lib[row.index]]));
-            body.appendChild(tops);
-            if (!range && s.since) body.appendChild(el('p', 'mstats-note', `听歌时长从 ${s.since} 开始记；次数包括更早的记录。`));
+            bodyFrag.appendChild(tops);
+            if (!range && s.since) bodyFrag.appendChild(el('p', 'mstats-note', `听歌时长从 ${s.since} 开始记；次数包括更早的记录。`));
+            body.replaceChildren(bodyFrag);
         };
 
         app.openStatsView = () => {

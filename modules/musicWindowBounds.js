@@ -12,12 +12,6 @@ let tmpSeq = 0;
 
 const num = (v) => (Number.isFinite(v) ? Math.round(v) : null);
 
-function overlap(a, b) {
-    const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-    const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
-    return w > 0 && h > 0 ? { w, h } : { w: 0, h: 0 };
-}
-
 /**
  * @param {object} saved  上次存下的 {x, y, width, height, maximized}
  * @param {{x,y,width,height}[]} workAreas  现在每块屏的工作区
@@ -28,14 +22,20 @@ function restoreBounds(saved, workAreas, { minWidth = 0, minHeight = 0 } = {}) {
     if (!saved || typeof saved !== 'object' || !Array.isArray(workAreas) || !workAreas.length) return null;
     const x = num(saved.x), y = num(saved.y), width = num(saved.width), height = num(saved.height);
     if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) return null;
-    const rect = { x, y, width, height };
+    const minW = Math.min(MIN_VISIBLE, width);
+    const minH = Math.min(MIN_VISIBLE, height);
     let best = null, bestArea = 0;
-    for (const area of workAreas) {
+    for (let i = 0; i < workAreas.length; i += 1) {
+        const area = workAreas[i];
         if (!area || !(area.width > 0) || !(area.height > 0)) continue;
-        const o = overlap(rect, area);
-        if (o.w >= Math.min(MIN_VISIBLE, width) && o.h >= Math.min(MIN_VISIBLE, height) && o.w * o.h > bestArea) {
-            best = area;
-            bestArea = o.w * o.h;
+        const ow = Math.min(x + width, area.x + area.width) - Math.max(x, area.x);
+        const oh = Math.min(y + height, area.y + area.height) - Math.max(y, area.y);
+        if (ow >= minW && oh >= minH) {
+            const areaPx = ow * oh;
+            if (areaPx > bestArea) {
+                best = area;
+                bestArea = areaPx;
+            }
         }
     }
     if (!best) return null;

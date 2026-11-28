@@ -23,13 +23,32 @@
     const PARENT_DISC_RE = /(?:^|[\s_\-(\[])(?:cd|disc|disk|碟)\s*0*(\d{1,2})(?:\D|$)/i;
     const EMPTY_ORDER = Object.freeze({ disc: 0, no: 0 });
     const parentDiscCache = new Map();
+    // 快速扫描 [start, end) 是否含 cd / di(disc|disk) / 碟：绝大部分专辑目录不含这些关键字，跳过 slice + Map + 正则。
+    const mayHaveParentDisc = (s, start, end) => {
+        for (let i = start; i < end; i += 1) {
+            const c = s.charCodeAt(i);
+            if (c === 0x789f) return true; // '碟'
+            if (c === 67 || c === 99) { // C / c -> cd
+                if (i + 1 < end) {
+                    const n = s.charCodeAt(i + 1);
+                    if (n === 68 || n === 100) return true;
+                }
+            } else if (c === 68 || c === 100) { // D / d -> di (disc / disk)
+                if (i + 1 < end) {
+                    const n = s.charCodeAt(i + 1);
+                    if (n === 73 || n === 105) return true;
+                }
+            }
+        }
+        return false;
+    };
     const discFromParent = (parent) => {
         if (!parent) return 0;
         let hit = parentDiscCache.get(parent);
         if (hit !== undefined) return hit;
         const m = PARENT_DISC_RE.exec(parent);
         hit = m ? positive(m[1]) : 0;
-        if (parentDiscCache.size >= 1024) parentDiscCache.clear();
+        if (parentDiscCache.size >= 4096) parentDiscCache.clear();
         parentDiscCache.set(parent, hit);
         return hit;
     };
@@ -70,7 +89,8 @@
             }
             if (!disc && cut > 0) {
                 const prev = Math.max(s.lastIndexOf('/', cut - 1), s.lastIndexOf('\\', cut - 1));
-                if (cut > prev + 1) disc = discFromParent(s.slice(prev + 1, cut));
+                const pStart = prev + 1;
+                if (cut > pStart && mayHaveParentDisc(s, pStart, cut)) disc = discFromParent(s.slice(pStart, cut));
             }
         }
         const v = (disc || no) ? { disc, no } : EMPTY_ORDER;

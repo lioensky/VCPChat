@@ -87,23 +87,31 @@
             if (gap > 5 && gap > reading) inferredEnd = startTime + reading;
         }
         const endTime = Math.max(startTime + 0.08, declaredEnd || inferredEnd);
-        const words = Array.isArray(line?.words) && line.words.length
-            ? line.words.map((word, wordIndex) => {
+        let words = EMPTY_WORDS;
+        if (Array.isArray(line?.words) && line.words.length) {
+            const rawWords = line.words;
+            words = new Array(rawWords.length);
+            for (let wordIndex = 0; wordIndex < rawWords.length; wordIndex += 1) {
+                const word = rawWords[wordIndex];
                 const wordStart = finiteNumber(word?.startTime, startTime);
                 const wordEnd = Math.max(wordStart, finiteNumber(word?.endTime, endTime));
-                const syllables = Array.isArray(word?.syllables)
-                    ? word.syllables.map((syllable, syllableIndex) => {
+                let syllables = EMPTY_WORDS;
+                if (Array.isArray(word?.syllables)) {
+                    const rawSyls = word.syllables;
+                    syllables = new Array(rawSyls.length);
+                    for (let syllableIndex = 0; syllableIndex < rawSyls.length; syllableIndex += 1) {
+                        const syllable = rawSyls[syllableIndex];
                         const syllableStart = finiteNumber(syllable?.startTime, wordStart);
-                        return {
+                        syllables[syllableIndex] = {
                             ...syllable,
                             text: String(syllable?.text ?? ''),
                             startTime: syllableStart,
                             endTime: Math.max(syllableStart, finiteNumber(syllable?.endTime, wordEnd)),
                             index: syllableIndex
                         };
-                    })
-                    : EMPTY_WORDS;
-                return {
+                    }
+                }
+                words[wordIndex] = {
                     ...word,
                     text: String(word?.text ?? ''),
                     startTime: wordStart,
@@ -111,8 +119,8 @@
                     syllables,
                     index: wordIndex
                 };
-            })
-            : EMPTY_WORDS;
+            }
+        }
         const normalized = {
             ...line,
             index,
@@ -150,7 +158,9 @@
         if (!Array.isArray(lines) || !lines.length) return EMPTY_LINES;
         const cached = normalizedLinesCache.get(lines);
         if (cached) return cached;
-        const normalized = lines.map((line, index) => normalizeLine(line, index, lines));
+        const len = lines.length;
+        const normalized = new Array(len);
+        for (let index = 0; index < len; index += 1) normalized[index] = normalizeLine(lines[index], index, lines);
         normalizedLinesCache.set(lines, normalized);
         return normalized;
     };
@@ -174,58 +184,83 @@
     const buildGlyphTimeline = (line) => {
         if (!line) return EMPTY_WORDS;
         const words = line.resolvedWords || line.words || EMPTY_WORDS;
-        const source = words.flatMap((word, wordIndex) => {
-            const validSyllables = Array.isArray(word.syllables) && word.syllables.length
-                && word.syllables.map(part => part.text).join('') === word.text;
-            const parts = validSyllables ? word.syllables : [word];
-            return parts.flatMap((part, partIndex) => {
+        const source = [];
+        let joinedSource = '';
+        for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+            const word = words[wordIndex];
+            const syls = word.syllables;
+            let validSyllables = false;
+            if (Array.isArray(syls) && syls.length) {
+                let sylText = '';
+                for (let si = 0; si < syls.length; si += 1) sylText += syls[si].text;
+                validSyllables = sylText === word.text;
+            }
+            const partCount = validSyllables ? syls.length : 1;
+            const fallbackStart = finiteNumber(word.startTime, line.startTime);
+            const fallbackEnd = finiteNumber(word.endTime, line.endTime);
+            for (let partIndex = 0; partIndex < partCount; partIndex += 1) {
+                const part = validSyllables ? syls[partIndex] : word;
                 const graphemes = splitGraphemes(part.text);
-                const startTime = finiteNumber(part.startTime, finiteNumber(word.startTime, line.startTime));
-                const endTime = Math.max(startTime, finiteNumber(part.endTime, finiteNumber(word.endTime, line.endTime)));
-                return graphemes.map((text, glyphIndex) => ({
-                    text,
-                    char: text,
-                    startTime: startTime + (endTime - startTime) * glyphIndex / Math.max(1, graphemes.length),
-                    endTime: startTime + (endTime - startTime) * (glyphIndex + 1) / Math.max(1, graphemes.length),
-                    wordIndex,
-                    syllableIndex: validSyllables ? partIndex : -1
-                }));
-            });
-        });
+                const gLen = graphemes.length;
+                const invLen = gLen > 0 ? 1 / gLen : 1;
+                const startTime = finiteNumber(part.startTime, fallbackStart);
+                const endTime = Math.max(startTime, finiteNumber(part.endTime, fallbackEnd));
+                const span = endTime - startTime;
+                const sIdx = validSyllables ? partIndex : -1;
+                for (let glyphIndex = 0; glyphIndex < gLen; glyphIndex += 1) {
+                    const text = graphemes[glyphIndex];
+                    joinedSource += text;
+                    source.push({
+                        text,
+                        char: text,
+                        startTime: startTime + span * glyphIndex * invLen,
+                        endTime: startTime + span * (glyphIndex + 1) * invLen,
+                        wordIndex,
+                        syllableIndex: sIdx
+                    });
+                }
+            }
+        }
         const fullText = splitGraphemes(line.fullText);
-        if (!fullText.length || source.map(glyph => glyph.text).join('') === line.fullText) return source;
+        if (!fullText.length || joinedSource === line.fullText) return source;
 
         // Reconcile tokenized words with the untouched display string. This keeps
         // spaces omitted by legacy LRC tokenization and punctuation not carrying a
         // timing tag, while every timed source glyph preserves its original clock.
-        const aligned = fullText.map(text => ({
-            text,
-            char: text,
-            startTime: line.startTime,
-            endTime: line.startTime,
-            wordIndex: -1,
-            syllableIndex: -1
-        }));
+        const fullLen = fullText.length;
+        const aligned = new Array(fullLen);
+        for (let i = 0; i < fullLen; i += 1) {
+            const text = fullText[i];
+            aligned[i] = {
+                text,
+                char: text,
+                startTime: line.startTime,
+                endTime: line.startTime,
+                wordIndex: -1,
+                syllableIndex: -1
+            };
+        }
         let cursor = 0;
         let lastTime = line.startTime;
-        source.forEach(glyph => {
+        for (let si = 0; si < source.length; si += 1) {
+            const glyph = source[si];
             let target = -1;
-            for (let index = cursor; index < fullText.length; index += 1) {
+            for (let index = cursor; index < fullLen; index += 1) {
                 if (fullText[index] === glyph.text) {
                     target = index;
                     break;
                 }
             }
-            if (target < 0) return;
+            if (target < 0) continue;
             for (let index = cursor; index < target; index += 1) {
                 aligned[index].startTime = glyph.startTime;
                 aligned[index].endTime = glyph.startTime;
             }
             aligned[target] = glyph;
             cursor = target + 1;
-            lastTime = Math.max(lastTime, glyph.endTime);
-        });
-        for (let index = cursor; index < aligned.length; index += 1) {
+            if (glyph.endTime > lastTime) lastTime = glyph.endTime;
+        }
+        for (let index = cursor; index < fullLen; index += 1) {
             aligned[index].startTime = lastTime;
             aligned[index].endTime = lastTime;
         }

@@ -1968,17 +1968,21 @@
 
         // ---------- 排序菜单 ----------
         const sortMode = () => (opts.getSort ? opts.getSort() : 'title');
+        const colBtns = r.cols.querySelectorAll('[data-col]'), sortItems = r.sortMenu.querySelectorAll('[data-sort]');
+        let lastSort = '';
         const paintSort = () => {
             const mode = sortMode();
+            if (mode === lastSort) return;
+            lastSort = mode;
             const entry = SORTS.find(([k]) => k === mode) || SORTS[0];
             r.sortName.textContent = entry[1];
             r.sortBtn.title = `排序：${entry[1]}（阵列跟着重排）`;
             r.sortBtn.setAttribute('aria-label', `排序：${entry[1]}`);
             el.dataset.sort = entry[0]; // 表头跟着标出按哪一列排（CSS 用）
             r.colTitle.textContent = entry[0] === 'artist' ? '歌手 / ARTIST' : '曲目 / TITLE';
-            r.cols.querySelectorAll('[data-col]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.col === entry[0] || (b.dataset.col === 'title' && entry[0] === 'artist'))));
+            for (const b of colBtns) b.setAttribute('aria-pressed', String(b.dataset.col === entry[0] || (b.dataset.col === 'title' && entry[0] === 'artist')));
             r.sortBtn.classList.toggle('on', mode !== 'title');
-            r.sortMenu.querySelectorAll('[data-sort]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.sort === mode)));
+            for (const b of sortItems) b.setAttribute('aria-checked', String(b.dataset.sort === mode));
         };
         const sortOpen = () => !r.sortMenu.hidden;
         // 排序菜单合上时缩回一滴流回点的那一项（共用套件）

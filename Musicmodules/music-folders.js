@@ -11,19 +11,35 @@
     const SLASH_RE = /\//g;
     const TRAIL_BSLASH_RE = /\\+$/;
     const TRAIL_SEP_RE = /[\\/]+$/;
-    const SEP_SPLIT_RE = /[\\/]+/;
     const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const key = (p) => String(p || '').replace(SLASH_RE, '\\').replace(TRAIL_BSLASH_RE, '').toLowerCase();
     const underDir = (file, dir) => { const f = key(file); const d = key(dir); return f === d || f.startsWith(d + '\\'); };
     const parentOf = (dir) => { const s = String(dir).replace(TRAIL_SEP_RE, ''); const at = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/')); return at > 0 ? s.slice(0, at) : ''; };
     // 盘符根（D:）或只有一层的路径不再往上并：「D:\」整个盘当一处没意义
-    const depth = (dir) => String(dir).split(SEP_SPLIT_RE).filter(Boolean).length;
+    const depth = (dir) => {
+        const s = String(dir);
+        let count = 0;
+        let inSeg = false;
+        for (let i = 0; i < s.length; i += 1) {
+            const c = s.charCodeAt(i);
+            if (c === 92 || c === 47) { inSeg = false; }
+            else if (!inSeg) { inSeg = true; count += 1; }
+        }
+        return count;
+    };
     const isLocal = (p) => typeof p === 'string' && p !== '' && !SCHEME_RE.test(p);
 
     // → [{ path, count, remembered, exists }]：加过的在前（按原顺序），其他位置按歌数从多到少
     // 几万首、几千个散落文件夹也要快：路径的比较键都先算好，包含关系按「往上找祖先」查表，不两两比较。
-    const ancestors = (k) => { const out = []; for (let at = k.lastIndexOf('\\'); at > 0; at = k.lastIndexOf('\\', at - 1)) out.push(k.slice(0, at)); return out; };
+    const findOutermostAncestor = (k, map) => {
+        let outer = '';
+        for (let at = k.lastIndexOf('\\'); at > 0; at = k.lastIndexOf('\\', at - 1)) {
+            const sub = k.slice(0, at);
+            if (map.has(sub)) outer = sub;
+        }
+        return outer;
+    };
     const folderRows = (remembered, tracks) => {
         const rows = (remembered || []).map((f) => ({ path: f.path || f, count: 0, remembered: true, exists: f.exists !== false }));
         const rowKeys = rows.map((r) => key(r.path));
@@ -80,14 +96,17 @@
                 changed = true;
             }
             // 被别的条目包含的（上级并出来以后）也收进去：往上找最外层的那个
-            for (const e of [...byKey.values()]) {
-                if (!byKey.has(e.k)) continue;
-                const outerKey = ancestors(e.k).reverse().find((a) => byKey.has(a));
+            for (const e of byKey.values()) {
+                const outerKey = findOutermostAncestor(e.k, byKey);
                 if (outerKey) { byKey.get(outerKey).count += e.count; byKey.delete(e.k); changed = true; }
             }
         }
-        const list = [...byKey.values()].sort((a, b) => b.count - a.count);
-        return rows.concat(list.map((e) => ({ path: e.path, count: e.count, remembered: false, exists: true })));
+        const list = Array.from(byKey.values()).sort((a, b) => b.count - a.count);
+        for (let i = 0; i < list.length; i += 1) {
+            const e = list[i];
+            rows.push({ path: e.path, count: e.count, remembered: false, exists: true });
+        }
+        return rows;
     };
 
     function setupMusicFolders(app) {
@@ -247,9 +266,8 @@
             const res = await call({ op: 'list' }).catch(() => null);
             if (!overlay || seq !== renderSeq) return;
             const rows = folderRows(res && res.ok ? res.folders : [], app.playlist);
-            body.innerHTML = '';
             if (!rows.length) {
-                body.appendChild(el('p', 'mstats-empty', '曲库里还没有本机文件夹。点下面的「添加文件夹」，或者直接把文件夹拖进窗口。'));
+                body.replaceChildren(el('p', 'mstats-empty', '曲库里还没有本机文件夹。点下面的「添加文件夹」，或者直接把文件夹拖进窗口。'));
                 return;
             }
             const ul = el('ul', 'mfold-list');
@@ -273,7 +291,8 @@
                 const p = el('span', 'mfold-path', row.path);
                 p.title = row.path;
                 text.appendChild(p);
-                const meta = [`${row.count} 首`, row.remembered ? '自动同步' : '其他位置', row.exists ? '' : '找不到这个文件夹（拔掉的盘？）'].filter(Boolean).join(' · ');
+                let meta = `${row.count} 首 · ${row.remembered ? '自动同步' : '其他位置'}`;
+                if (!row.exists) meta += ' · 找不到这个文件夹（拔掉的盘？）';
                 text.appendChild(el('span', 'mfold-meta', meta));
                 li.appendChild(text);
                 const acts = el('div', 'mfold-acts');
@@ -293,7 +312,7 @@
                 frag.appendChild(li);
             }
             ul.appendChild(frag);
-            body.appendChild(ul);
+            body.replaceChildren(ul);
         };
 
         app.openLibraryFolders = () => {

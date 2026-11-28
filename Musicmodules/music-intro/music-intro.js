@@ -250,11 +250,15 @@
         // 字距从很散收拢到正常
         const tracking = keys(K_SCAN_TRACK, t).toFixed(2);
         if (n._scanTrack !== tracking) { n._scanTrack = tracking; n.scanText.setAttribute('letter-spacing', tracking); }
-        const scanLabel = `${label} ${Math.max(0, Math.round(count))} 首`;
-        if (n.scanText.textContent !== scanLabel) n.scanText.textContent = scanLabel;
+        const scanCount = Math.max(0, Math.round(count));
+        if (n._scanCount !== scanCount || n._scanLabelText !== label) {
+            n._scanCount = scanCount;
+            n._scanLabelText = label;
+            n.scanText.textContent = `${label} ${scanCount} 首`;
+        }
         const textOut = 1 - smooth(progress(t, 1.02, 1.18));
         setStyleOp(n.scanText, String(keys(K_SCAN_TEXT_IN, t) * textOut));
-        if (n.scanSub.textContent !== sub) n.scanSub.textContent = sub;
+        if (n._scanSub !== sub) { n._scanSub = sub; n.scanSub.textContent = sub; }
         setStyleOp(n.scanSub, String(progress(t, 0.5, 0.7) * textOut));
     };
 
@@ -353,8 +357,8 @@
             if (n._wRule !== wRule) { n._wRule = wRule; n.welcomeRule.setAttribute('width', wRule); }
             const subOn = t >= 8.55 && !(f === frameOf(8.63) || f === frameOf(8.71));
             setStyleOp(n.welcomeSub, subOn ? '1' : '0');
-            const welcomeCount = `曲库 ${Math.max(0, Math.round(ctx.count()))} 首`;
-            if (n.welcomeSub.textContent !== welcomeCount) n.welcomeSub.textContent = welcomeCount;
+            const wCount = Math.max(0, Math.round(ctx.count()));
+            if (n._welcomeCount !== wCount) { n._welcomeCount = wCount; n.welcomeSub.textContent = `曲库 ${wCount} 首`; }
             setStyleOp(n.welcomeMark, t >= 8.4 ? '1' : '0');
             const exit = smooth(progress(t, FULL.exit, FULL.exit + 0.36));
             if (n._wExit !== exit) {
@@ -488,15 +492,16 @@
     // 等得久（超过 0.4 秒）才在中间写一行 LOADING STAGE。
     // 揭开：裁掉左边已经扫过的部分，扫描头停在切口上；0 和 1 都不画扫描头
     const applyWipe = (root, n, wipe = 0) => {
-        const on = wipe > 0 && wipe < 1;
-        const clip = wipe > 0 ? `inset(0 0 0 ${(wipe * 100).toFixed(3)}%)` : '';
+        const wq = wipe <= 0 ? 0 : wipe >= 1 ? 100000 : Math.round(wipe * 100000);
+        if (n._wipeQ === wq) return;
+        n._wipeQ = wq;
+        const on = wq > 0 && wq < 100000;
+        const pct = wq > 0 ? `${(wq / 1000).toFixed(3)}%` : '';
+        const clip = wq > 0 ? `inset(0 0 0 ${pct})` : '';
         if (n._wipeClip !== clip) { n._wipeClip = clip; root.style.clipPath = clip; }
         const op = on ? '1' : '0';
         if (n._wipeOp !== op) { n._wipeOp = op; n.wipe.style.opacity = op; }
-        if (on) {
-            const left = `${(wipe * 100).toFixed(3)}%`;
-            if (n._wipeLeft !== left) { n._wipeLeft = left; n.wipe.style.left = left; }
-        }
+        if (on && n._wipeLeft !== pct) { n._wipeLeft = pct; n.wipe.style.left = pct; }
     };
 
     const renderStill = (n, t, ctx) => {

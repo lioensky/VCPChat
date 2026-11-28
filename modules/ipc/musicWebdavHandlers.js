@@ -103,7 +103,11 @@ function registerMusicWebdavHandlers({ ipcMain, webdavManager, getMusicWindow, s
                 req.password = serverCreds.password;
             }
         }
-        const rawName = String(req.url).split(URL_QUERY_HASH_RE)[0].split('/').pop() || '';
+        const rawUrl = String(req.url);
+        const qIdx = rawUrl.search(URL_QUERY_HASH_RE);
+        const pathOnly = qIdx >= 0 ? rawUrl.slice(0, qIdx) : rawUrl;
+        const slashIdx = pathOnly.lastIndexOf('/');
+        const rawName = slashIdx >= 0 ? pathOnly.slice(slashIdx + 1) : pathOnly;
         setCurrentSongInfo({
             title: req.trackMeta?.title || safeDecode(rawName),
             artist: req.trackMeta?.artist || '未知艺术家',
