@@ -526,3 +526,20 @@ test('Batch 96: musicLibraryWatch caches directory normalization across tracks i
         path.resolve = origResolve;
     }
 });
+
+test('Batch 124: musicScannerWorker safeCoverExtension uses null-proto maps and avoids prototype collisions', () => {
+    const vm = require('node:vm');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'musicScannerWorker.js'), 'utf8');
+    const start = src.indexOf('const MIME_EXT_MAP');
+    const end = src.indexOf('const coversDone');
+    assert.ok(start > 0 && end > start);
+    const ctx = vm.createContext({});
+    vm.runInContext(src.slice(start, end), ctx);
+    assert.equal(ctx.safeCoverExtension('image/jpeg'), 'jpg');
+    assert.equal(ctx.safeCoverExtension('image/jpeg; charset=binary'), 'jpg');
+    assert.equal(ctx.safeCoverExtension('image/x-ms-bmp'), 'bmp');
+    assert.equal(ctx.safeCoverExtension('image/toString'), 'tostring');
+    assert.equal(ctx.safeCoverExtension('constructor'), 'construc');
+    assert.equal(ctx.safeCoverExtension('__proto__'), 'proto');
+    assert.equal(ctx.safeCoverExtension(''), 'jpg');
+});

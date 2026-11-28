@@ -412,3 +412,55 @@ test('Batch 95: AmbientPixi isContainerHidden short-circuits on body.music-archi
     assert.equal(csCalls, 0, 'body.music-archive-on skips getComputedStyle in isContainerHidden');
     assert.equal(app.ambientPixiController, null, 'does not create WebGL ambient controller while body.music-archive-on is set');
 });
+
+test('Batch 124: AmbientPixi update skips body.classList reduce-motion read when MusicMotion is present', async () => {
+    class Graphics {
+        clear() { return this; }
+        circle() { return this; }
+        fill() { return this; }
+        moveTo() { return this; }
+        quadraticCurveTo() { return this; }
+        lineTo() { return this; }
+        stroke() { return this; }
+    }
+    class Application {
+        async init() {
+            this.canvas = { style: {} };
+            this.stage = { addChild() {} };
+            this.renderer = { resize() {} };
+        }
+        stop() {}
+        render() {}
+        destroy() {}
+    }
+    let reduceReads = 0;
+    const container = { hidden: false, style: { display: '', visibility: '' }, innerHTML: '', appendChild() {}, clientWidth: 800, clientHeight: 600 };
+    const doc = {
+        getElementById: (id) => (id === 'ambient-wave-container' ? container : null),
+        body: {
+            classList: {
+                contains: (cls) => {
+                    if (cls === 'music-reduce-motion') reduceReads += 1;
+                    return false;
+                }
+            }
+        }
+    };
+    const win = {
+        document: doc,
+        PIXI: { Application, Graphics },
+        MusicMotion: { reduced: () => false },
+        devicePixelRatio: 1,
+        addEventListener() {}
+    };
+    const context = vm.createContext({
+        window: win, document: doc, queueMicrotask, setTimeout, clearTimeout, console
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-ambient-pixi.js'), 'utf8'), context);
+    const app = { isPlaying: true, visualizerColor: { r: 0, g: 195, b: 255 }, currentVisualizerData: new Float32Array(32).fill(0.4) };
+    win.setupAmbientPixi(app);
+    await app.createAmbientPixi();
+    app.updateAmbientPixi(0.016);
+    app.updateAmbientPixi(0.016);
+    assert.equal(reduceReads, 0, 'AmbientPixi.update reads MusicMotion.reduced() without touching body.classList');
+});

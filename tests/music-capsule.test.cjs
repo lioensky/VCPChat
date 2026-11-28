@@ -270,3 +270,31 @@ test('Batch 82: music-capsule skips unchanged hidden/title writes, publishCapsul
         f.dom.window.close();
     }
 });
+
+test('Batch 124: music-capsule tolerates non-Node focusout relatedTarget and missing getMusicCapsuleState', () => {
+    const f = fixture();
+    try {
+        f.push({ open: true, title: 'Focus Test', trackKey: 'k2', playing: true });
+        f.root.dispatchEvent(new f.dom.window.FocusEvent('focusin', { bubbles: true }));
+        assert.equal(f.root.classList.contains('is-expanded'), true);
+        const ev = new f.dom.window.Event('focusout', { bubbles: true });
+        Object.defineProperty(ev, 'relatedTarget', { value: { nonNode: true } });
+        assert.doesNotThrow(() => f.root.dispatchEvent(ev), 'non-Node focusout relatedTarget does not throw');
+    } finally {
+        f.dom.window.close();
+    }
+
+    const dom = new JSDOM('<!doctype html><body><div class="chat-header-controls"><button id="open-music-btn"></button></div></body>', { runScripts: 'outside-only' });
+    try {
+        dom.window.electronAPI = {
+            onMusicCapsuleState: () => () => {},
+            sendMusicCapsuleCommand: () => {}
+        };
+        assert.doesNotThrow(() => {
+            dom.window.eval(script);
+            dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+        }, 'install tolerates omitted getMusicCapsuleState');
+    } finally {
+        dom.window.close();
+    }
+});

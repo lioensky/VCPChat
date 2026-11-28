@@ -533,3 +533,67 @@ test('Batch 113: hidden idle visualizer defers WebSocket reconnect until visible
         window.close();
     }
 });
+
+test('Batch 124: visualizer skips body.classList reduce-motion read when MusicMotion is present and caches vocal wave trig steps', () => {
+    const { window, app, run } = setup();
+    try {
+        let motionFlag = false;
+        window.MusicMotion = { reduced: () => motionFlag };
+        let reduceClassReads = 0;
+        const origContains = window.document.body.classList.contains.bind(window.document.body.classList);
+        window.document.body.classList.contains = (cls) => {
+            if (cls === 'music-reduce-motion') reduceClassReads += 1;
+            return origContains(cls);
+        };
+        app.albumArtWrapper = { style: { transform: '' } };
+        app.COVER_MID_START_RATIO = 0.1;
+        app.COVER_MID_END_RATIO = 0.5;
+        app.COVER_PULSE_FLOOR = 0.1;
+        app.COVER_PULSE_SMOOTHING = 0.5;
+        app.COVER_PULSE_INTENSITY = 0.1;
+        app.isPlaying = true;
+        app.targetVisualizerData = new Array(32).fill(0.8);
+        app.currentVisualizerData = new Array(32).fill(0.8);
+        app.startVisualizerAnimation();
+        run(120);
+        assert.equal(reduceClassReads, 0, '60fps draw loop uses MusicMotion.reduced() without body.classList.contains reads');
+        assert.ok(app.bassScale > 1.0, 'cover pulse still runs when MusicMotion.reduced() is false');
+
+        motionFlag = true;
+        run(120);
+        assert.equal(reduceClassReads, 0, 'reduced=true path also avoids body.classList.contains reads');
+        app.destroyVisualizer();
+
+        // Vocal wave step sin/cos caching and frequency-change invalidation
+        const canvas = { width: 100, height: 40, clientWidth: 100, clientHeight: 40 };
+        const ctx = { clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {} };
+        const vApp = {
+            particles: [], PARTICLE_COUNT: 2, easingFactor: 0.2,
+            visualizerCanvas: { width: 100, height: 40 }, visualizerCtx: ctx,
+            visualizerColor: { r: 10, g: 20, b: 30 },
+            smoothedVocalEnergy: 0.2, targetVisualizerData: new Array(64).fill(0.5), currentVisualizerData: new Array(64).fill(0.5),
+            isPlaying: true, isTrackLoading: false, bassScale: 1.0
+        };
+        window.setupVisualizer(vApp);
+        vApp.vocalCanvas = canvas;
+        vApp.vocalCtx = ctx;
+        vApp.vocalWaves = [{ frequency: 0.02, amplitude: 8, speed: 0.03, phase: 0, alpha: 0.6 }];
+        let sinCalls = 0;
+        const origSin = window.Math.sin;
+        window.Math.sin = (x) => { sinCalls += 1; return origSin(x); };
+        vApp.drawVocalVisualizer();
+        const firstCalls = sinCalls;
+        sinCalls = 0;
+        vApp.drawVocalVisualizer();
+        assert.equal(sinCalls, 1, 'second frame computes only Math.sin(phaseOffset) with cached step _sd/_cd');
+        assert.ok(firstCalls > sinCalls, 'initial frame populated fade LUT and step cache');
+        vApp.vocalWaves[0].frequency = 0.05;
+        sinCalls = 0;
+        vApp.drawVocalVisualizer();
+        assert.equal(sinCalls, 2, 'changing wave.frequency recomputes cached step _sd/_cd');
+        window.Math.sin = origSin;
+        vApp.destroyVisualizer();
+    } finally {
+        window.close();
+    }
+});

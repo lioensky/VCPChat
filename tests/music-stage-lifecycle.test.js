@@ -3091,3 +3091,111 @@ test('Batch 121: stage-edge reads --stage-edge-mono before canvas writes, stage-
         dom.window.close();
     }
 });
+
+test('Batch 124: stage-edge wakes settled paused border on trackChanged and skips accent reads on throttled playing frames; stage-host guards inert focus restore and non-Node pointerdown', () => {
+    const dom = createStageDom();
+    try {
+        const root = dom.window.document.getElementById('music-stage');
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        let clearCalls = 0;
+        let strokeCalls = 0;
+        dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+            if (type !== '2d') return null;
+            return new Proxy({
+                clearRect: () => { clearCalls += 1; },
+                stroke: () => { strokeCalls += 1; }
+            }, {
+                get(target, prop) { return prop in target ? target[prop] : () => {}; },
+                set(target, prop, value) { target[prop] = value; return true; }
+            });
+        };
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
+        Object.defineProperty(root, 'clientWidth', { configurable: true, value: 800 });
+        Object.defineProperty(root, 'clientHeight', { configurable: true, value: 600 });
+
+        let paletteReads = 0;
+        const accentRgb = Object.freeze({ r: 60, g: 140, b: 220 });
+        const edgeApp = {};
+        Object.defineProperty(edgeApp, 'stagePalette', {
+            get() { paletteReads += 1; return { accentRgb }; }
+        });
+        const edge = dom.window.MusicStageEdge.create({
+            app: edgeApp,
+            root,
+            elements: { edgeSpectrum, edgeCanvas },
+            state: { config: { quality: 'standard', edgeSpectrum: true } },
+            scope: { add() {} },
+            clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+        });
+
+        const trackA = { path: '/a.flac' };
+        const trackB = { path: '/b.flac' };
+        const loud = new Float32Array(64).fill(0.5);
+        const quiet = new Float32Array(64).fill(0);
+
+        // 1. Throttled playing frame (< 33.3ms in standard mode) skips stagePalette read
+        edge.draw({ now: 1000, isPlaying: true, track: trackA, viewport: { dpr: 1 }, audio: { power: 0.6, spectrum: loud } });
+        const readsAfterDraw = paletteReads;
+        edge.draw({ now: 1010, isPlaying: true, track: trackA, viewport: { dpr: 1 }, audio: { power: 0.6, spectrum: loud } });
+        assert.equal(paletteReads, readsAfterDraw, 'throttled playing frame skips accent palette reads');
+
+        // 2. Pause and settle >1500ms, then switch to trackB with identical accent RGB and different power:
+        //    settled paused border MUST wake once and redraw (previously aborted at pausedAt > 1500)
+        edge.draw({ now: 2000, isPlaying: false, track: trackA, viewport: { dpr: 1 }, audio: { power: 0.8, spectrum: loud } });
+        edge.draw({ now: 3600, isPlaying: false, track: trackA, viewport: { dpr: 1 }, audio: { power: 0.8, spectrum: loud } });
+        const clearsBeforeTrackChange = clearCalls;
+        const strokesBeforeTrackChange = strokeCalls;
+        edge.draw({ now: 4000, isPlaying: false, track: trackB, viewport: { dpr: 1 }, audio: { power: 0.0, spectrum: quiet } });
+        assert.ok(clearCalls > clearsBeforeTrackChange && strokeCalls > strokesBeforeTrackChange,
+            'trackChanged wakes settled paused edge border even with identical accent RGB');
+        edge.release();
+
+        // 3. StageHost: non-Node pointerdown target closes picker without throwing; inert return-focus falls back to toggle
+        installCanvasStub(dom.window);
+        runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
+        for (const dep of [
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'modes/tempera-manager.js', 'modes/sonnet-manager.js', 'modes/diorama-manager.js',
+            'modes/fume-manager.js', 'music-stage-advanced-modes.js',
+            'music-stage-modes.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const settingsWrap = dom.window.document.createElement('div');
+        settingsWrap.className = 'music-stage-settings';
+        settingsWrap.innerHTML = '<button class="music-stage-settings-toggle"></button><div class="music-stage-settings-card" hidden><button class="music-stage-settings-close"></button></div>';
+        root.appendChild(settingsWrap);
+        const { app } = createApp();
+        dom.window.setupMusicStage(app);
+        app.stageHost.enter();
+
+        const pickerToggle = root.querySelector('.music-stage-mode-picker-toggle');
+        if (pickerToggle) {
+            pickerToggle.click();
+            const pd = new dom.window.Event('pointerdown', { bubbles: true });
+            Object.defineProperty(pd, 'target', { value: { fake: true } });
+            assert.doesNotThrow(() => dom.window.document.dispatchEvent(pd), 'non-Node pointerdown target does not throw');
+        }
+
+        const inertWrap = dom.window.document.createElement('div');
+        const inertBtn = dom.window.document.createElement('button');
+        inertWrap.appendChild(inertBtn);
+        dom.window.document.body.appendChild(inertWrap);
+        inertBtn.focus();
+        const settingsToggle = root.querySelector('.music-stage-settings-toggle');
+        assert.ok(settingsToggle, 'settings toggle exists');
+        settingsToggle.click();
+        inertWrap.setAttribute('inert', '');
+        const closeBtn = root.querySelector('.music-stage-settings-close');
+        assert.ok(closeBtn, 'settings close button exists');
+        closeBtn.click();
+        assert.equal(dom.window.document.activeElement, settingsToggle, 'inert return-focus falls back to settingsToggle');
+        app.stageHost.destroy();
+    } finally {
+        dom.window.close();
+    }
+});

@@ -1503,3 +1503,56 @@ test('Batch 113: classic-list tail-dot/zero-digit ties & _cols fast path, music-
         dom.window.close();
     }
 });
+
+test('Batch 124: music-skin segmented keydown ignores Alt/Ctrl/Meta/IME keys and classic-list like handler guards non-Element targets', () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div class="music-stage-settings-body"><label><select id="eq-type-select"><option value="iir">IIR</option><option value="fir">FIR</option></select></label></div>
+        <ul id="playlist"></ul>
+    </body>`, { runScripts: 'outside-only', url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const select = doc.getElementById('eq-type-select');
+        const list = doc.getElementById('playlist');
+        const app = {
+            playlist: [{ path: '/a.flac', title: 'A', artist: 'B', duration: 100 }],
+            playlistEl: list,
+            isLiked: () => false,
+            toggleLike() {},
+            renderPlaylist() {}
+        };
+        window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-app-hooks.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+        window.eval(source);
+        window.setupMusicSkin(app);
+        window.setupMusicClassicList(app);
+
+        const seg = doc.querySelector('.music-skin-segmented');
+        assert.ok(seg, 'segmented control built for #eq-type-select');
+        const btns = seg.querySelectorAll('button');
+        btns[0].focus();
+        for (const mods of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }, { isComposing: true }]) {
+            const ev = new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true, ...mods });
+            seg.dispatchEvent(ev);
+            assert.equal(select.value, 'iir', `segmented control ignores ArrowRight with ${Object.keys(mods)[0]}`);
+            assert.equal(ev.defaultPrevented, false);
+        }
+        const plain = new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+        seg.dispatchEvent(plain);
+        assert.equal(select.value, 'fir', 'plain ArrowRight still switches segmented control');
+
+        // Classic-list like listener tolerates synthetic event target without closest()
+        const clickEv = new window.Event('click', { bubbles: true });
+        Object.defineProperty(clickEv, 'target', { value: doc.createTextNode('txt') });
+        const dblEv = new window.Event('dblclick', { bubbles: true });
+        Object.defineProperty(dblEv, 'target', { value: doc.createTextNode('txt') });
+        assert.doesNotThrow(() => {
+            list.dispatchEvent(clickEv);
+            list.dispatchEvent(dblEv);
+        }, 'classic-list like click/dblclick listeners tolerate non-Element targets');
+
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

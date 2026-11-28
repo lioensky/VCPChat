@@ -341,3 +341,52 @@ test('Batch 86: music-effects caches EQ section content lookup, deduplicates ari
     assert.equal(app.eqPresetSelect.value, 'custom');
     assert.equal(keysCalls, 1, 'syncEqPresetSelect caches eqBands keys across slider drag updates');
 });
+
+test('Batch 124: music-effects guards prototype preset keys and missing irSwitch/replaygainSwitch', async () => {
+    let eqSendCalls = 0;
+    const options = [];
+    const app = {
+        eqPresetSelect: { value: '', appendChild(el) { options.push(el); } },
+        eqPresets: { balance: { 60: 0 }, rock: { 60: 4 } },
+        eqBands: { 60: 0 },
+        eqSwitch: { checked: true },
+        irStatus: { className: '', contains: () => false, querySelector: () => null },
+        loudnessSwitch: { checked: true },
+        loudnessModeSelect: { value: 'replaygain_track' },
+        loudnessLufsSlider: { value: '-14' },
+        loudnessPreampSlider: { value: '0' },
+        saveSettings() {},
+        api: {
+            setMusicEq: async () => { eqSendCalls += 1; return { status: 'success' }; },
+            musicLoadIr: async () => ({ status: 'success' }),
+            musicUnloadIr: async () => ({ status: 'success' }),
+            configureMusicNormalization: async () => ({ status: 'success' })
+        }
+    };
+    const context = {
+        app,
+        window: {},
+        document: {
+            createElement: (tag) => ({ tag, value: '', textContent: '', disabled: false, hidden: false }),
+            getElementById: () => null
+        }
+    };
+    vm.runInNewContext(fs.readFileSync('Musicmodules/music-effects.js', 'utf8') + '\nsetupEffects(app);', context);
+
+    app.populateEqPresets();
+    assert.deepEqual(options.map((o) => [o.value, o.textContent]), [
+        ['custom', '自定义'],
+        ['balance', '平衡'],
+        ['rock', '摇滚']
+    ]);
+
+    app.applyEqPreset('toString');
+    app.applyEqPreset('constructor');
+    assert.equal(eqSendCalls, 0, 'prototype keys do not trigger applyEqPreset or sendEqSettings');
+
+    await assert.doesNotReject(() => app.loadIrFile('/ir/hall.wav'));
+    assert.equal(app.irEnabled, true);
+    await assert.doesNotReject(() => app.unloadIr());
+    assert.equal(app.irEnabled, false);
+    await assert.doesNotReject(() => app.updateLoudnessSettings());
+});
