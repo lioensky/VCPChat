@@ -16,6 +16,7 @@
     const URI_ESC_RE = /[?#']/g;
     const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
     const COVER_CANDIDATES = ['cover.jpg', 'folder.jpg', 'cover.png'];
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const norm = (s) => String(s || '').trim().toLowerCase();
     const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
     const firstArtist = (t) => String((t && t.artist) || '').split(ARTIST_SPLIT_RE)[0].trim();
@@ -69,13 +70,18 @@
     };
     // 连续听歌的最长天数（一天听满 1 分钟才算）
     const longestStreak = (daily) => {
-        const keys = Object.keys(daily || {}).filter((k) => DAY_KEY_RE.test(k) && daily[k] >= 60).sort();
+        if (!daily) return 0;
+        const keys = [];
+        for (const k in daily) {
+            if (Object.prototype.hasOwnProperty.call(daily, k) && DAY_KEY_RE.test(k) && daily[k] >= 60) keys.push(k);
+        }
+        keys.sort();
         let best = 0, run = 0, prev = null;
-        for (const k of keys) {
-            const [y, m, d] = k.split('-').map(Number);
-            const t = new Date(y, m - 1, d).getTime();
+        for (let i = 0; i < keys.length; i += 1) {
+            const k = keys[i];
+            const t = new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10))).getTime();
             run = prev !== null && Math.round((t - prev) / 86400000) === 1 ? run + 1 : 1;
-            best = Math.max(best, run);
+            if (run > best) best = run;
             prev = t;
         }
         return best;
@@ -130,7 +136,6 @@
         let closeTimer = 0;
         let closingOverlay = null;
         let range = 30;
-        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         try { const v = Number(global.localStorage?.getItem(RANGE_KEY)); if (RANGES.some(([d]) => d === v)) range = v; } catch (e) { /* 默认 30 天 */ }
 
         const el = (tag, cls, text) => {

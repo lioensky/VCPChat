@@ -16,10 +16,11 @@
     'use strict';
 
     const DAY = 86400000;
-    const ASCII_ONLY = /^[\x00-\x7f]*$/;
+    // ASCII、常用汉字（U+4E00–U+9FFF）和基础平假名（U+3041–U+3096）均为 NFKC 不变量，跳过昂贵的 ICU normalize('NFKC')
+    const NEEDS_NFKC_RE = /[^\x00-\x7f\u4e00-\u9fff\u3041-\u3096]/;
     const norm = (s) => {
         const str = String(s || '');
-        return ASCII_ONLY.test(str) ? str.toLowerCase() : str.toLowerCase().normalize('NFKC');
+        return NEEDS_NFKC_RE.test(str) ? str.toLowerCase().normalize('NFKC') : str.toLowerCase();
     };
     const statOf = (ctx, t) => (ctx && ctx.stats ? ctx.stats.get(t) : null);
     const lengthOf = (t) => Number(t && t.duration) || 0;
@@ -140,10 +141,24 @@
         // 把每个智能歌单按条件重新算一遍；有变化才存盘、重画
         app.refreshSmartPlaylists = () => {
             let changed = false;
-            for (const pl of lists()) {
+            const listArr = lists();
+            for (let li = 0; li < listArr.length; li += 1) {
+                const pl = listArr[li];
                 if (!pl || !pl.smart || typeof pl.smart.query !== 'string') continue;
-                const paths = evaluate(app.playlist, pl.smart.query, ctx()).map((t) => t.path);
-                if (paths.length !== (pl.tracks || []).length || paths.some((p, k) => p !== pl.tracks[k])) { pl.tracks = paths; changed = true; }
+                const matched = evaluate(app.playlist, pl.smart.query, ctx());
+                const prev = pl.tracks || [];
+                let diff = matched.length !== prev.length;
+                if (!diff) {
+                    for (let k = 0; k < matched.length; k += 1) {
+                        if (matched[k].path !== prev[k]) { diff = true; break; }
+                    }
+                }
+                if (diff) {
+                    const paths = new Array(matched.length);
+                    for (let k = 0; k < matched.length; k += 1) paths[k] = matched[k].path;
+                    pl.tracks = paths;
+                    changed = true;
+                }
             }
             if (changed) refreshViews();
             return changed;
@@ -151,10 +166,15 @@
         app.createSmartPlaylist = (query, name) => {
             const q = String(query || '').trim();
             if (!q) return null;
-            const taken = new Set(lists().map((p) => String(p && p.id || '')));
+            const listArr = lists();
+            const taken = new Set();
+            for (let i = 0; i < listArr.length; i += 1) taken.add(String(listArr[i] && listArr[i].id || ''));
             let idNum = Date.now();
             while (taken.has('s' + idNum)) idNum += 1;
-            const pl = { id: 's' + idNum, name: String(name || '').trim() || '智能：' + q, tracks: evaluate(app.playlist, q, ctx()).map((t) => t.path), smart: { query: q } };
+            const matched = evaluate(app.playlist, q, ctx());
+            const tracks = new Array(matched.length);
+            for (let i = 0; i < matched.length; i += 1) tracks[i] = matched[i].path;
+            const pl = { id: 's' + idNum, name: String(name || '').trim() || '智能：' + q, tracks, smart: { query: q } };
             lists().push(pl);
             refreshViews();
             try {

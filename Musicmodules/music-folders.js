@@ -13,6 +13,7 @@
     const TRAIL_SEP_RE = /[\\/]+$/;
     const SEP_SPLIT_RE = /[\\/]+/;
     const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const key = (p) => String(p || '').replace(SLASH_RE, '\\').replace(TRAIL_BSLASH_RE, '').toLowerCase();
     const underDir = (file, dir) => { const f = key(file); const d = key(dir); return f === d || f.startsWith(d + '\\'); };
     const parentOf = (dir) => { const s = String(dir).replace(TRAIL_SEP_RE, ''); const at = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/')); return at > 0 ? s.slice(0, at) : ''; };
@@ -26,16 +27,29 @@
     const folderRows = (remembered, tracks) => {
         const rows = (remembered || []).map((f) => ({ path: f.path || f, count: 0, remembered: true, exists: f.exists !== false }));
         const rowKeys = rows.map((r) => key(r.path));
+        const rowPrefixes = rowKeys.map((rk) => rk + '\\');
+        const rowLen = rowKeys.length;
         const others = new Map();
         const homeOf = new Map(); // 上级目录键 → 归到哪个加过的文件夹（-1 = 都不是）
-        for (const t of tracks || []) {
+        const dirKeyCache = new Map(); // 原始目录串 → 规范键（同目录多首歌跳过重复正则与小写化）
+        const trackList = tracks || [];
+        for (let ti = 0; ti < trackList.length; ti += 1) {
+            const t = trackList[ti];
             const p = t && t.path;
             if (!isLocal(p) || t.isRemote) continue;
             const dir = parentOf(p);
-            const dk = key(dir || p);
+            const raw = dir || p;
+            let dk = dirKeyCache.get(raw);
+            if (dk === undefined) {
+                dk = key(raw);
+                dirKeyCache.set(raw, dk);
+            }
             let home = homeOf.get(dk);
             if (home === undefined) {
-                home = rowKeys.findIndex((rk) => dk === rk || dk.startsWith(rk + '\\'));
+                home = -1;
+                for (let ri = 0; ri < rowLen; ri += 1) {
+                    if (dk === rowKeys[ri] || dk.startsWith(rowPrefixes[ri])) { home = ri; break; }
+                }
                 homeOf.set(dk, home);
             }
             if (home !== -1) { rows[home].count++; continue; }
@@ -97,7 +111,6 @@
         let openRaf = 0;
         let closeTimer = 0;
         let closingOverlay = null;
-        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         // 开着的时候曲库变了（加文件夹、重扫、后台同步在扫）就跟着刷新歌数，不用关掉再开
         let watchTimer = 0;
         let seen = null;
@@ -167,7 +180,12 @@
                 const rowKey = key(row.path);
                 const rowPrefix = rowKey + '\\';
                 const inRow = (p) => { const f = key(p); return f === rowKey || f.startsWith(rowPrefix); };
-                const drop = new Set((app.playlist || []).filter((t) => t && t !== current && isLocal(t.path) && inRow(t.path)));
+                const drop = new Set();
+                const plList = app.playlist || [];
+                for (let pi = 0; pi < plList.length; pi += 1) {
+                    const t = plList[pi];
+                    if (t && t !== current && isLocal(t.path) && inRow(t.path)) drop.add(t);
+                }
                 const keptPlaying = current && isLocal(current.path) && inRow(current.path);
                 if (drop.size) {
                     app.playlist = app.playlist.filter((t) => !drop.has(t));

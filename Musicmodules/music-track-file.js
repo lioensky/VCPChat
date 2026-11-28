@@ -9,6 +9,7 @@
     const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
     const EXT_RE = /\.([a-z0-9]{1,5})$/i;
     const QUERY_HASH_RE = /[?#]/;
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const isLocal = (p) => typeof p === 'string' && p !== '' && !SCHEME_RE.test(p);
 
     const pad2 = (n) => String(n).padStart(2, '0');
@@ -90,7 +91,6 @@
         let openRaf = 0;
         let closeTimer = 0;
         let closingOverlay = null;
-        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const flushClosing = () => {
             if (closeTimer) { clearTimeout(closeTimer); closeTimer = 0; }

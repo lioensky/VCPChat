@@ -148,7 +148,13 @@ function setupUI(app) {
         if (!list) return;
         const total = shownSongs.length;
         const pitch = rowPitch;
-        const view = knownView !== undefined ? knownView : (cachedListHeight > 0 ? cachedListHeight : list.clientHeight);
+        let view;
+        if (knownView !== undefined) view = knownView;
+        else if (cachedListHeight > 0) view = cachedListHeight;
+        else {
+            view = list.clientHeight;
+            if (view > 0) cachedListHeight = view;
+        }
         const scrollTop = knownScrollTop !== undefined ? knownScrollTop : list.scrollTop;
         let from = 0;
         let to = Math.min(total, FALLBACK_ROWS);
@@ -369,6 +375,13 @@ function setupUI(app) {
     const renderNow = (filtered) => {
         const songs = filtered || app.playlist;
         const empty = emptyText(songs);
+        // 先读取视口高度与滚动位置再改写 dataset.emptyText，避免 renderWindow(true) 写后即读触发强制同步布局
+        let preView = cachedListHeight;
+        if (!(preView > 0) && app.playlistEl) {
+            preView = app.playlistEl.clientHeight;
+            if (preView > 0) cachedListHeight = preView;
+        }
+        const preScrollTop = app.playlistEl ? app.playlistEl.scrollTop : 0;
         if (empty) {
             if (app.playlistEl.dataset.emptyText !== empty) app.playlistEl.dataset.emptyText = empty;
         } else if ('emptyText' in app.playlistEl.dataset) {
@@ -428,7 +441,7 @@ function setupUI(app) {
         renderedTitles = nextTitles;
         // 换了一组歌：已建的行按新下标重算，不能复用
         for (const li of app.playlistEl.children) li._track = null;
-        renderWindow(true);
+        renderWindow(true, preView, preScrollTop);
         app.updateAllCount();
     };
 
@@ -443,6 +456,7 @@ function setupUI(app) {
             const playlistRect = playlist.getBoundingClientRect();
             const itemRect = activeItem.getBoundingClientRect();
             const viewH = cachedListHeight > 0 ? cachedListHeight : (playlist.clientHeight || playlistRect.height || 0);
+            if (viewH > 0 && cachedListHeight <= 0) cachedListHeight = viewH;
             const curTop = playlist.scrollTop;
             const maxScrollTop = Math.max(0, playlist.scrollHeight - viewH);
             const desired = curTop + itemRect.top - playlistRect.top - viewH * 0.25;
@@ -456,6 +470,7 @@ function setupUI(app) {
         const at = current ? positionOf.get(current) : undefined;
         if (at === undefined || !(rowPitch > 0)) return false;
         const viewH = cachedListHeight > 0 ? cachedListHeight : (playlist.clientHeight || playlist.getBoundingClientRect().height || 0);
+        if (viewH > 0 && cachedListHeight <= 0) cachedListHeight = viewH;
         if (!(viewH > 0)) return false;
         const maxScrollTop = Math.max(0, playlist.scrollHeight - viewH);
         const nextTop = Math.min(maxScrollTop, Math.max(0, at * rowPitch - viewH * 0.25));

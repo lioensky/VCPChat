@@ -288,7 +288,11 @@
             save, remove, promptSave,
             isCustom: () => {
                 const cur = currentBands();
-                return !Object.values(app.eqPresets).some((b) => bandsEqual(b, cur));
+                const all = app.eqPresets;
+                for (const k in all) {
+                    if (hasOwn.call(all, k) && bandsEqual(all[k], cur)) return false;
+                }
+                return true;
             }
         };
     }

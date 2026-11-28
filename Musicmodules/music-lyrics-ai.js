@@ -129,6 +129,37 @@
             return result;
         });
 
+        let ntCacheRef = null;
+        let ntCacheLen = -1;
+        let ntCacheFirstTr = undefined;
+        let ntCacheMidTr = undefined;
+        let ntCacheLastTr = undefined;
+        let ntCacheVal = false;
+        const checkNeedsTranslation = () => {
+            const lines = app.currentLyrics;
+            if (!Array.isArray(lines) || lines.length < 2) {
+                ntCacheRef = lines;
+                ntCacheLen = Array.isArray(lines) ? lines.length : -1;
+                ntCacheVal = false;
+                return false;
+            }
+            const len = lines.length;
+            const firstTr = lines[0]?.translation;
+            const midTr = lines[len >> 1]?.translation;
+            const lastTr = lines[len - 1]?.translation;
+            if (lines === ntCacheRef && len === ntCacheLen
+                && firstTr === ntCacheFirstTr && midTr === ntCacheMidTr && lastTr === ntCacheLastTr) {
+                return ntCacheVal;
+            }
+            ntCacheRef = lines;
+            ntCacheLen = len;
+            ntCacheFirstTr = firstTr;
+            ntCacheMidTr = midTr;
+            ntCacheLastTr = lastTr;
+            ntCacheVal = needsTranslation(lines);
+            return ntCacheVal;
+        };
+
         app.lyricsAi = {
             get enabled() { return enabled; },
             set enabled(v) {
@@ -137,7 +168,7 @@
                 if (enabled) { unavailable = false; run().catch(() => {}); }
             },
             translateNow: () => run({ manual: true }),
-            needsTranslation: () => needsTranslation(app.currentLyrics)
+            needsTranslation: checkNeedsTranslation
         };
     }
 

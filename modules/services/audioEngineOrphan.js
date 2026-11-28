@@ -11,6 +11,8 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const TASKLIST_ROW_RE = /^"([^"]+)","(\d+)"/m;
+const PATH_SEP_RE = /[\\/]/;
 let tmpSeq = 0;
 
 function readRecord(file) {
@@ -56,7 +58,7 @@ function imageName(pid, { platform = process.platform, run = execFile } = {}) {
         if (platform === 'win32') {
             run('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { timeout: 4000, windowsHide: true }, (error, stdout) => {
                 if (error) return resolve(null);
-                const match = /^"([^"]+)","(\d+)"/m.exec(String(stdout || ''));
+                const match = TASKLIST_ROW_RE.exec(String(stdout || ''));
                 resolve(match && Number(match[2]) === pid ? match[1].toLowerCase() : null);
             });
             return;
@@ -89,7 +91,7 @@ async function reapOrphan(file, {
         clearRecord(file);
         return { reaped: false, reason: 'gone' };
     }
-    const expected = String(binaryPath || record.binary || '').split(/[\\/]/).pop().toLowerCase();
+    const expected = String(binaryPath || record.binary || '').split(PATH_SEP_RE).pop().toLowerCase();
     const actual = await image(record.pid);
     // Linux 的 comm 最多 15 个字符
     const same = Boolean(expected && actual) && (actual === expected || (actual.length >= 15 && expected.startsWith(actual)));

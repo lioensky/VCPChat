@@ -12,6 +12,7 @@
     const HTTP_URL_RE = /^https?:\/\//i;
     const EXT_RE = /\.([a-z0-9]+)$/i;
     const TRAILING_ZERO_RE = /\.0$/;
+    const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
     const norm = (s) => String(s || '').trim().toLowerCase();
     const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
     const isRemote = (t) => Boolean(t && (t.isRemote || HTTP_URL_RE.test(String(t.path || ''))));
@@ -43,8 +44,8 @@
         const out = [];
         for (const list of groups.values()) {
             if (list.length < 2) continue;
-            const sorted = list.slice().sort((a, b) => rank(b) - rank(a));
-            out.push({ keep: sorted[0], extra: sorted.slice(1) });
+            list.sort((a, b) => rank(b) - rank(a));
+            out.push({ keep: list[0], extra: list.slice(1) });
         }
         return out;
     }
@@ -74,7 +75,6 @@
         let cachedGroups = null;
         let cachedPlaylist = null;
         let cachedPlaylistLen = -1;
-        const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
         const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
         const title = (t) => (app.stripAudioExtension ? app.stripAudioExtension(t.title || '') : String(t.title || '')) || '未知标题';
         const toast = (message, action) => { try { global.MusicToast?.show?.({ message, action, duration: action ? 10000 : undefined }); } catch (e) { /* 没有提示层 */ } };
@@ -242,23 +242,27 @@
             const ul = el('ul', 'mdupes-list');
             const frag = doc.createDocumentFragment();
             const MAX = 200;
-            groups.slice(0, MAX).forEach((g) => {
+            const shown = Math.min(groups.length, MAX);
+            const appendFileRow = (li, t, isKeep) => {
+                const row = el('div', isKeep ? 'mdupes-file keep' : 'mdupes-file');
+                row.appendChild(el('span', 'mdupes-badge', isKeep ? '留下' : '移除'));
+                row.appendChild(el('span', 'mdupes-spec', spec(t)));
+                const where = el('span', 'mdupes-path', folderOf(t));
+                where.title = t.path;
+                row.appendChild(where);
+                li.appendChild(row);
+            };
+            for (let gi = 0; gi < shown; gi += 1) {
+                const g = groups[gi];
                 const li = el('li', 'mdupes-group');
                 const head = el('div', 'mdupes-title');
                 head.appendChild(el('span', 'mstats-name', title(g.keep)));
                 if (g.keep.artist) head.appendChild(el('span', 'mstats-sub', g.keep.artist));
                 li.appendChild(head);
-                [g.keep, ...g.extra].forEach((t, i) => {
-                    const row = el('div', `mdupes-file${i === 0 ? ' keep' : ''}`);
-                    row.appendChild(el('span', 'mdupes-badge', i === 0 ? '留下' : '移除'));
-                    row.appendChild(el('span', 'mdupes-spec', spec(t)));
-                    const where = el('span', 'mdupes-path', folderOf(t));
-                    where.title = t.path;
-                    row.appendChild(where);
-                    li.appendChild(row);
-                });
+                appendFileRow(li, g.keep, true);
+                for (let ei = 0; ei < g.extra.length; ei += 1) appendFileRow(li, g.extra[ei], false);
                 frag.appendChild(li);
-            });
+            }
             ul.appendChild(frag);
             body.appendChild(ul);
             if (groups.length > MAX) body.appendChild(el('p', 'mstats-note', `还有 ${groups.length - MAX} 组没列出来，移除时一起处理。`));

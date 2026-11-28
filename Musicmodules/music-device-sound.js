@@ -101,10 +101,15 @@
         const apply = (profile) => {
             applying = true;
             try {
-                for (const [band, gain] of Object.entries(profile.bands || {})) {
-                    const slider = getSlider(band);
-                    if (slider) slider.value = String(gain);
-                    if (app.eqBands && band in app.eqBands) app.eqBands[band] = gain;
+                const bands = profile.bands;
+                if (bands) {
+                    for (const band in bands) {
+                        if (!hasOwn.call(bands, band)) continue;
+                        const gain = bands[band];
+                        const slider = getSlider(band);
+                        if (slider) slider.value = String(gain);
+                        if (app.eqBands && band in app.eqBands) app.eqBands[band] = gain;
+                    }
                 }
                 if (app.eqSwitch) {
                     app.eqSwitch._programmaticUpdate = true;
