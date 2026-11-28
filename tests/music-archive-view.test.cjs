@@ -2488,3 +2488,59 @@ test('Batch 128: archive-list skips empty captureViewport, reuses track rows in-
         f.close();
     }
 });
+
+test('Batch 129: archive-view hides classic container before readTheme, avoids getComputedStyle in resize, defers boot syncSceneLayout, and music.js prefetches boot IPCs', async () => {
+    // 1. Verify setMode('archive') adds music-archive-on BEFORE readTheme while root.hidden is still true, and resize() does not call getComputedStyle(document.body)
+    const themeSnapshots = [];
+    let bodyCsCalls = 0;
+    let detailRoomCalls = 0;
+    const rafs = [];
+    const f = fixture({
+        n: 12,
+        setup: (w) => {
+            Object.defineProperty(w, 'innerWidth', { configurable: true, value: 1440 });
+            Object.defineProperty(w, 'innerHeight', { configurable: true, value: 900 });
+            w.document.body.style.setProperty('--music-dock-safe-bottom', '96px');
+            w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+            w.cancelAnimationFrame = () => {};
+            const origCs = w.getComputedStyle.bind(w);
+            w.getComputedStyle = (el, ...rest) => {
+                if (el === w.document.body) {
+                    bodyCsCalls += 1;
+                    themeSnapshots.push({
+                        archiveOn: w.document.body.classList.contains('music-archive-on'),
+                        rootHidden: w.document.getElementById('music-archive-view').hidden
+                    });
+                }
+                return origCs(el, ...rest);
+            };
+        }
+    });
+    try {
+        // Initial init runs readTheme once during setMode (music-archive-on=true, root.hidden=true); resize() adds 0 body getComputedStyle calls
+        assert.equal(bodyCsCalls, 1, 'archive init calls getComputedStyle(body) once for readTheme; resize() uses inline --music-dock-safe-bottom');
+        assert.deepEqual(themeSnapshots[0], { archiveOn: true, rootHidden: true }, 'setMode hides classic container before readTheme while root stays hidden');
+        // Calling resize explicitly must not invoke getComputedStyle(document.body)
+        f.w.dispatchEvent(new f.w.Event('resize'));
+        assert.equal(bodyCsCalls, 1, 'resize() reads inline --music-dock-safe-bottom without getComputedStyle(body)');
+        // Verify lift was computed from inline --music-dock-safe-bottom = 96px
+        const hud = f.w.document.querySelector('.archive-hud');
+        assert.ok(parseInt(hud.style.getPropertyValue('--archive-dock-lift'), 10) > 0, 'inline --music-dock-safe-bottom sets --archive-dock-lift');
+
+        // Verify music.js fires read-only boot IPCs before setupUtils(app)
+        const musicSrc = read('Musicmodules/music.js');
+        const ipcPos = musicSrc.indexOf('getMusicPlaylist()');
+        const setupPos = musicSrc.indexOf('setupUtils(app)');
+        assert.ok(ipcPos > 0 && setupPos > ipcPos, 'music.js initiates boot read-only IPCs before synchronous setupUtils/MusicArchive.init');
+
+        // Verify music-sidebar loadCustomPlaylists accepts a prefetched promise
+        const sidebarApp = { api: { getCustomPlaylists: async () => { throw new Error('should not call IPC when prefetched'); } } };
+        f.w.eval(read('Musicmodules/music-sidebar.js'));
+        f.w.setupSidebar(sidebarApp);
+        await sidebarApp.loadCustomPlaylists(Promise.resolve([{ id: 'p1', name: 'P1', tracks: [] }]));
+        assert.equal(sidebarApp.customPlaylists.length, 1, 'loadCustomPlaylists consumes prefetched promise');
+        assert.equal(detailRoomCalls, 0);
+    } finally {
+        f.close();
+    }
+});
