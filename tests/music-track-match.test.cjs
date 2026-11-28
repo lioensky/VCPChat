@@ -71,3 +71,27 @@ test('Batch 69: splitQuery handles en-dash separator consistently with hyphen an
     assert.equal(pick('晴天 – 翻唱者'), 'D:\\M\\qt2.flac');
     assert.equal(pick('晴天 — 翻唱者'), 'D:\\M\\qt2.flac');
 });
+
+test('Batch 93: ASCII/CJK/hiragana tracks skip String.prototype.normalize while full-width compatibility chars still normalize', () => {
+    let normCalls = 0;
+    const origNorm = String.prototype.normalize;
+    String.prototype.normalize = function trackedNormalize(...args) {
+        normCalls += 1;
+        return origNorm.apply(this, args);
+    };
+    try {
+        const fresh = [
+            { path: 'D:\\M\\a.flac', title: '晴天', artist: '周杰伦', album: '叶惠美' },
+            { path: 'D:\\M\\b.flac', title: '星の余韻', artist: '米津玄師', album: 'あいう' }
+        ];
+        assert.equal(findTrack(fresh, '晴天')?.path, 'D:\\M\\a.flac');
+        assert.equal(findTrack(fresh, '星の余韻')?.path, 'D:\\M\\b.flac');
+        assert.equal(normCalls, 0, 'pure ASCII/CJK/hiragana strings bypass ICU NFKC');
+
+        const fw = [{ path: 'D:\\M\\fw.flac', title: 'ＬＥＭＯＮ', artist: 'ＡＢＣ' }];
+        assert.equal(findTrack(fw, 'lemon')?.path, 'D:\\M\\fw.flac');
+        assert.ok(normCalls > 0, 'full-width compatibility characters still run NFKC normalization');
+    } finally {
+        String.prototype.normalize = origNorm;
+    }
+});

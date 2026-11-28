@@ -2438,3 +2438,58 @@ test('Batch 90: paused stage CSS halts Starborn cue pulse and Diorama HUD spin a
         'reduce-motion disables Diorama HUD ring spin'
     );
 });
+
+test('Batch 93: edge spectrum quantizes alpha to 8-bit precision and redraws cleanly after release()', () => {
+    const dom = createStageDom();
+    try {
+        const strokeColors = [];
+        dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+            if (type !== '2d') return null;
+            let lastStyle = '';
+            return new Proxy({
+                set strokeStyle(v) { lastStyle = v; },
+                get strokeStyle() { return lastStyle; },
+                stroke() { strokeColors.push(lastStyle); }
+            }, {
+                get(target, prop) { return prop in target ? target[prop] : () => {}; },
+                set(target, prop, value) { target[prop] = value; return true; }
+            });
+        };
+        for (const dep of ['music-stage-runtime.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const root = dom.window.document.getElementById('music-stage');
+        Object.defineProperty(root, 'clientWidth', { value: 960 });
+        Object.defineProperty(root, 'clientHeight', { value: 540 });
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        const edge = dom.window.MusicStageEdge.create({
+            app: { stagePalette: { accentRgb: { r: 20, g: 40, b: 60 } } },
+            root,
+            elements: { edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'), edgeCanvas },
+            state: { config: { quality: 'standard', edgeSpectrum: true } },
+            scope: { add() {} },
+            clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+        });
+
+        const spec = new Float32Array(64).fill(0.5);
+        edge.draw({ now: 1000, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.51, spectrum: spec } });
+        assert.equal(strokeColors.length, 8);
+        const firstOuter = strokeColors[0];
+        // Tiny power delta within the same 8-bit alpha bucket (both quantize to 152/255) reuses the cached rgba string
+        edge.draw({ now: 1050, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.512, spectrum: spec } });
+        assert.equal(strokeColors[8], firstOuter, '8-bit quantized alpha reuses cached rgba string');
+        // Larger power jump crosses an 8-bit step and updates stroke color
+        edge.draw({ now: 1100, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.95, spectrum: spec } });
+        assert.notEqual(strokeColors[16], firstOuter, 'significant power shift updates edge stroke alpha');
+
+        // release() drops cached buffers & shrinks strips to 1x1, then subsequent draw reallocates cleanly
+        edge.release();
+        assert.equal(edgeCanvas.width, 1);
+        strokeColors.length = 0;
+        edge.draw({ now: 2000, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.6, spectrum: spec } });
+        assert.equal(edgeCanvas.width, 960, 'edge reallocates cleanly after release()');
+        assert.equal(strokeColors.length, 8);
+    } finally {
+        dom.window.close();
+    }
+});

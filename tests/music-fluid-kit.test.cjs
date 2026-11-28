@@ -858,3 +858,78 @@ test('Batch 85: music-fluid-select bodyObs prefilters leaf-node mutations before
         dom.window.close();
     }
 });
+
+test('Batch 93: fluid-select clones chevron + batches open layout, and watchTrails tracks dropByRow including nested context-submenu', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <select id="b93-sel"><option value="a">第一</option><option value="b" selected>第二</option></select>
+        <div class="context-menu">
+            <div class="context-menu-item" id="cm-outer">外层</div>
+            <div class="context-menu-item" id="cm-outer2">外层2</div>
+            <div class="context-submenu">
+                <div class="submenu-item" id="cm-inner">子项</div>
+                <div class="submenu-item" id="cm-inner2">子项2</div>
+            </div>
+        </div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    window.CSS = { escape: (s) => String(s) };
+    window.requestAnimationFrame = () => 1;
+    window.cancelAnimationFrame = () => {};
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+
+        const sel = doc.getElementById('b93-sel');
+        const trigger = sel.nextElementSibling;
+        assert.ok(trigger.querySelector('svg.mfs-chev'), 'dressed trigger mounts cloned chevron SVG');
+
+        const events = [];
+        trigger.getBoundingClientRect = () => {
+            events.push('read:trigger');
+            return { left: 80, top: 120, right: 240, bottom: 152, width: 160, height: 32 };
+        };
+        const origAppend = doc.body.append.bind(doc.body);
+        doc.body.append = (...args) => {
+            if (args[0]?.classList?.contains('mfs-menu')) events.push('append:menu');
+            return origAppend(...args);
+        };
+        trigger.click();
+        assert.ok(events.indexOf('read:trigger') >= 0 && events.indexOf('read:trigger') < events.indexOf('append:menu'),
+            'open() measures trigger before appending menu to document.body');
+
+        // watchTrails: dropByRow avoids :scope > .mf-trail querySelector after first mount and supports nested .context-submenu
+        const outerMenu = doc.querySelector('.context-menu');
+        const subMenu = doc.querySelector('.context-submenu');
+        const cmOuter = doc.getElementById('cm-outer');
+        const cmOuter2 = doc.getElementById('cm-outer2');
+        const cmInner = doc.getElementById('cm-inner');
+        const cmInner2 = doc.getElementById('cm-inner2');
+        outerMenu.getBoundingClientRect = () => ({ left: 0, top: 0, width: 180, height: 120, right: 180, bottom: 120 });
+        subMenu.getBoundingClientRect = () => ({ left: 180, top: 0, width: 160, height: 80, right: 340, bottom: 80 });
+        cmOuter.getBoundingClientRect = () => ({ left: 4, top: 4, width: 172, height: 32, right: 176, bottom: 36 });
+        cmOuter2.getBoundingClientRect = () => ({ left: 4, top: 40, width: 172, height: 32, right: 176, bottom: 72 });
+        cmInner.getBoundingClientRect = () => ({ left: 184, top: 4, width: 152, height: 32, right: 336, bottom: 36 });
+        cmInner2.getBoundingClientRect = () => ({ left: 184, top: 40, width: 152, height: 32, right: 336, bottom: 72 });
+
+        cmOuter.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        cmInner.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        assert.ok(outerMenu.querySelector(':scope > .mf-trail'), 'outer context-menu received its trail');
+        assert.ok(subMenu.querySelector(':scope > .mf-trail'), 'nested context-submenu received its own trail');
+
+        let scopeTrailQueries = 0;
+        for (const el of [outerMenu, subMenu]) {
+            const origQs = el.querySelector.bind(el);
+            el.querySelector = (s) => { if (s.includes('mf-trail')) scopeTrailQueries += 1; return origQs(s); };
+        }
+        cmOuter2.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        cmInner2.dispatchEvent(new window.MouseEvent('pointerover', { bubbles: true }));
+        cmOuter2.dispatchEvent(new window.MouseEvent('pointerout', { bubbles: true }));
+        cmInner2.dispatchEvent(new window.MouseEvent('pointerout', { bubbles: true }));
+        assert.equal(scopeTrailQueries, 0, 'subsequent hover/pointerout resolves drop via WeakMap with 0 :scope > .mf-trail queries');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
