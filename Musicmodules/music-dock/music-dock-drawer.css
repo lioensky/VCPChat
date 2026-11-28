@@ -737,3 +737,29 @@ body.music-archive-on.music-archive-drawer-lyrics:not(.music-stage-active) #musi
 /* 播放列表页头：队列来自哪一组（原来写在首页页脚「正在播放 全部曲目」） */
 .md-qh .md-qsrc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--md-t3); }
 .md-qh .md-qsrc::before { content: "·"; margin-right: 6px; }
+
+/* 节能档免去大面积实时模糊与提示条滤镜动画，改用更实的抽屉底色保持可读性 */
+body.music-fl-low .md-drbg,
+#music-dock-root.md-fl-low .md-drbg,
+body.music-fl-low .md-hdl-tip,
+#music-dock-root.md-fl-low .md-hdl-tip {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body.music-fl-low .md-drbg,
+#music-dock-root.md-fl-low .md-drbg {
+  background: linear-gradient(to left, var(--md-dr-glass) 0, var(--md-dr-glass) var(--md-dr-tint, 56%), transparent 100%);
+}
+body.music-fl-low .mtst,
+body.music-fl-low .mtst.mtst-in,
+body.music-fl-low .mtst.mtst-out {
+  filter: none;
+  animation: none;
+}
+body.music-fl-low .mtst::before { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mtst, .mtst.mtst-in, .mtst.mtst-out { animation: none; transform: none; filter: none; }
+  .mtst::before { display: none; }
+  .mtst.mtst-evap::after { animation: none; }
+  #music-dock-root .md-dock, .md-fluid, .md-mist, #music-dock-root.md-fl-on .md-hdl { transition: none; }
+}

@@ -339,12 +339,6 @@
     transition: color 0.28s ease, opacity 0.3s ease, transform 0.5s var(--stage-ease), text-shadow 0.28s ease;
 }
 
-.music-stage-mode-cadenza .cadenza-word.is-active {
-    text-shadow:
-        0 0 calc(15px + var(--stage-vocal, 0) * 30px * var(--cadenza-glow, 1)) color-mix(in srgb, var(--stage-accent) 72%, transparent),
-        0 14px 30px rgba(0, 0, 0, 0.3);
-}
-
 .cadenza-word.is-passed {
     color: color-mix(in srgb, var(--stage-accent) 74%, var(--stage-ink));
     opacity: 0.82;
@@ -777,10 +771,26 @@ body.music-fl-low .starborn-director-cue.is-switching {
     animation: none;
 }
 
+body.music-reduce-motion .luminous-line.is-entering,
+body.music-reduce-motion .partita-block,
+body.music-reduce-motion .cadenza-line,
+body.music-reduce-motion .fume-paper.is-entering,
+body.music-reduce-motion .starborn-director-cue.is-switching,
+body.music-reduce-motion .starborn-transition-burst.is-active,
+body.music-reduce-motion .starborn-transition-burst.is-active::before,
+body.music-reduce-motion .starborn-transition-burst.is-active::after,
 body.music-reduce-motion .starborn-director-cue {
     animation: none;
 }
 @media (prefers-reduced-motion: reduce) {
+    .luminous-line.is-entering,
+    .partita-block,
+    .cadenza-line,
+    .fume-paper.is-entering,
+    .starborn-director-cue.is-switching,
+    .starborn-transition-burst.is-active,
+    .starborn-transition-burst.is-active::before,
+    .starborn-transition-burst.is-active::after,
     .starborn-director-cue {
         animation: none;
     }

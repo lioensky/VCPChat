@@ -178,7 +178,8 @@ function setupUI(app) {
     };
     const hydrateRow = (li, t) => {
         const titleText = app.stripAudioExtension(t.title) || '未知标题';
-        const index = libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
+        const hitIdx = libraryIndexOf.get(t);
+        const index = hitIdx !== undefined ? hitIdx : -1;
         if (li._idx !== index) {
             li._idx = index;
             const indexStr = String(index);
@@ -231,7 +232,8 @@ function setupUI(app) {
         for (let i = 0; i < existingKids.length; i += 1) {
             const li = existingKids[i];
             const t = li._track;
-            const idx = t && libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
+            const hitIdx = t ? libraryIndexOf.get(t) : undefined;
+            const idx = hitIdx !== undefined ? hitIdx : -1;
             const idxMatch = li._idx !== undefined ? li._idx === idx : li.dataset.index === String(idx);
             if (t && !keep.has(t) && idxMatch) keep.set(t, li);
             else unused.push(li);
@@ -599,11 +601,15 @@ function setupUI(app) {
         app.currentTheme = theme;
         // 舞台用着自定义主题时，它的明/暗也跟着这次切换走（不然舞台和面板还停在原来那一版）
         app.stageHost?.followGlobalTheme?.(theme);
-        document.body.classList.toggle('light-theme', light);
+        if (document.body.classList.contains('light-theme') !== light) {
+            document.body.classList.toggle('light-theme', light);
+        }
         if (themeButton) {
             const label = light ? '切换到深色' : '切换到浅色';
-            themeButton.title = label;
-            themeButton.setAttribute('aria-label', label);
+            if (themeButton.title !== label) {
+                themeButton.title = label;
+                themeButton.setAttribute('aria-label', label);
+            }
         }
         // CSS variables are immediately readable after changing the theme class.
         // Notify the stage even while paused; no playback restart is necessary.

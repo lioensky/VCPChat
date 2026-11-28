@@ -126,6 +126,10 @@
                 || edgeCanvasState.height !== height
                 || edgeCanvasState.dpr !== dpr
             ) {
+                // Read --stage-edge-mono before mutating strip canvases/styles to avoid write-then-read reflow.
+                const nextMono = typeof global.getComputedStyle === 'function'
+                    ? global.getComputedStyle(edgeStrips.top.canvas).getPropertyValue('--stage-edge-mono').trim() === '1'
+                    : false;
                 const metrics = edgeMetrics(width, height);
                 const { horizontalBand, verticalBand } = metrics;
                 const boxes = {
@@ -169,9 +173,6 @@
                 edgeCanvasState.layoutRev += 1;
                 edgeCanvasState.lastFlatStyle = -1;
                 edgeCanvasState.blank = false;
-                const nextMono = typeof global.getComputedStyle === 'function'
-                    ? global.getComputedStyle(edgeStrips.top.canvas).getPropertyValue('--stage-edge-mono').trim() === '1'
-                    : false;
                 if (edgeCanvasState.mono !== nextMono) {
                     edgeCanvasState.mono = nextMono;
                     edgeCanvasState.colorRev += 1;

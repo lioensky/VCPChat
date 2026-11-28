@@ -797,11 +797,15 @@ body.music-fl-low .diorama-vector-decor {
 body.music-fl-low .tempera-shot.is-entering,
 body.music-fl-low .sonnet-scene.is-entering,
 body.music-fl-low .music-stage-mode-diorama .diorama-hud-circle-dashed,
+body.music-reduce-motion .tempera-shot.is-entering,
+body.music-reduce-motion .sonnet-scene.is-entering,
 body.music-reduce-motion .music-stage-mode-diorama .diorama-hud-circle-dashed {
     animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .tempera-shot.is-entering,
+    .sonnet-scene.is-entering,
     .music-stage-mode-diorama .diorama-hud-circle-dashed {
         animation: none;
     }

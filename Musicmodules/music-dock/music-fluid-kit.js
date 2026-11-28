@@ -406,11 +406,16 @@
         const activeBtnByDrop = new WeakMap();
         const dropByRow = new WeakMap();
         const rowByDrop = new WeakMap();
+        const trailByRow = new WeakMap();
         const trailForRow = (row) => {
+            let hit = trailByRow.get(row);
+            if (hit !== undefined) return hit;
+            hit = null;
             for (let i = 0; i < TRAILS.length; i += 1) {
-                if (row.matches(TRAILS[i].row)) return TRAILS[i];
+                if (row.matches(TRAILS[i].row)) { hit = TRAILS[i]; break; }
             }
-            return null;
+            trailByRow.set(row, hit);
+            return hit;
         };
         const getExistingDrop = (row) => {
             let drop = dropByRow.get(row);
@@ -458,8 +463,8 @@
                 left: (br.left - rr.left) * kx + row.scrollLeft - t.pad, width: br.width * kx + t.pad * 2,
             };
         };
-        const follow = (target) => {
-            let row = target.closest(ALL_TRAIL_ROWS);
+        const follow = (target, initialRow) => {
+            let row = initialRow !== undefined ? initialRow : target.closest(ALL_TRAIL_ROWS);
             while (row) {
                 const t = trailForRow(row);
                 if (t) {
@@ -496,9 +501,13 @@
         const onFocusIn = (event) => {
             const target = event.target;
             if (!(target instanceof global.Element)) return;
+            const tag = target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            const row = target.closest(ALL_TRAIL_ROWS);
+            if (!row) return;
             let visible = false;
             try { visible = target.matches(':focus-visible'); } catch (_) { /* 老内核 */ }
-            if (visible) follow(target);
+            if (visible) follow(target, row);
         };
         doc.addEventListener('focusin', onFocusIn, true);
         const onFocusOut = (event) => {

@@ -492,7 +492,7 @@
             }
             const keep = (kind, value) => {
                 if (!value) return;
-                const hits = new Set(index.query(value, { kind }));
+                const hits = new Set(index.query(value, { kind, only: order }));
                 order = order.filter((i) => hits.has(i));
             };
             if (!skipArtist) keep('artist', q.artist);
@@ -1039,6 +1039,7 @@
             cachedCmdSig = '';
             if (!state.open) return;
             state.open = false;
+            global.MusicFluid?.cancel?.(box);
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
             state.capRect = null;

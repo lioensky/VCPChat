@@ -1438,14 +1438,18 @@ vec3 archiveUntone(vec3 y) {
                 for (const r of returning.values()) if (r.hold && r.rot && r.lane === target.lane && Math.abs(r.row - target.row) < 5) { aligning = true; break; }
                 damp(lift, detailOn ? DETAIL_LIFT : aligning ? 0 : liftGoal * reveal, liftRate, dt);
             }   // 浏览时 8：比镜头（3.7）快一点先探出来，但不再「啪」地弹起
-            for (const [k, r] of returning) {
-                // 落回原位用与帧率无关的指数衰减（参考播放器 SceneLifetimePolicy.h returningLiftStep，速率 4.5）
-                // 取出时换下的、还转着的卡：先转回正面再落（参考播放器 returning actor 的 returnY）
-                if (!(r.hold && r.rot)) r.v *= Math.exp(-dt * (reduced ? 35 : 4.5));
-                r.vel = 0;
-                // 转着看的卡被换下时边落边转回正面（参考播放器 returning actor 的 returnStep，速率 7）
-                r.rot = Math.abs(r.rot || 0) <= 0.001 ? 0 : r.rot * Math.exp(-dt * (reduced ? 35 : 7));
-                if (Math.abs(r.v) < 0.002 && !r.rot) returning.delete(k);
+            if (returning.size) {
+                const liftDecay = Math.exp(-dt * (reduced ? 35 : 4.5));
+                const rotDecay = Math.exp(-dt * (reduced ? 35 : 7));
+                for (const [k, r] of returning) {
+                    // 落回原位用与帧率无关的指数衰减（参考播放器 SceneLifetimePolicy.h returningLiftStep，速率 4.5）
+                    // 取出时换下的、还转着的卡：先转回正面再落（参考播放器 returning actor 的 returnY）
+                    if (!(r.hold && r.rot)) r.v *= liftDecay;
+                    r.vel = 0;
+                    // 转着看的卡被换下时边落边转回正面（参考播放器 returning actor 的 returnStep，速率 7）
+                    r.rot = Math.abs(r.rot || 0) <= 0.001 ? 0 : r.rot * rotDecay;
+                    if (Math.abs(r.v) < 0.002 && !r.rot) returning.delete(k);
+                }
             }
             {
                 // 镜头进度跟着抬起高度走；取出期间换卡（新卡从低处升起）镜头不退回去
@@ -1583,12 +1587,15 @@ vec3 archiveUntone(vec3 y) {
             }
             let hoverMoving = false;
             if (hovered && !hoverLifts.has(hovered)) hoverLifts.set(hovered, 0);
-            for (const [k, v] of hoverLifts) {
-                const goal = hovered === k ? 0.28 : 0;   // 悬停的卡探出 0.28，按 14 的指数趋近（参考播放器同值）
-                let nv = v + (goal - v) * (reduced ? 1 : 1 - Math.exp(-dt * 14));
-                if (Math.abs(nv - goal) < 0.001) nv = goal;
-                else hoverMoving = true;
-                if (nv === 0 && goal === 0) hoverLifts.delete(k); else hoverLifts.set(k, nv);
+            if (hoverLifts.size) {
+                const hoverMix = reduced ? 1 : 1 - Math.exp(-dt * 14);
+                for (const [k, v] of hoverLifts) {
+                    const goal = hovered === k ? 0.28 : 0;   // 悬停的卡探出 0.28，按 14 的指数趋近（参考播放器同值）
+                    let nv = v + (goal - v) * hoverMix;
+                    if (Math.abs(nv - goal) < 0.001) nv = goal;
+                    else hoverMoving = true;
+                    if (nv === 0 && goal === 0) hoverLifts.delete(k); else hoverLifts.set(k, nv);
+                }
             }
             for (const layer of layers) layer.instanceMatrix.needsUpdate = true;
             if (tinting) for (const [mesh] of TINTED) mesh.instanceColor.needsUpdate = true;
@@ -1683,7 +1690,7 @@ vec3 archiveUntone(vec3 y) {
         // ---- 拾取：每张卡当作轴对齐的盒子求交，直接读本帧坐标数组 ----
         const ray = new THREE.Raycaster();
         const ndc = new THREE.Vector2();
-        const boxMin = new THREE.Vector3(), boxMax = new THREE.Vector3(), hit = new THREE.Vector3();
+        const hit = new THREE.Vector3();
         const tmpBox = new THREE.Box3();
         const pick = (clientX, clientY, rect) => {
             ndc.set((clientX - rect.left) / rect.width * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
@@ -1694,9 +1701,8 @@ vec3 archiveUntone(vec3 y) {
             for (let i = 0; i < POOL; i++) {
                 const c3 = i * 3;
                 const x = cardCoords[c3], y = cardCoords[c3 + 1], z = cardCoords[c3 + 2];
-                boxMin.set(x - hw, y, z - hd + 0.02);
-                boxMax.set(x + hw, y + CARD_H, z + hd + 0.02);
-                tmpBox.set(boxMin, boxMax);
+                tmpBox.min.set(x - hw, y, z - hd + 0.02);
+                tmpBox.max.set(x + hw, y + CARD_H, z + hd + 0.02);
                 if (ray.ray.intersectBox(tmpBox, hit)) {
                     const d = hit.distanceToSquared(ray.ray.origin);
                     if (d < bestDist) { bestDist = d; best = i; }

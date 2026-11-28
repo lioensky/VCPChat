@@ -1731,7 +1731,7 @@
         scope.listen(elements.settingsClose, 'click', () => setSettingsOpen(false));
         scope.listen(elements.settingsReset, 'click', () => Config.reset());
         scope.listen(elements.modeOptions, 'change', (event) => {
-            const checkbox = event.target.closest('[data-stage-config-mode]');
+            const checkbox = event.target?.closest?.('[data-stage-config-mode]');
             if (!checkbox) return;
             Config.toggleMode(checkbox.dataset.stageConfigMode, checkbox.checked);
         });
@@ -1760,12 +1760,12 @@
         // 左上角字标就是「返回首页」：和 Esc、底栏舞台按钮走同一条退出路径
         scope.listen(elements.homeButton, 'click', () => exit());
         scope.listen(elements.modeSwitcher, 'click', (event) => {
-            if (picker.built && event.target.closest('.music-stage-mode-picker-toggle')) {
+            if (picker.built && event.target?.closest?.('.music-stage-mode-picker-toggle')) {
                 // 鼠标点开时不抢焦点到列表（免得出现键盘焦点框），键盘打开时直接落到当前舞台上
                 setModePickerOpen(!picker.open, { focus: event.detail === 0 ? 'menu' : 'none' });
                 return;
             }
-            const button = event.target.closest('[data-stage-mode]');
+            const button = event.target?.closest?.('[data-stage-mode]');
             if (!button) return;
             setMode(button.dataset.stageMode);
             setModePickerOpen(false, { focus: event.detail === 0 ? 'toggle' : 'none' });
@@ -1820,14 +1820,15 @@
             cancelSeekHold();
         });
         scope.listen(elements.progressTrack, 'keydown', (event) => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            const key = event.key;
+            if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Home' && key !== 'End') return;
             event.preventDefault();
             const duration = state.lastFrame?.duration || app.lastKnownDuration || 0;
             let target = app.lastKnownCurrentTime || 0;
-            if (event.key === 'ArrowLeft') target -= 5;
-            if (event.key === 'ArrowRight') target += 5;
-            if (event.key === 'Home') target = 0;
-            if (event.key === 'End') target = duration;
+            if (key === 'ArrowLeft') target -= 5;
+            if (key === 'ArrowRight') target += 5;
+            if (key === 'Home') target = 0;
+            if (key === 'End') target = duration;
             target = clamp(target, 0, duration);
             state.seekHold = null;
             holdSeek(target, true);
@@ -1839,6 +1840,7 @@
         let resizeFrame = 0;
         scope.add(() => global.cancelAnimationFrame?.(resizeFrame));
         scope.listen(global, 'resize', () => {
+            if (!state.active && !state.modeInstance && !state.leaving) return;
             edge.invalidate();
             if (resizeFrame) return;
             resizeFrame = global.requestAnimationFrame(() => {
