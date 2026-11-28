@@ -25,8 +25,11 @@
 
     const apply = () => {
         const body = document.body;
-        if (body) {
+        if (!body) return;
+        if (body.classList.contains('music-reduce-motion') !== reduced) {
             body.classList.toggle('music-reduce-motion', reduced);
+        }
+        if (body.dataset.motionPreference !== preference) {
             body.dataset.motionPreference = preference;
         }
     };

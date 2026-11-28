@@ -74,14 +74,11 @@ body.music-fl-low .music-stage-mode-root > .music-stage-mode.is-soft-leaving {
     filter: none;
 }
 
+body.music-fl-low .music-stage-edge-flow,
+body.music-reduce-motion .music-stage-edge-flow,
 body.music-fl-low .music-stage-track-title.is-changing,
 body.music-reduce-motion .music-stage-track-title.is-changing {
     animation: none;
-}
-@media (prefers-reduced-motion: reduce) {
-    .music-stage-track-title.is-changing {
-        animation: none;
-    }
 }
 
 body.music-stage-active #custom-title-bar .title {
@@ -889,5 +886,12 @@ body.music-stage-scene-3d .music-stage-empty-notice {
 .stage-word.is-active {
     color: var(--stage-ink);
     will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-edge-flow,
+    .music-stage-track-title.is-changing {
+        animation: none;
+    }
 }
 

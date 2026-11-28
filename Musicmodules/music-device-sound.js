@@ -38,11 +38,15 @@
         const doc = global.document;
         let enabled = true;
         try { enabled = storage?.getItem(SWITCH_KEY) !== '0'; } catch (e) { /* 默认开 */ }
-        let profiles = {};
+        let profiles = Object.create(null);
         try {
             const v = JSON.parse(storage?.getItem(KEY) || 'null');
-            if (v && v.v === 1 && v.d && typeof v.d === 'object') profiles = v.d;
-        } catch (e) { profiles = {}; }
+            if (v && v.v === 1 && v.d && typeof v.d === 'object' && !Array.isArray(v.d)) {
+                for (const k in v.d) {
+                    if (hasOwn.call(v.d, k) && v.d[k] && typeof v.d[k] === 'object') profiles[k] = v.d[k];
+                }
+            }
+        } catch (e) { profiles = Object.create(null); }
         let device = null;
         let applying = false;
 

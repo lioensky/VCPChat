@@ -35,8 +35,14 @@
         const mo = new global.MutationObserver(sync);
         for (const node of [titleEl, artistEl]) mo.observe(node, { childList: true, characterData: true, subtree: true });
         sync();
-        const stop = () => { mo.disconnect(); doc.title = BASE; };
-        global.addEventListener?.('beforeunload', () => mo.disconnect(), { once: true });
+        const onUnload = () => mo.disconnect();
+        const stop = () => {
+            mo.disconnect();
+            global.removeEventListener?.('beforeunload', onUnload);
+            last = BASE;
+            doc.title = BASE;
+        };
+        global.addEventListener?.('beforeunload', onUnload, { once: true });
         app.windowTitleWatch = { stop };
     }
 

@@ -19,7 +19,9 @@
     function copyText(app, track) {
         if (!track) return '';
         const raw = String(track.title || '').trim();
-        const title = app.stripAudioExtension ? app.stripAudioExtension(raw) : raw.replace(EXT_FALLBACK_RE, '');
+        const title = app.stripAudioExtension
+            ? app.stripAudioExtension(raw)
+            : (raw.indexOf('.') !== -1 ? raw.replace(EXT_FALLBACK_RE, '') : raw);
         const artist = fieldOf(track, 'artist');
         return title ? (artist ? `${title} - ${artist}` : title) : '';
     }

@@ -96,7 +96,7 @@ body.light-theme .archive-list { --glow: .85; }
 .archive-list-sort-menu button[aria-checked="true"]::before { content: ""; position: absolute; left: 12px; top: 50%; width: 6px; height: 6px; margin-top: -3px; background: var(--ar-square); }
 
 .archive-list-viewport {
-    position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; outline: none; overscroll-behavior: contain; scrollbar-width: none;
+    position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overflow-anchor: none; outline: none; overscroll-behavior: contain; scrollbar-width: none;
     /* 上下只留一小段渐隐：1280×800 下目录只有五六行高，渐隐太长会让第一行看着像被分类标签压住 */
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);

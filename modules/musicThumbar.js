@@ -9,7 +9,7 @@ const ICON_DIR = path.join(__dirname, '..', 'assets', 'music-thumbar');
 
 function createMusicThumbar({ nativeImage, platform = process.platform, iconDir = ICON_DIR } = {}) {
     const enabled = platform === 'win32' && nativeImage && typeof nativeImage.createFromPath === 'function';
-    const icons = {};
+    const icons = Object.create(null);
     const icon = (name) => {
         if (!icons[name]) icons[name] = nativeImage.createFromPath(path.join(iconDir, `${name}.png`));
         return icons[name];

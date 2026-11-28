@@ -21,7 +21,7 @@ let legacyTmpSeq = 0;
 async function searchSongId(title, artist) {
     if (!title) return null;
     try {
-        const cleanedArtist = artist ? artist.replace(SLASH_RE, ' ') : '';
+        const cleanedArtist = artist ? (artist.indexOf('/') !== -1 ? artist.replace(SLASH_RE, ' ') : artist) : '';
         const response = await axios.get(searchApiUrl, {
             params: {
                 s: `${title} ${cleanedArtist}`.trim(),
@@ -84,25 +84,29 @@ function parseLyric(lyricData) {
 
     const tlyricMap = new Map();
     for (const line of tlyricLines) {
-        const match = line.match(LRC_TIMESTAMP_LINE_RE);
-        if (match && match[2].trim()) { // Ensure translation is not empty
-            tlyricMap.set(match[1], match[2].trim());
+        if (line.indexOf('[') === -1) continue;
+        const match = LRC_TIMESTAMP_LINE_RE.exec(line);
+        if (match) {
+            const text = match[2].trim();
+            if (text) tlyricMap.set(match[1], text);
         }
     }
 
     for (const line of lrcLines) {
-        const match = line.match(LRC_TIMESTAMP_LINE_RE);
-        if (match) {
-            const timestamp = match[1];
-            mergedLrc.push(line); // Push original line
-            const translatedText = tlyricMap.get(timestamp);
-            if (translatedText) {
-                // To keep sync, add translated line with same timestamp
-                mergedLrc.push(`[${timestamp}]${translatedText}`);
+        if (line.indexOf('[') !== -1) {
+            const match = LRC_TIMESTAMP_LINE_RE.exec(line);
+            if (match) {
+                const timestamp = match[1];
+                mergedLrc.push(line); // Push original line
+                const translatedText = tlyricMap.get(timestamp);
+                if (translatedText) {
+                    // To keep sync, add translated line with same timestamp
+                    mergedLrc.push(`[${timestamp}]${translatedText}`);
+                }
+                continue;
             }
-        } else {
-            mergedLrc.push(line);
         }
+        mergedLrc.push(line);
     }
 
     return mergedLrc.join('\n');
@@ -119,6 +123,9 @@ function getBestMatch(songs, artist) {
 
     // Simple string similarity function (Jaro-Winkler-like)
     const calculateSimilarity = (s1, s2) => {
+        if (s1 === s2) {
+            return 1.0;
+        }
         const longer = s1.length > s2.length ? s1 : s2;
         const shorter = s1.length > s2.length ? s2 : s1;
         const longerLength = longer.length;
@@ -126,17 +133,18 @@ function getBestMatch(songs, artist) {
             return 1.0;
         }
         const matchDistance = Math.max(0, Math.floor(longerLength / 2) - 1);
-        const shorterMatches = new Array(shorter.length).fill(false);
-        const longerMatches = new Array(longerLength).fill(false);
+        const shorterMatches = new Uint8Array(shorter.length);
+        const longerMatches = new Uint8Array(longerLength);
         let matches = 0;
         for (let i = 0; i < shorter.length; i++) {
             const start = Math.max(0, i - matchDistance);
             const end = Math.min(i + matchDistance + 1, longerLength);
+            const ch = shorter[i];
             for (let j = start; j < end; j++) {
                 if (longerMatches[j]) continue;
-                if (shorter[i] !== longer[j]) continue;
-                shorterMatches[i] = true;
-                longerMatches[j] = true;
+                if (ch !== longer[j]) continue;
+                shorterMatches[i] = 1;
+                longerMatches[j] = 1;
                 matches++;
                 break;
             }

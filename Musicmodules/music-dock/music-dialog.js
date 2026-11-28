@@ -36,21 +36,36 @@
 
         const overlay = document.createElement('div');
         overlay.className = 'dialog-overlay music-dialog';
-        overlay.innerHTML = `
-            <div class="dialog glass-panel" role="alertdialog" aria-modal="true" aria-labelledby="${id}-t"${message ? ` aria-describedby="${id}-m"` : ''}>
-                <h3 id="${id}-t"></h3>
-                ${message ? `<p class="music-dialog-msg" id="${id}-m"></p>` : ''}
-                <div class="dialog-actions">
-                    <button type="button" class="dialog-btn cancel"></button>
-                    <button type="button" class="dialog-btn confirm${danger ? ' danger' : ''}"></button>
-                </div>
-            </div>`;
-        overlay.querySelector('h3').textContent = title;
-        if (message) overlay.querySelector('.music-dialog-msg').textContent = message;
-        const cancelBtn = overlay.querySelector('.dialog-btn.cancel');
-        const confirmBtn = overlay.querySelector('.dialog-btn.confirm');
+        const dialog = document.createElement('div');
+        dialog.className = 'dialog glass-panel';
+        dialog.setAttribute('role', 'alertdialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', `${id}-t`);
+        const heading = document.createElement('h3');
+        heading.id = `${id}-t`;
+        heading.textContent = title;
+        dialog.appendChild(heading);
+        if (message) {
+            dialog.setAttribute('aria-describedby', `${id}-m`);
+            const msg = document.createElement('p');
+            msg.className = 'music-dialog-msg';
+            msg.id = `${id}-m`;
+            msg.textContent = message;
+            dialog.appendChild(msg);
+        }
+        const actions = document.createElement('div');
+        actions.className = 'dialog-actions';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'dialog-btn cancel';
         cancelBtn.textContent = cancelText;
+        const confirmBtn = document.createElement('button');
+        confirmBtn.type = 'button';
+        confirmBtn.className = danger ? 'dialog-btn confirm danger' : 'dialog-btn confirm';
         confirmBtn.textContent = confirmText;
+        actions.append(cancelBtn, confirmBtn);
+        dialog.appendChild(actions);
+        overlay.appendChild(dialog);
         document.body.appendChild(overlay);
         activeStack.push(overlay);
 
@@ -91,14 +106,10 @@
             if (activeStack[activeStack.length - 1] !== overlay) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(false); }
             else if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(document.activeElement !== cancelBtn); }
-            else if (e.key === 'Tab') {
+            else if (e.key === 'Tab' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 e.preventDefault();
                 e.stopPropagation();
-                (document.activeElement === confirmBtn ? cancelBtn : confirmBtn).focus();
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                e.preventDefault();
-                e.stopPropagation();
-                (document.activeElement === confirmBtn ? cancelBtn : confirmBtn).focus();
+                (document.activeElement === confirmBtn ? cancelBtn : confirmBtn).focus({ preventScroll: true });
             } else if (NAV_KEYS.has(e.key) || (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1)) {
                 // 单字母与导航快捷键（空格播放、/ 搜索、方向键翻阵列…）在框开着时不该生效
                 e.stopPropagation();

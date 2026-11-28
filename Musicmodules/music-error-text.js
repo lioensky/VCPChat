@@ -24,10 +24,14 @@
 
     function errorText(err, fallback = '出错了') {
         let msg = typeof err === 'string' ? err : (err && err.message) || '';
-        msg = String(msg)
-            .replace(INVOKE_PREFIX_RE, '')
-            .replace(ERR_PREFIX_RE, '')
-            .trim();
+        msg = String(msg);
+        if (msg.length >= 32 && (msg.charCodeAt(0) === 69 || msg.charCodeAt(0) === 101)) {
+            msg = msg.replace(INVOKE_PREFIX_RE, '');
+        }
+        if (msg.indexOf('Error:') !== -1) {
+            msg = msg.replace(ERR_PREFIX_RE, '');
+        }
+        msg = msg.trim();
         if (!msg) return fallback;
         for (const [re, text] of KNOWN) if (re.test(msg)) return `${fallback}：${text}`;
         // 已经是中文的说明就直接用；纯英文的技术信息不给人看
