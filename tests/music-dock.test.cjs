@@ -2399,3 +2399,32 @@ test('Batch 102: palette mirrors .md-has-drop on .md-cmd-list without CSS :has()
         window.close();
     }
 });
+
+test('Batch 103: palette CSS applies content-visibility to .md-cmd-row, pre-pools .md-cmd-desc via hidden toggle, and drops tuning :has()', () => {
+    const panelCss = read('Musicmodules/music-dock/music-dock-panel.css');
+    assert.match(panelCss, /\.md-cmd-row\s*\{[^}]*content-visibility:\s*auto;/, '.md-cmd-row uses content-visibility: auto');
+    assert.match(panelCss, /\.md-cmd-desc\[hidden\]\s*\{\s*display:\s*none;\s*\}/, '.md-cmd-desc[hidden] hides pooled description element');
+    assert.doesNotMatch(panelCss, /\.music-stage-tuning-row:has\(/, 'stage tuning :has() selectors removed from music-dock-panel.css');
+
+    const { window, doc, dock } = setup();
+    try {
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        // Song with artist -> shows pre-pooled .md-cmd-desc
+        input.value = 'Alpha';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const row0 = doc.querySelector('.md-cmd-row');
+        const desc0 = row0.querySelector('.md-cmd-desc');
+        assert.ok(desc0, 'rowProto pre-includes .md-cmd-desc');
+        assert.equal(desc0.hidden, false, 'song row with artist unhides .md-cmd-desc');
+
+        // Command without desc -> hides same .md-cmd-desc node in-place (no remove/recreate)
+        input.value = '下一首';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(row0.querySelector('.md-cmd-desc'), desc0, 'same .md-cmd-desc node reused without DOM removal');
+        assert.equal(desc0.hidden, true, 'command without desc hides .md-cmd-desc');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

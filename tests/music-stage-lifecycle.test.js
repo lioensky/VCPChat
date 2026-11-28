@@ -2663,3 +2663,64 @@ test('Batch 101: stage host quantizes 4-decimal audio CSS vars and avoids body.f
         dom.window.close();
     }
 });
+
+test('Batch 103: stage host marks non-range tuning rows with .is-value-hidden without :has(), and player playFromContext/reorderContext single-pass works', async () => {
+    const skinCss = read('Musicmodules/music-theme/music-stage-skin.css');
+    assert.doesNotMatch(skinCss, /\.music-stage-tuning-row:has\(/, 'stage-skin drops tuning-row :has() selectors');
+    assert.match(skinCss, /\.music-stage-tuning-row\.is-value-hidden\s+\.music-stage-tuning-value\s*\{\s*display:\s*none;\s*\}/);
+
+    const dom = createStageDom();
+    try {
+        installCanvasStub(dom.window);
+        const root = dom.window.document.getElementById('music-stage');
+        const settingsWrap = dom.window.document.createElement('div');
+        settingsWrap.className = 'music-stage-settings';
+        settingsWrap.innerHTML = '<button class="music-stage-settings-toggle" type="button">调参</button>'
+            + '<div class="music-stage-settings-card" hidden><button class="music-stage-settings-close" type="button">关</button>'
+            + '<div class="music-stage-tuning-controls"></div><div class="music-stage-common-controls"></div>'
+            + '<div class="music-stage-mode-options"></div><button class="music-stage-settings-reset" type="button">重置</button>'
+            + '<span class="music-stage-settings-status"></span></div>';
+        root.appendChild(settingsWrap);
+        for (const dep of [
+            'music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js',
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'modes/tempera-manager.js', 'modes/sonnet-manager.js', 'modes/diorama-manager.js',
+            'modes/fume-manager.js', 'music-stage-advanced-modes.js',
+            'music-stage-modes.js', 'music-stage-edge.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const { app } = createApp();
+        dom.window.setupMusicStage(app);
+        const toggleRows = [...root.querySelectorAll('.music-stage-tuning-controls .music-stage-tuning-row')].filter((r) => r.querySelector('input[type="checkbox"], select'));
+        const rangeRows = [...root.querySelectorAll('.music-stage-tuning-controls .music-stage-tuning-row')].filter((r) => r.querySelector('input[type="range"]'));
+        assert.ok(toggleRows.length > 0 && rangeRows.length > 0);
+        assert.ok(toggleRows.every((r) => r.classList.contains('is-value-hidden')), 'toggle/select tuning rows get .is-value-hidden');
+        assert.ok(rangeRows.every((r) => !r.classList.contains('is-value-hidden')), 'range tuning rows keep value visible');
+
+        runScript(dom, 'Musicmodules/music-app-hooks.js');
+        runScript(dom, 'Musicmodules/music-player.js');
+        const t1 = { path: '/1.flac', title: '1' };
+        const t2 = { path: '/2.flac', title: '2' };
+        const t3 = { path: '/3.flac', title: '3' };
+        const pApp = {
+            playlist: [t1, t2, t3], currentTrackIndex: 0, playModes: ['repeat', 'repeat-one', 'shuffle'], currentPlayMode: 0,
+            api: {}
+        };
+        dom.window.setupPlayer(pApp);
+        pApp.loadTrack = async () => true;
+        await pApp.playFromContext([t1, t2, t3], 0, { origin: 'classic', render: false, play: false });
+        assert.equal(pApp.currentFilteredTracks, null, 'full-library order stores null filtered context');
+        assert.equal(pApp.reorderContext([t1, t2, t3], 'classic'), false, 'unchanged order returns false');
+        assert.equal(pApp.reorderContext([t3, t2, t1], 'classic'), true, 'valid permutation updates context');
+        assert.deepEqual(pApp.currentFilteredTracks, [t3, t2, t1]);
+        assert.equal(pApp.reorderContext([t1, t2, t3], 'classic'), true, 'restoring library order clears filtered context back to null');
+        assert.equal(pApp.currentFilteredTracks, null);
+        assert.equal(pApp.reorderContext([t1, t2, { path: '/x.flac' }], 'classic'), false, 'foreign track rejected');
+
+        app.stageHost.destroy();
+    } finally {
+        dom.window.close();
+    }
+});

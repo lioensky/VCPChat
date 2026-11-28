@@ -1305,3 +1305,49 @@ test('Batch 97: searchTracks narrows incremental queries safely, stripAudioExten
         dom.window.close();
     }
 });
+
+test('Batch 103: music-ui reuses same-tick scrollTop snapshot & builds positionOf lazily, and music-skin scopes counter-increment to :not([data-n])', async () => {
+    const ROOT = path.join(__dirname, '..');
+    const skinCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-theme/music-skin.css'), 'utf8');
+    assert.match(skinCss, /\.sidebar-playlist li:not\(\[data-n\]\)\s*\{\s*counter-increment:\s*track;\s*\}/, 'counter-increment scoped away from data-n virtualized rows');
+
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul><span id="all-count"></span></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-utils.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-ui.js'), 'utf8'));
+        const list = doc.getElementById('playlist');
+        let scrollReads = 0;
+        let scrollVal = 0;
+        Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => 400 });
+        Object.defineProperty(list, 'scrollHeight', { configurable: true, get: () => 4000 });
+        Object.defineProperty(list, 'scrollTop', {
+            configurable: true,
+            get() { scrollReads += 1; return scrollVal; },
+            set(v) { scrollVal = v; }
+        });
+        const tracks = Array.from({ length: 120 }, (_, i) => ({ path: `/t${i}.flac`, title: `T${i}.flac`, artist: 'A', duration: 180 }));
+        const app = { playlist: tracks, currentTrackIndex: 110, playlistEl: list, updateAllCount() {} };
+        window.setupUtils(app);
+        window.setupUI(app);
+
+        // Two back-to-back synchronous renders share a single same-tick scrollTop read
+        const rev = tracks.slice().reverse();
+        scrollReads = 0;
+        app.renderPlaylist(tracks);
+        app.renderPlaylist(rev);
+        assert.equal(scrollReads, 1, 'back-to-back synchronous renderPlaylist calls read scrollTop only once');
+
+        // After microtask expires, fresh render reads scrollTop again
+        await Promise.resolve();
+        app.renderPlaylist(tracks);
+        assert.equal(scrollReads, 2, 'subsequent tick reads fresh scrollTop');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
