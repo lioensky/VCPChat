@@ -2289,3 +2289,62 @@ test('Batch 91: palette open focuses input before toggling md-cmd-open/body clas
         window.close();
     }
 });
+
+test('Batch 97: dock ignores non-theme head/body mutations for syncGlow, palette avoids body refocus reflow on close, and batches initial mount', async () => {
+    const { window, doc, dock } = setup((a) => {
+        for (let i = 0; i < 15; i += 1) {
+            a.playlist.push({ path: `C:/b97_${i}.flac`, title: `Glow Track ${i}`, artist: 'Art', album: 'Alb' });
+        }
+    });
+    try {
+        let rootStyleCalls = 0;
+        const origCS = window.getComputedStyle.bind(window);
+        window.getComputedStyle = (el, ...rest) => {
+            if (el === doc.documentElement) rootStyleCalls += 1;
+            return origCS(el, ...rest);
+        };
+
+        // 1. Unrelated body class (openPalette) & head <script> / <style data-md> edits skip syncGlow
+        const bodyFocusCalls = [];
+        const origBodyFocus = doc.body.focus.bind(doc.body);
+        doc.body.focus = (...args) => { bodyFocusCalls.push(doc.body.classList.contains('music-dock-cmd-open')); return origBodyFocus(...args); };
+
+        const list = doc.querySelector('.md-cmd-list');
+        let insertBeforeCalls = 0;
+        const origInsertBefore = list.insertBefore.bind(list);
+        list.insertBefore = (...args) => { insertBeforeCalls += 1; return origInsertBefore(...args); };
+
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        insertBeforeCalls = 0;
+        input.value = 'Glow Track';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(doc.querySelectorAll('.md-cmd-row').length, 15, 'all 15 matching rows rendered');
+        assert.equal(insertBeforeCalls, 0, 'initial empty-to-results palette mount batches via DocumentFragment replaceChildren');
+
+        const scr = doc.createElement('script');
+        doc.head.appendChild(scr);
+        const helperStyle = doc.createElement('style');
+        helperStyle.dataset.md = 'toast-pos';
+        doc.head.appendChild(helperStyle);
+        helperStyle.textContent = '.mtst-layer{--md-toast-x:100px}';
+
+        dock.closePalette();
+        assert.equal(bodyFocusCalls.length, 0, 'closing palette when prior focus was body blurs input without calling body.focus()');
+        assert.notEqual(doc.activeElement, input, 'palette input is blurred on close');
+
+        await new Promise((r) => setTimeout(r, 90));
+        assert.equal(rootStyleCalls, 0, 'unrelated body class and head script/toast-pos style trigger zero syncGlow getComputedStyle calls');
+
+        // Real stylesheet <link> addition in <head> still schedules syncGlow
+        const link = doc.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'theme.css';
+        doc.head.appendChild(link);
+        await new Promise((r) => setTimeout(r, 90));
+        assert.ok(rootStyleCalls >= 1, 'real stylesheet <link> in <head> still triggers syncGlow');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

@@ -1214,3 +1214,81 @@ test('Batch 94: classic list caches clientHeight & reads viewport before emptyTe
     const statsView = require(path.join(ROOT, 'Musicmodules/music-stats-view.js'));
     assert.equal(statsView.longestStreak({ '2026-11-20': 120, '2026-11-21': 90, '2026-11-22': 180, '2026-11-24': 60, '2026-11-25': 30 }), 3);
 });
+
+test('Batch 97: searchTracks narrows incremental queries safely, stripAudioExtension fast-paths long dots, and decorateRow caches text fields', () => {
+    const ROOT = path.join(__dirname, '..');
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul><span id="all-count"></span></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-app-hooks.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-utils.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-ui.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-theme/music-classic-list.js'), 'utf8'));
+
+        const tracks = [
+            { path: '/1.flac', title: 'Vol. 2 Live Session.flac', artist: 'Artist A', album: 'Album 1', duration: 200 },
+            { path: '/2.mp3', title: 'Calm Night.mp3', artist: 'Artist A', album: 'Album 1', duration: 200 },
+            { path: '/3.opus', title: 'Live Encore.opus', artist: 'Artist B', album: 'Album 2', duration: 185 }
+        ];
+        const list = doc.getElementById('playlist');
+        Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => 480 });
+        Object.defineProperty(list, 'scrollTop', { configurable: true, get: () => 0, set() {} });
+        const app = {
+            playlist: tracks,
+            currentTrackIndex: 0,
+            playlistEl: list,
+            allCount: doc.getElementById('all-count'),
+            isLiked: () => false,
+            toggleLike() {},
+            updateAllCount() {}
+        };
+        window.setupUtils(app);
+        window.setupUI(app);
+        window.setupMusicClassicList(app);
+
+        assert.equal(app.stripAudioExtension('Vol. 2 Live Session'), 'Vol. 2 Live Session');
+        assert.equal(app.stripAudioExtension('Vol. 2 Live Session.flac'), 'Vol. 2 Live Session');
+        assert.equal(app.stripAudioExtension('Encore.opus'), 'Encore');
+
+        const r1 = app.searchTracks(tracks, 'li');
+        assert.deepEqual(Array.from(r1, (t) => t.path), ['/1.flac', '/3.opus']);
+        // Mutating caller's returned array must not corrupt the narrowing cache
+        r1.pop();
+        const r2 = app.searchTracks(tracks, 'live');
+        assert.deepEqual(Array.from(r2, (t) => t.path), ['/1.flac', '/3.opus'], 'narrowed search uses isolated cached hit snapshot');
+        const r3 = app.searchTracks(tracks, 'live encore');
+        assert.deepEqual(Array.from(r3, (t) => t.path), ['/3.opus'], 'multi-word narrowing filters down cleanly');
+        const r4 = app.searchTracks(tracks, 'calm');
+        assert.deepEqual(Array.from(r4, (t) => t.path), ['/2.mp3'], 'non-narrowing query falls back to full scan');
+
+        // Reusing a decorated classic row skips DOM textContent getter reads on unchanged duration/artist
+        app.renderPlaylist(tracks);
+        const row0 = list.children[0];
+        assert.ok(row0 && row0._cl);
+        const durEl = row0._cl.duration;
+        let durReads = 0;
+        let durWrites = 0;
+        const textDesc = Object.getOwnPropertyDescriptor(window.Node.prototype, 'textContent');
+        Object.defineProperty(durEl, 'textContent', {
+            configurable: true,
+            get() { durReads += 1; return textDesc.get.call(this); },
+            set(v) { durWrites += 1; return textDesc.set.call(this, v); }
+        });
+        // Render [tracks[1]] into row0 (same 200s duration -> 0 reads, 0 writes on duration span)
+        app.renderPlaylist([tracks[1]]);
+        assert.equal(durReads, 0, 'cached lastDurRaw avoids reading duration.textContent');
+        assert.equal(durWrites, 0, 'unchanged duration skips duration.textContent write');
+        // Render [tracks[2]] (185s -> updates duration once)
+        app.renderPlaylist([tracks[2]]);
+        assert.equal(durWrites, 1, 'changed duration updates duration.textContent once');
+        assert.equal(durEl.textContent, '3:05');
+
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
