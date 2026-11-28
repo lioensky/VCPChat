@@ -151,22 +151,26 @@
             if (n) return n;
             const t = cellProto.cloneNode(true);
             const art = t.firstChild;
-            return { el: t, img: art.children[0], blank: art.children[1], no: art.children[2], title: t.children[1], sub: t.children[2], idx: -1, src: null, tb: 0, cls: '' };
+            return { el: t, art, img: art.children[0], blank: art.children[1], no: art.children[2], title: t.children[1], sub: t.children[2], idx: -1, src: null, tb: 0, cls: '' };
         };
         const pad2 = (n) => (n < 10 ? '0' : '') + n;
-        const headNode = (s) => {
+        const fillHead = (h, s, inPlace = false) => {
             const sec = st.secs[s];
-            const h = st.headPool.pop() || headProto.cloneNode(true);
-            h.className = 'ag-head' + (st.revealOk ? ' ag-reveal' : (performance.now() < (st.enterUntil || 0) ? ' ag-entering' : ''));
+            h.className = 'ag-head' + (!inPlace && st.revealOk ? ' ag-reveal' : (!inPlace && performance.now() < (st.enterUntil || 0) ? ' ag-entering' : ''));
             // Folia 式题头：左边一个超大的节名，右上角「第几节 / 共几节」编号，底下数量和一条结构线
             h.children[0].textContent = sec.name;
             h.children[2].textContent = pad2(s + 1) + ' / ' + pad2(st.secs.length);
             h.children[1].textContent = sec.ids.length + ' 首' + (sec.sub ? ' · ' + sec.sub : '');
             return h;
         };
+        const headNode = (s) => fillHead(st.headPool.pop() || headProto.cloneNode(true), s, false);
 
         const keepSet = new Set();
         const keepHeadsSet = new Set();
+        const visHeads = [];
+        const visCells = [];
+        const staleCells = [];
+        const staleHeads = [];
         let stickySec = -1;
         let locateAway = false;
         let rollRaf = 0;
@@ -212,6 +216,10 @@
             const view0 = top - st.rowH, view1 = top + st.room.height + st.rowH;
             keepSet.clear();
             keepHeadsSet.clear();
+            visHeads.length = 0;
+            visCells.length = 0;
+            staleCells.length = 0;
+            staleHeads.length = 0;
             const keep = keepSet, keepHeads = keepHeadsSet;
             const dpr = global.devicePixelRatio || 1;
             const play = opts.playing();
@@ -221,18 +229,12 @@
             const hostW = sweepOn ? (global.innerWidth || opts.host.clientWidth || 1600) : 0;
             const hw = st.cols * st.cell + (st.cols - 1) * GAP_X;
             let hasFocus = false;
-            let frag = null;
+            // 第一遍仅收集可见的节标题与格子，先把滑出视口的 DOM 节点转入原地复用池，避免滚动时 remove()+appendChild()
             for (let r = rowAt(Math.max(0, view0)); r < st.rows.length && st.rows[r].y < view1; r++) {
                 const row = st.rows[r];
                 if (row.type === 'head') {
                     keepHeads.add(row.s);
-                    let h = st.heads.get(row.s);
-                    if (!h) { h = headNode(row.s); st.heads.set(row.s, h); if (!frag) frag = document.createDocumentFragment(); frag.appendChild(h); }
-                    if (h._x !== st.left || h._y !== row.y) {
-                        h._x = st.left; h._y = row.y;
-                        h.style.transform = `translate3d(${st.left}px,${row.y}px,0)`;
-                    }
-                    if (h._w !== hw) { h._w = hw; h.style.width = hw + 'px'; }
+                    visHeads.push(row.s, row.y);
                     continue;
                 }
                 const sec = st.secs[row.s];
@@ -241,78 +243,107 @@
                     if (k >= sec.ids.length) break;
                     const id = row.s + ':' + k;
                     keep.add(id);
-                    let n = st.nodes.get(id);
-                    if (!n) {
-                        n = makeNode();
-                        st.nodes.set(id, n);
-                        n.el.dataset.id = id;
+                    visCells.push(id, row.s, k, c, row.y);
+                }
+            }
+            for (const [id, n] of st.nodes) if (!keep.has(id)) { st.nodes.delete(id); staleCells.push(n); }
+            for (const [s, h] of st.heads) if (!keepHeads.has(s)) { st.heads.delete(s); staleHeads.push(h); }
+            let frag = null;
+            for (let vi = 0; vi < visHeads.length; vi += 2) {
+                const s = visHeads[vi], hy = visHeads[vi + 1];
+                let h = st.heads.get(s);
+                if (!h) {
+                    const inPlace = staleHeads.length > 0;
+                    h = inPlace ? fillHead(staleHeads.pop(), s, true) : headNode(s);
+                    st.heads.set(s, h);
+                    if (!inPlace) { if (!frag) frag = document.createDocumentFragment(); frag.appendChild(h); }
+                }
+                if (h._x !== st.left || h._y !== hy) {
+                    h._x = st.left; h._y = hy;
+                    h.style.transform = `translate3d(${st.left}px,${hy}px,0)`;
+                }
+                if (h._w !== hw) { h._w = hw; h.style.width = hw + 'px'; }
+            }
+            for (let vi = 0; vi < visCells.length; vi += 5) {
+                const id = visCells[vi], s = visCells[vi + 1], k = visCells[vi + 2], c = visCells[vi + 3], ry = visCells[vi + 4];
+                const sec = st.secs[s];
+                let n = st.nodes.get(id);
+                if (!n) {
+                    const inPlace = staleCells.length > 0;
+                    n = inPlace ? staleCells.pop() : makeNode();
+                    st.nodes.set(id, n);
+                    n.el.dataset.id = id;
+                    if (!inPlace) {
                         if (!frag) frag = document.createDocumentFragment();
                         frag.appendChild(n.el);
-                        n.idx = -1;
-                        n.el.classList.remove('ag-entering', 'ag-reveal', 'ag-flip');
-                        if (sweepOn) {
-                            // 换视图时跟着扫描线从左往右翻过来
-                            const ms = Math.min(720, 380 + hostW * 0.16);
-                            const sx = st.room.left + st.left + c * (st.cell + GAP_X);
-                            const at = global.MusicArchiveWall?.sweepTimeAt;
-                            const u = Math.max(0, Math.min(1, sx / (hostW + 90)));
-                            n.el.style.setProperty('--ag-d', Math.round((at ? at(u) : u) * ms) + 'ms');
-                            n.el.classList.add('ag-flip');
-                        } else if (entering) {
-                            const vr = Math.max(0, (row.y - top) / st.rowH);
-                            n.el.style.setProperty('--ag-d', Math.round(Math.min(360, (vr + c * 0.6) * 45)) + 'ms');
-                            n.el.classList.add('ag-entering');
-                        } else if (st.revealOk) {
-                            n.el.style.setProperty('--ag-d', (c * 22) + 'ms');
-                            n.el.classList.add('ag-reveal');
-                        }
                     }
-                    const x = st.left + c * (st.cell + GAP_X);
-                    if (n.px !== x || n.py !== row.y) {
-                        n.px = x;
-                        n.py = row.y;
-                        n.el.style.transform = `translate3d(${x}px,${row.y}px,0)`;
+                    n.idx = -1;
+                    n.el.classList.remove('ag-entering', 'ag-reveal', 'ag-flip');
+                    if (sweepOn) {
+                        const ms = Math.min(720, 380 + hostW * 0.16);
+                        const sx = st.room.left + st.left + c * (st.cell + GAP_X);
+                        const at = global.MusicArchiveWall?.sweepTimeAt;
+                        const u = Math.max(0, Math.min(1, sx / (hostW + 90)));
+                        n.el.style.setProperty('--ag-d', Math.round((at ? at(u) : u) * ms) + 'ms');
+                        n.el.classList.add('ag-flip');
+                    } else if (entering) {
+                        const vr = Math.max(0, (ry - top) / st.rowH);
+                        n.el.style.setProperty('--ag-d', Math.round(Math.min(360, (vr + c * 0.6) * 45)) + 'ms');
+                        n.el.classList.add('ag-entering');
+                    } else if (!inPlace && st.revealOk) {
+                        n.el.style.setProperty('--ag-d', (c * 22) + 'ms');
+                        n.el.classList.add('ag-reveal');
                     }
-                    if (n.pw !== st.cell) {
-                        n.pw = st.cell;
-                        n.el.style.width = st.cell + 'px';
-                    }
-                    const i = sec.ids[k];
-                    const t = opts.track(i);
-                    if (n.idx !== i) {
-                        n.idx = i;
-                        const m = opts.meta(t, i);
-                        n.title.textContent = m.title;
-                        n.sub.textContent = m.artist || m.album || '';
-                        n.blank.textContent = m.title;
-                        n.code = m.code || '';
-                        n.badge = null;
-                        n.el.style.setProperty('--aw-h', hueOf(m.title + '|' + (m.album || '')));
-                        n.el.setAttribute('aria-label', m.title + (m.artist ? '，' + m.artist : ''));
-                        n.src = null;
-                        n.tb = 0;
-                    }
-                    applyNodeCover(n, t, dpr, refreshCovers);
-                    const isSel = i === st.sel;
-                    if (isSel) hasFocus = true;
-                    const isPlaying = i === play.index && play.active;
-                    const isCurrent = i === play.index && !play.active;
-                    const cls = (isSel ? 1 : 0) | (isPlaying ? 2 : 0) | (isCurrent ? 4 : 0);
-                    if (cls !== n.cls) {
-                        n.el.classList.toggle('is-focus', isSel);
-                        n.el.classList.toggle('is-playing', isPlaying);
-                        n.el.classList.toggle('is-current', isCurrent);
-                        n.cls = cls;
-                        n.el.setAttribute('aria-selected', isSel ? 'true' : 'false');
-                    }
-                    const badge = i === play.index ? (play.active ? '正在播放' : '暂停') : n.code;
-                    if (badge !== n.badge) { n.badge = badge; n.no.textContent = badge; }
                 }
+                const x = st.left + c * (st.cell + GAP_X);
+                if (n.px !== x || n.py !== ry) {
+                    n.px = x;
+                    n.py = ry;
+                    n.el.style.transform = `translate3d(${x}px,${ry}px,0)`;
+                }
+                if (n.pw !== st.cell) {
+                    n.pw = st.cell;
+                    n.el.style.width = st.cell + 'px';
+                }
+                const i = sec.ids[k];
+                const t = opts.track(i);
+                let meta = null;
+                if (n.idx !== i) {
+                    n.idx = i;
+                    meta = opts.meta(t, i);
+                    if (n.tStr !== meta.title) n.title.textContent = n.tStr = meta.title;
+                    const sText = meta.artist || meta.album || '';
+                    if (n.sStr !== sText) n.sub.textContent = n.sStr = sText;
+                    n.code = meta.code || '';
+                    n.badge = null;
+                    n.el.setAttribute('aria-label', meta.title + (meta.artist ? '，' + meta.artist : ''));
+                }
+                applyNodeCover(n, t, dpr, refreshCovers);
+                if (!n.src) {
+                    const m = meta || opts.meta(t, i);
+                    if (n.bStr !== m.title) n.blank.textContent = n.bStr = m.title;
+                    const h = hueOf(m.title + '|' + (m.album || ''));
+                    if (n.hue !== h) { n.hue = h; n.art.style.setProperty('--aw-h', h); }
+                }
+                const isSel = i === st.sel;
+                if (isSel) hasFocus = true;
+                const isPlaying = i === play.index && play.active;
+                const isCurrent = i === play.index && !play.active;
+                const cls = (isSel ? 1 : 0) | (isPlaying ? 2 : 0) | (isCurrent ? 4 : 0);
+                if (cls !== n.cls) {
+                    n.el.classList.toggle('is-focus', isSel);
+                    n.el.classList.toggle('is-playing', isPlaying);
+                    n.el.classList.toggle('is-current', isCurrent);
+                    n.cls = cls;
+                    n.el.setAttribute('aria-selected', isSel ? 'true' : 'false');
+                }
+                const badge = i === play.index ? (play.active ? '正在播放' : '暂停') : n.code;
+                if (badge !== n.badge) { n.badge = badge; n.no.textContent = badge; }
             }
             if (frag) content.appendChild(frag);
             if (hasFocus !== st.hasFocusCls) scroller.classList.toggle('has-focus', st.hasFocusCls = hasFocus);
-            for (const [id, n] of st.nodes) if (!keep.has(id)) { st.nodes.delete(id); recycle(n); }
-            for (const [s, h] of st.heads) if (!keepHeads.has(s)) { st.heads.delete(s); recycleHead(h); }
+            while (staleCells.length) recycle(staleCells.pop());
+            while (staleHeads.length) recycleHead(staleHeads.pop());
             // 吸顶节标题：最上面那一行属于哪一节（节标题自己还在视野里时不显示，免得叠两层）
             if (st.secs.length > 1) {
                 const r = st.rows[rowAt(top + 2)];

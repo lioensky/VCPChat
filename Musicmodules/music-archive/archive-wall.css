@@ -37,7 +37,7 @@
     position: absolute;
     left: 0;
     top: 0;
-    contain: layout style;
+    contain: size layout style;
 }
 .aw-world.aw-reflow .aw-tile {
     transition: transform var(--aw-sp-flow-ms, .52s) var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1)), width var(--aw-sp-flow-ms, .52s) var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1)), height var(--aw-sp-flow-ms, .52s) var(--aw-sp-flow, cubic-bezier(.2, .9, .25, 1));

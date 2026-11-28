@@ -849,28 +849,34 @@
             paintSeek();
         });
 
-        const fillContent = (node, idx, px, fc = false) => {
-            const i = st.ids[idx], t = opts.track(i), changed = node.item !== idx;
-            if (changed) {
-                node.item = idx;
-                const m = opts.meta(t, i);
-                node.title.textContent = m.title; node.sub.textContent = m.artist || '';
-                node.code = m.code || ''; node.badge = null; node.blank.textContent = m.title;
-                node.el.style.setProperty('--aw-h', hueOf(m.title + '|' + (m.album || '')));
-                node.el.setAttribute('aria-label', m.title + (m.artist ? '，' + m.artist : ''));
-                node.src = null; node.tb = 0;
+        const fillContent = (n, idx, px, fc = false) => {
+            const i = st.ids[idx], t = opts.track(i), ch = n.item !== idx;
+            let m = null;
+            if (ch) {
+                n.item = idx; m = opts.meta(t, i);
+                if (n.tStr !== m.title) n.title.textContent = n.tStr = m.title;
+                const s = m.artist || '';
+                if (n.sStr !== s) n.sub.textContent = n.sStr = s;
+                n.code = m.code || ''; n.badge = null;
+                n.el.setAttribute('aria-label', s ? m.title + '，' + s : m.title);
             }
             const src = opts.cover(t) || '', tb = px <= 200 ? 192 : px <= 420 ? 384 : 768;
-            if (!fc && !changed && src === node.rawSrc && node.tb === tb && (node.src || !src)) return;
-            node.rawSrc = src; node.tb = tb;
+            if (!fc && !ch && src === n.rawSrc && n.tb === tb && (n.src || !src)) return;
+            n.rawSrc = src; n.tb = tb;
             const url = src ? thumbs.get(src, px) : '';
-            if (url !== node.src) {
-                node.src = url;
-                if (url) { node.img.src = url; node.el.classList.add('has-art'); }
-                else { node.img.removeAttribute('src'); node.el.classList.remove('has-art'); }
+            if (url !== n.src) {
+                n.src = url;
+                if (url) { n.img.src = url; n.el.classList.add('has-art'); }
+                else { n.img.removeAttribute('src'); n.el.classList.remove('has-art'); }
             }
-            const wait = Boolean(src && !url && !thumbs.failed(src));
-            if (wait !== node.wait) { node.wait = wait; node.el.classList.toggle('is-wait', wait); }
+            if (!url) {
+                m = m || opts.meta(t, i);
+                if (n.bStr !== m.title) n.blank.textContent = n.bStr = m.title;
+                const h = hueOf(m.title + '|' + (m.album || ''));
+                if (n.hue !== h) { n.hue = h; n.inner.style.setProperty('--aw-h', h); }
+            }
+            const w = Boolean(src && !url && !thumbs.failed(src));
+            if (w !== n.wait) { n.wait = w; n.el.classList.toggle('is-wait', w); }
         };
         const applyCovers = () => {
             const dpr = global.devicePixelRatio || 1, only = st.readySrcs.size ? st.readySrcs : null;
@@ -913,7 +919,7 @@
             tiltBoundsCache = { W, H, val };
             return val;
         };
-        const keepSet = new Set();
+        const keepSet = new Set(), visList = [], staleList = [];
         let locHide = true, locAway = false, hasOpen = false, hf = false, camTf = '';
         const setHf = (v) => { if (v !== hf) el.classList.toggle('has-focus', hf = v); };
         const layoutTiles = (rc = false) => {
@@ -934,7 +940,7 @@
             }
             const c0 = Math.floor(vx0 / g.blockW), c1 = Math.floor(vx1 / g.blockW);
             const r0 = Math.floor(vy0 / g.blockH), r1 = Math.floor(vy1 / g.blockH);
-            keepSet.clear();
+            keepSet.clear(); visList.length = 0; staleList.length = 0;
             const keep = keepSet;
             const dpr = global.devicePixelRatio || 1;
             const now = performance.now();
@@ -944,7 +950,6 @@
             const play = opts.playing();
             const playPos = posOf(play.index);
             let count = 0;
-            let frag = null;
             for (let br = r0; br <= r1 && count < maxTiles; br++) {
                 for (let bc = c0; bc <= c1 && count < maxTiles; bc++) {
                     for (let s = 0; s < SLOTS; s++) {
@@ -953,63 +958,63 @@
                         if (r.x + r.w < vx0 || r.x > vx1 || r.y + r.h < vy0 || r.y > vy1) continue;
                         count++;
                         keep.add(inst.id);
-                        let node = st.nodes.get(inst.id);
-                        const fresh = !node;
-                        if (fresh) {
-                            node = makeNode();
-                            st.nodes.set(inst.id, node);
-                            node.x = node.y = node.w = node.h = NaN;
-                            node.el.dataset.id = inst.id;
-                            if (!frag) frag = document.createDocumentFragment();
-                            frag.appendChild(node.el);
-                            node.el.classList.remove('aw-entering', 'aw-reveal', 'aw-flip');
-                            const sweep = entering && sweepAt();
-                            if (sweep) {
-                                // 换视图时：扫描线从左往右扫过，扫到哪张，哪张就从侧面翻过来
-                                const sx = st.room.left + (r.x - st.cam.x) * (tilt ? 0.8 : 1) + (tilt ? st.room.width * 0.1 : 0);
-                                node.inner.style.animationDelay = Math.round(sweepTimeAt(Math.max(0, Math.min(1, sx / (sweep.w + 90)))) * sweep.ms) + 'ms';
-                                node.el.classList.add('aw-flip');
-                            } else if (entering) {
-                                // 一波从视野左上角沿对角线往右下走：越靠右下越晚落下
-                                const W = st.room.width || 1, H = st.room.height || 1;
-                                const u = Math.max(0, Math.min(1, ((r.x - st.cam.x) / W + (r.y - st.cam.y) / H) / 2));
-                                node.inner.style.animationDelay = Math.round(u * 340) + 'ms';
-                                node.el.classList.add('aw-entering');
-                            } else if (st.revealOk) {
-                                // 拖动时新露出来的：原地淡入、轻轻放大，不会一下子整张冒出来
-                                node.inner.style.animationDelay = '';
-                                node.el.classList.add('aw-reveal');
-                            }
-                        }
-                        if (r.x !== node.x || r.y !== node.y) { node.el.style.transform = `translate(${r.x}px,${r.y}px)`; node.x = r.x; node.y = r.y; }
-                        if (r.w !== node.w || r.h !== node.h) { const ns = node.el.style; ns.width = r.w + 'px'; ns.height = r.h + 'px'; node.w = r.w; node.h = r.h;
-                            // 悬停放大：每条边往外长同样的距离（缝宽的六成），大小卡看起来抬得一样多
-                            ns.setProperty('--hx', (1 + 1.2 * st.gap / r.w).toFixed(4));
-                            ns.setProperty('--hy', (1 + 1.2 * st.gap / r.h).toFixed(4));
-                            ns.setProperty('--tw', Math.round(r.w) + 'px'); }
-                        fillContent(node, inst.item, Math.max(r.w, r.h) * dpr, rc);
-                        const isSel = inst.id === sel, isExp = inst.id === exp, isPlay = inst.item === playPos;
-                        const mask = (r.cols >= 4 ? 1 : r.cols >= 3 ? 2 : 4) | (isSel ? 8 : 0) | (isExp ? 16 : 0) | (isPlay ? (play.active ? 32 : 64) : 0);
-                        const diff = mask ^ node.clsMask;
-                        if (diff) {
-                            for (let b = 0; b < 7; b++) if (diff & (1 << b)) node.el.classList.toggle(TILE_CLS[b], !!(mask & (1 << b)));
-                            if (diff & 8) node.el.setAttribute('aria-selected', String(isSel));
-                            node.clsMask = mask;
-                        }
-                        const badge = isPlay ? (play.active ? '正在播放' : '暂停') + (node.code ? ' · ' + node.code : '') : node.code;
-                        if (badge !== node.badge) { node.badge = badge; node.no.textContent = badge; }
-                        if (isExp) {
-                            if (panel.parentNode !== node.inner) node.inner.appendChild(panel);
-                            fillPanel(st.ids[inst.item]);
-                        }
+                        visList.push(inst, r);
                     }
                 }
             }
-            if (frag) world.appendChild(frag);
-            for (const [id, node] of st.nodes) {
-                if (!keep.has(id)) { st.nodes.delete(id); recycle(node); }
-            }
             if (!exp && panel.parentNode) { panel.remove(); paintSeek(); }
+            for (const [id, n] of st.nodes) if (!keep.has(id)) { st.nodes.delete(id); if (panel.parentNode === n.inner) panel.remove(); staleList.push(n); }
+            let frag = null;
+            for (let vi = 0; vi < visList.length; vi += 2) {
+                const inst = visList[vi], r = visList[vi + 1];
+                let node = st.nodes.get(inst.id);
+                if (!node) {
+                    const ip = staleList.length > 0;
+                    if (ip) {
+                        let si = staleList.length - 1;
+                        for (let j = si; j >= 0; j--) if (staleList[j].w === r.w && staleList[j].h === r.h) { si = j; break; }
+                        node = staleList[si];
+                        if (si < staleList.length - 1) staleList[si] = staleList.pop(); else staleList.pop();
+                    } else {
+                        node = makeNode(); node.x = node.y = node.w = node.h = NaN;
+                        (frag || (frag = document.createDocumentFragment())).appendChild(node.el);
+                    }
+                    st.nodes.set(inst.id, node); node.el.dataset.id = inst.id;
+                    node.el.classList.remove('aw-entering', 'aw-reveal', 'aw-flip');
+                    const sw = entering && sweepAt();
+                    if (sw) {
+                        const sx = st.room.left + (r.x - st.cam.x) * (tilt ? 0.8 : 1) + (tilt ? st.room.width * 0.1 : 0);
+                        node.inner.style.animationDelay = Math.round(sweepTimeAt(Math.max(0, Math.min(1, sx / (sw.w + 90)))) * sw.ms) + 'ms';
+                        node.el.classList.add('aw-flip');
+                    } else if (entering) {
+                        const u = Math.max(0, Math.min(1, ((r.x - st.cam.x) / (st.room.width || 1) + (r.y - st.cam.y) / (st.room.height || 1)) / 2));
+                        node.inner.style.animationDelay = Math.round(u * 340) + 'ms';
+                        node.el.classList.add('aw-entering');
+                    } else if (!ip && st.revealOk) { node.inner.style.animationDelay = ''; node.el.classList.add('aw-reveal'); }
+                }
+                if (r.x !== node.x || r.y !== node.y) { node.el.style.transform = `translate(${r.x}px,${r.y}px)`; node.x = r.x; node.y = r.y; }
+                if (r.w !== node.w || r.h !== node.h) { const ns = node.el.style; ns.width = r.w + 'px'; ns.height = r.h + 'px'; node.w = r.w; node.h = r.h;
+                    ns.setProperty('--hx', (1 + 1.2 * st.gap / r.w).toFixed(4));
+                    ns.setProperty('--hy', (1 + 1.2 * st.gap / r.h).toFixed(4));
+                    ns.setProperty('--tw', Math.round(r.w) + 'px'); }
+                fillContent(node, inst.item, Math.max(r.w, r.h) * dpr, rc);
+                const isSel = inst.id === sel, isExp = inst.id === exp, isPlay = inst.item === playPos;
+                const mask = (r.cols >= 4 ? 1 : r.cols >= 3 ? 2 : 4) | (isSel ? 8 : 0) | (isExp ? 16 : 0) | (isPlay ? (play.active ? 32 : 64) : 0);
+                const diff = mask ^ node.clsMask;
+                if (diff) {
+                    for (let b = 0; b < 7; b++) if (diff & (1 << b)) node.el.classList.toggle(TILE_CLS[b], !!(mask & (1 << b)));
+                    if (diff & 8) node.el.setAttribute('aria-selected', String(isSel));
+                    node.clsMask = mask;
+                }
+                const badge = isPlay ? (play.active ? '正在播放' : '暂停') + (node.code ? ' · ' + node.code : '') : node.code;
+                if (badge !== node.badge) { node.badge = badge; node.no.textContent = badge; }
+                if (isExp) {
+                    if (panel.parentNode !== node.inner) node.inner.appendChild(panel);
+                    fillPanel(st.ids[inst.item]);
+                }
+            }
+            if (frag) world.appendChild(frag);
+            while (staleList.length) recycle(staleList.pop());
             if (playPos < 0) { if (!locHide) locateBtn.hidden = locHide = true; }
             else {
                 if (locHide) locateBtn.hidden = locHide = false;
@@ -1029,8 +1034,8 @@
             const tf = tilt ? `translate3d(${st.room.width / 2}px,${Math.round(st.room.height * TILT_EYE)}px,0) rotateX(${TILT}deg) translate3d(${-Math.round(cx * 2) / 2}px,${-Math.round(cy * 2) / 2}px,0)`
                 : `translate3d(${-Math.round(st.cam.x * 2) / 2}px,${-Math.round(st.cam.y * 2) / 2}px,0)`;
             if (tf !== camTf) world.style.transform = camTf = tf;
-            const g = st.g;
-            if (!st.laidAt || !g || Math.abs(st.cam.x - st.laidAt.x) > g.pitch * 1.5 || Math.abs(st.cam.y - st.laidAt.y) > g.pitch * 1.5) st.dirty = true;
+            const g = st.g, th = g ? g.pitch * (tilt ? 1.5 : 2.1) : 0;
+            if (!st.laidAt || !g || Math.abs(st.cam.x - st.laidAt.x) > th || Math.abs(st.cam.y - st.laidAt.y) > th) st.dirty = true;
         };
 
         /* 镜头在动（滚轮、拖动、惯性、飞过去）时挂 aw-moving：格子不接悬停（不然光标底下一张张立起又放下）、
