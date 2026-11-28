@@ -261,3 +261,36 @@ test('Batch 71: alternateCopy skips non-matching artists via cache, strips audio
     assert.equal(app.alternateCopy(failed), null, 'returns null once every matching copy has failed');
     assert.equal(app.alternateCopy({ path: '/x.flac', title: 'No Artist.flac', artist: '' }), null, 'returns null when artist is empty');
 });
+
+test('Batch 92: pickSimilar artist/album/genre memoization matches repeated multi-artist and album tracks deterministically', () => {
+    const seed = { path: '/seed.flac', title: 'Seed', artist: 'Alpha / Beta / Gamma', album: 'Shared Album', genre: 'Synthpop' };
+    const library = [seed];
+    const hitArtists = ['Beta feat. Delta', 'Alpha', 'Gamma'];
+    // Repeated artists, albums, and genres exercise artistScoreCache / albumNormCache / genreHitCache
+    for (let i = 0; i < 12; i += 1) {
+        library.push({
+            path: `/hit-${i}.flac`,
+            title: `Hit ${i}`,
+            artist: hitArtists[i % 3],
+            album: i < 4 ? 'Shared Album' : `Other ${i % 3}`,
+            genre: i % 3 === 0 ? 'synthpop' : 'Rock'
+        });
+    }
+    for (let i = 0; i < 6; i += 1) {
+        library.push({
+            path: `/miss-${i}.flac`,
+            title: `Miss ${i}`,
+            artist: `Unrelated ${i}`,
+            album: `Cold ${i}`,
+            genre: 'Jazz'
+        });
+    }
+    const picked = pickSimilar(library, [seed], { size: 6, random: () => 0 });
+    assert.equal(picked.length, 6);
+    assert.ok(picked.every((t) => t.path.startsWith('/hit-')), 'memoized artist/album/genre scoring ranks matching tracks above unrelated tracks');
+    // Verify artist cap (ceil(6/3) = 2) still applies using cached firstArtist
+    const betaCount = picked.filter((t) => t.artist.startsWith('Beta')).length;
+    const alphaCount = picked.filter((t) => t.artist === 'Alpha').length;
+    const gammaCount = picked.filter((t) => t.artist === 'Gamma').length;
+    assert.ok(betaCount <= 2 && alphaCount <= 2 && gammaCount <= 2, `artistCap respected with cached firstArtist (${alphaCount}/${betaCount}/${gammaCount})`);
+});

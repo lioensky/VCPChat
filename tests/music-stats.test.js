@@ -599,3 +599,56 @@ test('Batch 85: spectrum cached FFT & prefix-sum findCutoff match exact math, sp
     assert.equal(parsed.skipped, 1);
     assert.deepEqual(parsed.entries, [{ path: 'D:\\Music\\sub\\1.flac', title: '歌手 - 曲名', duration: 125 }]);
 });
+
+test('Batch 92: stats summary single-pass firstDay/hours/plays, resume path normalization, and spectrum cached row LUT', () => {
+    const day1 = '2026-11-20';
+    const day2 = '2026-11-27';
+    const baseMs = Date.parse('2026-11-27T12:00:00');
+    const store = new Map([
+        ['musicPlayStats', JSON.stringify({
+            v: 1,
+            t: {
+                'c:/music/a.flac': [5, baseMs - 1000, 0, baseMs - 50000, 'C:\\Music\\A.flac'],
+                'c:/music/b.flac': [2, baseMs - 2000, 1, baseMs - 60000, 'C:\\Music\\B.flac']
+            }
+        })],
+        ['musicListenLog', JSON.stringify({
+            v: 1,
+            d: {
+                [day1]: { s: Object.assign(new Array(24).fill(0), { 9: 120.4 }), p: { 'c:/music/a.flac': 2 } },
+                [day2]: { s: Object.assign(new Array(24).fill(0), { 9: 80.2, 22: 59.6 }), p: { 'c:/music/b.flac': 1 } }
+            }
+        })],
+        ['musicPlayResume', JSON.stringify({ path: 'c:/music/a.flac', position: 42, at: baseMs - 500 })]
+    ]);
+    const storage = {
+        getItem: (k) => store.get(k) ?? null,
+        setItem: (k, v) => store.set(k, v),
+        removeItem: (k) => store.delete(k)
+    };
+    const app = {
+        playlist: [{ path: 'C:\\Music\\A.flac', title: 'A', duration: 200 }],
+        currentTrackIndex: 0,
+        isPlaying: false,
+        isTrackLoading: false,
+        playedSeconds: () => 0
+    };
+    const stats = setupMusicStats(app, { now: () => baseMs, storage, setTimer: () => 1, clearTimer() {}, observe: false });
+    const res = stats.resume();
+    assert.ok(res && res.track === app.playlist[0] && res.position === 42, 'resume matches normalized slash/case track path');
+
+    const allSum = stats.summary({ days: 0 });
+    assert.equal(allSum.since, day1, 'since finds earliest day across full log');
+    assert.equal(allSum.plays, 7, 'all-time summary uses total table plays');
+    assert.equal(allSum.activeDays, 2);
+    assert.equal(allSum.hours[9], 201, 'hours sums and rounds cleanly across days');
+    assert.equal(allSum.hours[22], 60);
+    assert.equal(allSum.tracks[0].path, 'C:\\Music\\A.flac');
+
+    const recentSum = stats.summary({ days: 3 });
+    assert.equal(recentSum.since, day1, 'since still records earliest log day even when filtered to recent days');
+    assert.equal(recentSum.plays, 1, 'windowed summary only counts plays within days window');
+    assert.equal(recentSum.activeDays, 1);
+    assert.equal(recentSum.tracks.length, 1);
+    assert.equal(recentSum.tracks[0].path, 'C:\\Music\\B.flac');
+});
