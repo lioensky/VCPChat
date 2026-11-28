@@ -1313,10 +1313,16 @@
             } else scroller.scrollTop = Math.max(0, target);
         }
 
+        let tabBtns = null;
         const renderTabs = (marks = true) => {
-            el.tabs.innerHTML = '<i class="md-mk"></i>' + TABS.map((tab, index) => (
-                `<button type="button" role="tab" aria-selected="${tab === state.tab}" aria-controls="music-dock-panel-body" tabindex="${tab === state.tab ? 0 : -1}" class="${tab === state.tab ? 'md-on' : ''}" data-i="${index}"><span>${tab}</span></button>`
-            )).join('');
+            if (!tabBtns || !el.tabs.firstChild) {
+                el.tabs.innerHTML = '<i class="md-mk"></i>' + TABS.map((t, i) => `<button type="button" role="tab" aria-controls="music-dock-panel-body" data-i="${i}"><span>${t}</span></button>`).join('');
+                tabBtns = el.tabs.querySelectorAll('button[data-i]');
+            }
+            for (let i = 0; i < TABS.length; i += 1) {
+                const b = tabBtns[i], on = TABS[i] === state.tab;
+                if (b._on !== on) { b._on = on; b.classList.toggle('md-on', on); b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; }
+            }
             if (marks) placeMarks(el.pnl);
         };
         listen(el.tabs, 'click', (event) => {
@@ -1653,26 +1659,17 @@
                 state.panelOpen = true;
                 el.pnl.classList.add('md-open');
                 el.pnl.setAttribute('aria-hidden', 'false');
-                // 先更新页签并把焦点移进抽屉，再改 body/archive-hud 与填充队列节点：
-                // 这样 focus() 只需解析空抽屉页签区，不会在 body.music-drawer-open 和整批队列行变脏后触发全页同步布局。
+                // 先在 body 与 dock 仍干净时聚焦并滚动队列，再切外部类避免强制整页布局
                 renderTabs(false);
                 el.tabs.querySelector('[aria-selected="true"]')?.focus({ preventScroll: true, focusVisible: lastKeyboard });
-                el.hdl.classList.add('md-open');
-                el.handle.setAttribute('aria-expanded', 'true');
-                el.handle.setAttribute('aria-label', '关闭面板');
-                el.panelSlot.setAttribute('aria-expanded', 'true');
-                el.panelSlot.classList.add('md-on');
-                host.classList.add('md-panel-open');
-                fluid?.setRingDocked(false);
-                syncShift(preEdges);
                 if (!(state.tab === '播放列表' && prebuiltFresh())) renderBody(true);
                 queuePage.dropPrebuilt();
-                syncSolid();
-                if (pendingQueueScroll) {
-                    const { scroller, top } = pendingQueueScroll;
-                    pendingQueueScroll = null;
-                    if (scroller.isConnected && top > 0) scroller.scrollTop = top;
-                }
+                if (pendingQueueScroll) { const p = pendingQueueScroll; pendingQueueScroll = null; if (p.scroller.isConnected && p.top > 0) p.scroller.scrollTop = p.top; }
+                el.hdl.classList.add('md-open');
+                el.handle.setAttribute('aria-expanded', 'true'); el.handle.setAttribute('aria-label', '关闭面板');
+                el.panelSlot.setAttribute('aria-expanded', 'true'); el.panelSlot.classList.add('md-on');
+                host.classList.add('md-panel-open');
+                fluid?.setRingDocked(false); syncShift(preEdges); syncSolid();
                 if (openMarksRaf) cancelAnimationFrame(openMarksRaf);
                 openMarksRaf = requestAnimationFrame(() => {
                     openMarksRaf = 0;

@@ -20,32 +20,71 @@
     const STARBORN_CANDIDATE_IDS = Object.freeze([
         'luminous', 'partita', 'cadenza', 'fume', 'tempera', 'sonnet'
     ]);
-    const PUNCT_MARKS_RE = /[!?！？…—]/g;
+    // 候选模式在注册表初始化后保持不变，预先过滤避免每次切句重复分配数组
+    const STARBORN_IDS = STARBORN_CANDIDATE_IDS.filter(id => registry.has(id));
 
     const resolveSegment = frame => {
         const current = frame.activeLine;
         const track = frame.track?.path || frame.track?.title || 'unknown-track';
+        let lines = [];
+        if (current) {
+            lines.push(current);
+            const nextLines = frame.nextLines;
+            for (let i = 0; nextLines && i < nextLines.length; i += 1) {
+                const candidate = nextLines[i];
+                if (candidate && candidate.fullText.trim()) { lines.push(candidate); break; }
+            }
+        }
         return {
             key: `${track}:${getLineKey(current)}`,
-            lines: current ? [current, frame.nextLines.find(line => line.fullText.trim())].filter(Boolean) : []
+            lines
         };
     };
     const chooseMode = (frame, segment, previous, recent, config) => {
         // Diorama is deliberately excluded: Starborn crossfades can temporarily
         // own two children, which is unsuitable for concurrent Three/WebGL scenes.
-        const ids = STARBORN_CANDIDATE_IDS.filter(id => registry.has(id));
-        const text = segment.lines.map(line => line.fullText).join(' ');
-        const chars = splitGraphemes(text).filter(char => char.trim()).length;
-        const words = segment.lines.reduce((sum, line) => sum + (line.words?.length || 0), 0);
-        const syllables = segment.lines.reduce((sum, line) => sum + (line.words || [])
-            .reduce((count, word) => count + (word.syllables?.length || 0), 0), 0);
-        const duration = segment.lines.reduce((sum, line) => sum + Math.max(0.2, line.endTime - line.startTime), 0);
-        const translated = segment.lines.some(line => line.translation);
-        const romanized = segment.lines.some(line => line.romanization);
-        const chorus = segment.lines.some(line => line.isChorus);
-        const hintedFast = segment.lines.some(line =>
-            ['fast', 'instant'].includes(line.renderHints?.wordRevealMode));
-        const marks = (text.match(PUNCT_MARKS_RE) || []).length;
+        const ids = STARBORN_IDS;
+        const segLines = segment.lines;
+        let text = '';
+        let words = 0;
+        let syllables = 0;
+        let duration = 0;
+        let translated = false;
+        let romanized = false;
+        let chorus = false;
+        let hintedFast = false;
+        for (let i = 0; i < segLines.length; i += 1) {
+            const line = segLines[i];
+            if (i > 0) text += ' ';
+            text += line.fullText;
+            const lineWords = line.words;
+            if (lineWords && lineWords.length) {
+                words += lineWords.length;
+                for (let wi = 0; wi < lineWords.length; wi += 1) {
+                    const syls = lineWords[wi].syllables;
+                    if (syls) syllables += syls.length;
+                }
+            }
+            const span = line.endTime - line.startTime;
+            duration += span > 0.2 ? span : 0.2;
+            if (!translated && line.translation) translated = true;
+            if (!romanized && line.romanization) romanized = true;
+            if (!chorus && line.isChorus) chorus = true;
+            if (!hintedFast) {
+                const reveal = line.renderHints?.wordRevealMode;
+                if (reveal === 'fast' || reveal === 'instant') hintedFast = true;
+            }
+        }
+        const graphemes = splitGraphemes(text);
+        let chars = 0;
+        for (let i = 0; i < graphemes.length; i += 1) {
+            if (graphemes[i].trim()) chars += 1;
+        }
+        let marks = 0;
+        for (let i = 0; i < text.length; i += 1) {
+            const c = text.charCodeAt(i);
+            if (c === 33 || c === 63 || c === 0xff01 || c === 0xff1f || c === 0x2026 || c === 0x2014) marks += 1;
+        }
         const random = seededRandom(`starborn:${segment.key}`);
         const scores = {
             luminous: random() * 0.42 + frame.audio.vocal * 1.05 + frame.audio.bass * 0.72
@@ -69,9 +108,28 @@
         if (chars >= 20 && chars <= 42) scores.sonnet += 0.28;
         scores[ids[hashString(segment.key) % ids.length]] += 0.44;
         const avoid = config.modes?.starborn?.avoidRepeat !== false;
-        if (avoid) recent.forEach((id, index) => { if (scores[id] !== undefined) scores[id] -= index === 0 ? 0.72 : 0.34; });
-        const candidates = ids.filter(id => !avoid || id !== previous);
-        return registry.get((candidates.length ? candidates : ids).sort((a, b) => scores[b] - scores[a])[0]);
+        if (avoid) {
+            for (let i = 0; i < recent.length; i += 1) {
+                const rid = recent[i];
+                if (scores[rid] !== undefined) scores[rid] -= i === 0 ? 0.72 : 0.34;
+            }
+        }
+        let bestId = '';
+        let bestScore = -Infinity;
+        for (let i = 0; i < ids.length; i += 1) {
+            const id = ids[i];
+            if (avoid && id === previous) continue;
+            const sc = scores[id];
+            if (sc > bestScore) { bestScore = sc; bestId = id; }
+        }
+        if (!bestId) {
+            for (let i = 0; i < ids.length; i += 1) {
+                const id = ids[i];
+                const sc = scores[id];
+                if (sc > bestScore) { bestScore = sc; bestId = id; }
+            }
+        }
+        return registry.get(bestId);
     };
 
     const createStarborn = (container, services) => {
@@ -104,13 +162,13 @@
             child.layer.remove();
         };
         const clear = () => {
-            Array.from(children).forEach(release);
+            for (const child of children) release(child);
             current = null;
         };
         const mount = (entry, frame) => {
             // A retiring instance is still owned and always destroyed, including
             // exits during crossfade; no cancellation can bypass its disposer.
-            Array.from(children).forEach(child => { if (child !== current) release(child); });
+            for (const child of children) { if (child !== current) release(child); }
             if (current) current.retireAt = frame.playbackTime;
             const layer = createElement('div', 'starborn-performance-layer');
             layer.style.transition = 'none';
@@ -154,7 +212,7 @@
                 // A clock correction, seek, or refreshed lyric array is not a
                 // musical cut. Keep the renderer and synchronize its new frame.
                 // Discard outgoing layers whose old timestamps no longer apply.
-                Array.from(children).forEach(child => { if (child !== current) release(child); });
+                for (const child of children) { if (child !== current) release(child); }
                 if (current) current.born = frame.playbackTime - 0.52;
                 if (backward) lastTransition = frame.playbackTime;
                 segmentKey = nextSegKey;

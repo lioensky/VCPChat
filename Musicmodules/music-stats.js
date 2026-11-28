@@ -207,9 +207,10 @@
         };
         let bodyObserver = null;
         const onQueueChange = () => {
-            // 仅编辑待播队列（当前播放曲目与播停态均未变）时跳过同步 tick，避免批量入队时反复统计与查盘
-            const p = currentTrack()?.path || null;
+            // 未在播放且无活动会话，或仅编辑待播队列（当前播放曲目与播停态均未变）时跳过同步 tick，避免批量入队时反复统计与查盘
             const playing = app.isPlaying === true && !app.isTrackLoading;
+            if (!session && !playing) return;
+            const p = currentTrack()?.path || null;
             if (session && session.path === p && lastTickPlaying === playing) return;
             tick();
         };

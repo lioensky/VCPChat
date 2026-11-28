@@ -40,6 +40,7 @@
         const titleOf = (t) => {
             if (!t || typeof t !== 'object') return '';
             const raw = t.title || '';
+            if (!raw || raw.indexOf('.') === -1) return raw;
             const cached = strippedTitles.get(t);
             if (cached && cached.raw === raw) return cached.clean;
             const clean = (app.stripAudioExtension ? app.stripAudioExtension(raw) : raw) || '';
@@ -91,6 +92,43 @@
             for (let i = 0; i < empty.length; i += 1) out[w++] = empty[i];
             return out;
         };
+        // 仅在数学上必然不等（无前导零/重音/合成符歧义）时跳过 Intl.Collator.compare，供倒序切秩复用
+        const definitelyDistinct = (a, b) => {
+            const al = a.length;
+            const bl = b.length;
+            const min = al < bl ? al : bl;
+            let k = 0;
+            while (k < min && a.charCodeAt(k) === b.charCodeAt(k)) k += 1;
+            if (k === min) {
+                if (al === bl) return false;
+                const longer = al > bl ? a : b;
+                const extra = longer.charCodeAt(k);
+                if (extra >= 49 && extra <= 57) return true;
+                if ((extra >= 65 && extra <= 90) || (extra >= 97 && extra <= 122)) return true;
+                if (extra >= 0x4e00 && extra <= 0x9fff) return true;
+                if (extra === 32 && k + 1 < longer.length) {
+                    const next = longer.charCodeAt(k + 1);
+                    if ((next >= 49 && next <= 57) || (next >= 65 && next <= 90) || (next >= 97 && next <= 122) || (next >= 0x4e00 && next <= 0x9fff)) return true;
+                }
+                return false;
+            }
+            const c1 = a.charCodeAt(k);
+            const c2 = b.charCodeAt(k);
+            if (c1 >= 0x4e00 && c1 <= 0x9fff && c2 >= 0x4e00 && c2 <= 0x9fff) return true;
+            const l1 = c1 >= 65 && c1 <= 90 ? c1 + 32 : c1;
+            const l2 = c2 >= 65 && c2 <= 90 ? c2 + 32 : c2;
+            if (l1 >= 97 && l1 <= 122 && l2 >= 97 && l2 <= 122 && l1 !== l2) {
+                const n1 = k + 1 < al ? a.charCodeAt(k + 1) : 0;
+                const n2 = k + 1 < bl ? b.charCodeAt(k + 1) : 0;
+                if (n1 < 0x80 && n2 < 0x80) return true;
+            }
+            if (c1 >= 49 && c1 <= 57 && c2 >= 49 && c2 <= 57) return true;
+            if (c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57 && k > 0) {
+                const prev = a.charCodeAt(k - 1);
+                if (prev >= 49 && prev <= 57) return true;
+            }
+            return false;
+        };
         const ensureRanks = (entry) => {
             if (entry.ranks) return entry.ranks;
             const neLen = entry.nonEmpty.length;
@@ -108,7 +146,9 @@
                 for (let i = 1; i < neLen; i += 1) {
                     const prev = vals[i - 1];
                     const curr = vals[i];
-                    const diff = isNum ? (curr !== prev) : (curr !== prev && collator.compare(prev, curr) !== 0);
+                    const diff = isNum
+                        ? (curr !== prev)
+                        : (curr !== prev && (definitelyDistinct(prev, curr) || collator.compare(prev, curr) !== 0));
                     if (diff) curRank += 1;
                     ranks[i] = curRank;
                 }
@@ -161,6 +201,8 @@
             const nonEmptyVals = [];
             const nonEmptyOrds = isFull ? null : [];
             const empty = [];
+            let ordsMonotonic = true;
+            let prevOrd = -1;
             for (let i = 0; i < len; i += 1) {
                 const t = songs[i];
                 const v = get(t);
@@ -169,15 +211,19 @@
                 } else {
                     nonEmptyTracks.push(t);
                     nonEmptyVals.push(v);
-                    if (!isFull) nonEmptyOrds.push(order.get(t) ?? 0);
+                    if (!isFull) {
+                        const ord = order.get(t) ?? 0;
+                        nonEmptyOrds.push(ord);
+                        if (ord < prevOrd) ordsMonotonic = false;
+                        prevOrd = ord;
+                    }
                 }
             }
             const neLen = nonEmptyTracks.length;
-            const neIdx = new Array(neLen);
-            for (let i = 0; i < neLen; i += 1) neIdx[i] = i;
             // 始终先按正序排并按需懒算并列秩，同源下再点表头切倒序直接 O(N) 翻转并列段
             let usedRank = false;
             let itemRanks = null;
+            let rankCount = 0;
             if (!isNum && neLen > 32) {
                 // 仅标题列做前 64 项高基数快退抽样；歌手等低基数列前 64 项常来自不同歌手，直接用全表 50% 上限探测避免错失秩排序
                 const uniq = new Set();
@@ -202,41 +248,62 @@
                     let r = 0;
                     rankMap.set(keys[0], 0);
                     for (let i = 1; i < keys.length; i += 1) {
-                        if (collator.compare(keys[i - 1], keys[i]) !== 0) r = i;
+                        if (collator.compare(keys[i - 1], keys[i]) !== 0) r += 1;
                         rankMap.set(keys[i], r);
                     }
+                    rankCount = r + 1;
                     itemRanks = new Int32Array(neLen);
                     for (let i = 0; i < neLen; i += 1) itemRanks[i] = rankMap.get(nonEmptyVals[i]);
                     usedRank = true;
                 }
             }
-            if (usedRank) {
-                neIdx.sort(isFull
-                    ? (a, b) => (itemRanks[a] - itemRanks[b]) || (a - b)
-                    : (a, b) => (itemRanks[a] - itemRanks[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
-            } else if (isNum) {
-                neIdx.sort(isFull
-                    ? (a, b) => (nonEmptyVals[a] - nonEmptyVals[b]) || (a - b)
-                    : (a, b) => (nonEmptyVals[a] - nonEmptyVals[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
-            } else {
-                neIdx.sort(isFull
-                    ? (a, b) => collator.compare(nonEmptyVals[a], nonEmptyVals[b]) || (a - b)
-                    : (a, b) => collator.compare(nonEmptyVals[a], nonEmptyVals[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
-            }
             const nonEmpty = new Array(neLen);
             const vals = usedRank ? null : new Array(neLen);
             const rankKeys = usedRank ? new Int32Array(neLen) : null;
             const asc = new Array(len);
-            for (let i = 0; i < neLen; i += 1) {
-                const idx = neIdx[i];
-                const t = nonEmptyTracks[idx];
-                nonEmpty[i] = t;
-                asc[i] = t;
-                if (usedRank) rankKeys[i] = itemRanks[idx];
-                else vals[i] = nonEmptyVals[idx];
+            if (usedRank && (isFull || ordsMonotonic)) {
+                // 稠密并列秩 + 单调原序：两趟 O(N+K) 稳定计数排序，完全省去 neIdx 与 O(N log N) JS 比较回调
+                const counts = new Int32Array(rankCount);
+                for (let i = 0; i < neLen; i += 1) counts[itemRanks[i]] += 1;
+                let offset = 0;
+                for (let k = 0; k < rankCount; k += 1) {
+                    const c = counts[k];
+                    counts[k] = offset;
+                    offset += c;
+                }
+                for (let i = 0; i < neLen; i += 1) {
+                    const rk = itemRanks[i];
+                    const pos = counts[rk]++;
+                    const t = nonEmptyTracks[i];
+                    nonEmpty[pos] = t;
+                    asc[pos] = t;
+                    rankKeys[pos] = rk;
+                }
+            } else {
+                const neIdx = new Array(neLen);
+                for (let i = 0; i < neLen; i += 1) neIdx[i] = i;
+                if (usedRank) {
+                    neIdx.sort((a, b) => (itemRanks[a] - itemRanks[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
+                } else if (isNum) {
+                    neIdx.sort(isFull
+                        ? (a, b) => (nonEmptyVals[a] - nonEmptyVals[b]) || (a - b)
+                        : (a, b) => (nonEmptyVals[a] - nonEmptyVals[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
+                } else {
+                    neIdx.sort(isFull
+                        ? (a, b) => collator.compare(nonEmptyVals[a], nonEmptyVals[b]) || (a - b)
+                        : (a, b) => collator.compare(nonEmptyVals[a], nonEmptyVals[b]) || (nonEmptyOrds[a] - nonEmptyOrds[b]));
+                }
+                for (let i = 0; i < neLen; i += 1) {
+                    const idx = neIdx[i];
+                    const t = nonEmptyTracks[idx];
+                    nonEmpty[i] = t;
+                    asc[i] = t;
+                    if (usedRank) rankKeys[i] = itemRanks[idx];
+                    else vals[i] = nonEmptyVals[idx];
+                }
             }
             for (let i = 0; i < empty.length; i += 1) asc[neLen + i] = empty[i];
-            const entry = { asc, desc: null, nonEmpty, empty, vals, rankKeys, usedRank, isNum, ranks: null };
+            const entry = { asc, desc: null, nonEmpty, empty, vals, rankKeys: usedRank ? null : rankKeys, usedRank, isNum, ranks: usedRank ? rankKeys : null };
             if (len > 32) {
                 sortCache.byKey.set(sort.key, entry);
                 if (sort.dir === -1) {

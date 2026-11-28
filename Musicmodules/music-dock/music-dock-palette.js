@@ -296,6 +296,7 @@
             const artist = trackArtist(track);
             const album = track.album;
             return {
+                kind: 'song',
                 id: `song:${track.path}`,
                 section: '歌曲',
                 group,
@@ -304,13 +305,12 @@
                 desc: artist && album ? `${artist} · ${album}` : (artist || album || ''),
                 current: isCurrent,
                 queueable: true,
-                run: () => { if (index !== -1) app.loadTrack?.(index); },
-                playNext: () => queueTracks([track], true, trackTitle(track)),
-                addToQueue: () => queueTracks([track], false, trackTitle(track))
+                _track: track,
+                _index: index
             };
         };
 
-        // 曲目路径映射缓存：单表存 { track, index }，省去 5000+ 条 `song:` 前缀字符串与第二张 Map 的构造和 GC
+        // 曲目路径映射缓存：直接存整型下标，省去 5000+ 个 { track, index } 包装对象分配与 GC
         let cachedPathList = null;
         let cachedPathLen = -1;
         let cachedPathFirst = null;
@@ -329,7 +329,7 @@
             for (let i = 0; i < len; i++) {
                 const t = tracks[i];
                 if (!t) continue;
-                byPath.set(t.path, { track: t, index: i });
+                byPath.set(t.path, i);
             }
             cachedPathList = app.playlist;
             cachedPathLen = len;
@@ -340,10 +340,10 @@
         };
 
         const normPath = (p) => String(p ?? '').replace(BSLASH_RE, '/').toLowerCase();
-        const lookupTrack = (byPath, rawPath) => {
-            if (!rawPath) return null;
+        const lookupTrackIndex = (byPath, rawPath) => {
+            if (!rawPath) return -1;
             const exact = byPath.get(rawPath);
-            if (exact) return exact;
+            if (exact !== undefined) return exact;
             let byNorm = byPath._norm;
             if (!byNorm) {
                 byNorm = new Map();
@@ -353,16 +353,18 @@
                 }
                 byPath._norm = byNorm;
             }
-            return byNorm.get(normPath(rawPath)) || null;
+            const hit = byNorm.get(normPath(rawPath));
+            return hit !== undefined ? hit : -1;
         };
 
         const playlistTracks = (pl, byPath) => {
+            const tracks = app.playlist || [];
             const map = byPath || getTrackByPath();
             const raw = pl.tracks || [];
             const out = [];
             for (let i = 0; i < raw.length; i += 1) {
-                const hit = lookupTrack(map, raw[i]);
-                if (hit) out.push(hit.track);
+                const idx = lookupTrackIndex(map, raw[i]);
+                if (idx >= 0 && tracks[idx]) out.push(tracks[idx]);
             }
             return out;
         };
@@ -552,12 +554,17 @@
             let all = null;
             let byPath = null;
             const out = [];
+            const tracks = app.playlist || [];
             for (let i = 0; i < recent.length; i += 1) {
                 const id = recent[i];
                 if (id.startsWith('song:')) {
                     if (!byPath) byPath = getTrackByPath();
-                    const hit = lookupTrack(byPath, id.slice(5));
-                    if (hit) out.push({ ...songItem(hit.track, '最近', hit.index), section: '最近' });
+                    const hitIdx = lookupTrackIndex(byPath, id.slice(5));
+                    if (hitIdx >= 0 && tracks[hitIdx]) {
+                        const it = songItem(tracks[hitIdx], '最近', hitIdx);
+                        it.section = '最近';
+                        out.push(it);
+                    }
                     continue;
                 }
                 if (id.startsWith('playlist:')) {
@@ -674,8 +681,17 @@
         };
 
         let lastHintsKey = '';
+        const tailToken = (raw) => {
+            const s = String(raw || '');
+            let i = s.length - 1;
+            if (i < 0) return '';
+            const lastCode = s.charCodeAt(i);
+            if (lastCode <= 32 && WS_SPLIT_RE.test(s[i])) return '';
+            while (i >= 0 && !(s.charCodeAt(i) <= 32 && WS_SPLIT_RE.test(s[i]))) i -= 1;
+            return s.slice(i + 1);
+        };
         const renderHints = (raw, q) => {
-            const last = String(raw || '').split(WS_SPLIT_RE).pop() || '';
+            const last = tailToken(raw);
             const show = last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2));
             if (!show) {
                 if (lastHintsKey !== '') {
@@ -958,7 +974,9 @@
             if (!item) return;
             if (how !== 'run' && item.queueable) {
                 // 入队后面板留着，方便接着挑下一首。
-                if (how === 'next') item.playNext(); else item.addToQueue();
+                if (item.kind === 'song') queueTracks([item._track], how === 'next', item.title);
+                else if (how === 'next') item.playNext();
+                else item.addToQueue();
                 input.focus();
                 return;
             }
@@ -975,7 +993,8 @@
                 return;
             }
             close(false);
-            item.run();
+            if (item.kind === 'song') { if (item._index !== -1) app.loadTrack?.(item._index); }
+            else item.run();
         };
 
         // ───────── 打开 / 关闭 ─────────

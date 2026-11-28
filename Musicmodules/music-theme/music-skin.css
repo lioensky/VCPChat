@@ -308,6 +308,13 @@ body.music-stage-active #custom-title-bar {
     transition: background-color var(--mt-dur-1) var(--mt-ease-std);
 }
 
+/* 经典列表已由 music-ui.js 虚拟化到视口附近 ~80 行，关闭重复的 content-visibility 锁定与相交观察器开销 */
+#playlist.sidebar-playlist li {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
+    contain: layout style;
+}
+
 .playlist li:not([data-n]),
 .sidebar-playlist li:not([data-n]) {
     counter-increment: track;

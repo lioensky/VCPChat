@@ -37,8 +37,15 @@ function isSourceMigrationArtifact(text) {
 }
 
 function createLyricData(lines, isWordByWord) {
+    const out = [];
+    if (lines) {
+        for (let i = 0; i < lines.length; i += 1) {
+            const line = lines[i];
+            if (!isSourceMigrationArtifact(line?.fullText)) out.push(line);
+        }
+    }
     return {
-        lines: (lines || []).filter(line => !isSourceMigrationArtifact(line?.fullText)),
+        lines: out,
         isWordByWord
     };
 }
@@ -55,7 +62,9 @@ function parseTimestamp(minute, second, fraction) {
  */
 function buildTimedWords(text, startTime, endTime) {
     const duration = Math.max(endTime - startTime, 0.1);
-    const rawTokens = text.split(WS_SPLIT_REGEX).filter(Boolean);
+    const parts = text.split(WS_SPLIT_REGEX);
+    const rawTokens = [];
+    for (let i = 0; i < parts.length; i += 1) if (parts[i]) rawTokens.push(parts[i]);
     const words = [];
     const tokens = [];
     let totalWeight = 0;
@@ -181,9 +190,21 @@ function findClosestTimedText(startTime, entries) {
 /**
  * Aligns translation text with lyric start times
  */
-function matchTranslations(startTimes, entries) {
-    if (startTimes.length === 0 || entries.length === 0) return startTimes.map(() => undefined);
-    return startTimes.map(startTime => findClosestTimedText(startTime, entries));
+function applyTimedSupplements(lines, translationEntries, romanizationEntries) {
+    const hasTr = translationEntries.length > 0;
+    const hasRo = romanizationEntries.length > 0;
+    if (!hasTr && !hasRo) return;
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        if (hasTr) {
+            const tr = findClosestTimedText(line.startTime, translationEntries);
+            if (tr) line.translation = tr;
+        }
+        if (hasRo) {
+            const ro = findClosestTimedText(line.startTime, romanizationEntries);
+            if (ro) line.romanization = ro;
+        }
+    }
 }
 
 /**
@@ -237,15 +258,7 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
     }
 
     lines.sort((a, b) => a.startTime - b.startTime);
-    if (translationEntries.length > 0 || romanizationEntries.length > 0) {
-        const startTimes = lines.map(l => l.startTime);
-        const translations = translationEntries.length > 0 ? matchTranslations(startTimes, translationEntries) : null;
-        const romanizations = romanizationEntries.length > 0 ? matchTranslations(startTimes, romanizationEntries) : null;
-        lines.forEach((line, idx) => {
-            if (translations && translations[idx]) line.translation = translations[idx];
-            if (romanizations && romanizations[idx]) line.romanization = romanizations[idx];
-        });
-    }
+    applyTimedSupplements(lines, translationEntries, romanizationEntries);
 
     return createLyricData(lines, true);
 }
@@ -324,15 +337,7 @@ function parseQRC(qrcString, translationString = '', romanizationString = '') {
     }
 
     lines.sort((a, b) => a.startTime - b.startTime);
-    if (translationEntries.length > 0 || romanizationEntries.length > 0) {
-        const startTimes = lines.map(l => l.startTime);
-        const translations = translationEntries.length > 0 ? matchTranslations(startTimes, translationEntries) : null;
-        const romanizations = romanizationEntries.length > 0 ? matchTranslations(startTimes, romanizationEntries) : null;
-        lines.forEach((line, idx) => {
-            if (translations && translations[idx]) line.translation = translations[idx];
-            if (romanizations && romanizations[idx]) line.romanization = romanizations[idx];
-        });
-    }
+    applyTimedSupplements(lines, translationEntries, romanizationEntries);
 
     return createLyricData(lines, true);
 }
@@ -394,7 +399,8 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
     }
 
     lines.sort((a, b) => a.startTime - b.startTime);
-    lines.forEach((line, idx) => {
+    for (let idx = 0; idx < lines.length; idx += 1) {
+        const line = lines[idx];
         let trans = embeddedTranslations[idx];
         let roma = embeddedRomanizations[idx];
         if (!trans && translationEntries.length > 0) {
@@ -405,7 +411,7 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
         }
         if (trans) line.translation = trans;
         if (roma) line.romanization = roma;
-    });
+    }
 
     return createLyricData(lines, true);
 }
@@ -443,9 +449,18 @@ function parseTtmlTime(str) {
         const unit = m[2].toLowerCase();
         return unit === 'h' ? v * 3600 : unit === 'm' ? v * 60 : unit === 'ms' ? v / 1000 : v;
     }
-    const parts = text.split(':');
-    if (parts.some(part => !TTML_TIME_PART_REGEX.test(part))) return NaN;
-    return parts.reduce((sum, part) => sum * 60 + parseFloat(part), 0);
+    let sum = 0;
+    let start = 0;
+    const len = text.length;
+    for (let i = 0; i <= len; i += 1) {
+        if (i === len || text.charCodeAt(i) === 58) {
+            const part = text.slice(start, i);
+            if (!TTML_TIME_PART_REGEX.test(part)) return NaN;
+            sum = sum * 60 + parseFloat(part);
+            start = i + 1;
+        }
+    }
+    return sum;
 }
 const TTML_ATTR_RE_CACHE = new Map();
 function ttmlAttr(attrs, name) {
@@ -545,8 +560,10 @@ function parseTTML(ttmlString) {
             stack.push({ role, word });
         }
 
-        let words = main.filter(w => w.text !== '');
-        const bg = background.filter(w => w.text.trim() !== '');
+        let words = [];
+        for (let i = 0; i < main.length; i += 1) if (main[i].text !== '') words.push(main[i]);
+        const bg = [];
+        for (let i = 0; i < background.length; i += 1) if (background[i].text.trim() !== '') bg.push(background[i]);
         if (!words.length) {
             const cleanText = plain.replace(WS_GLOBAL_REGEX, ' ').trim();
             const end = Number.isFinite(lineEndRaw) ? lineEndRaw : lineStart + 4;
@@ -556,18 +573,29 @@ function parseTTML(ttmlString) {
             if (words.length && !TRAIL_WS_ONE_REGEX.test(words[words.length - 1].text)) words[words.length - 1].text += ' ';
             bg[0].text = '(' + bg[0].text.replace(LEAD_WS_REGEX, '');
             bg[bg.length - 1].text = bg[bg.length - 1].text.replace(TRAIL_WS_REGEX, '') + ')';
-            words = words.concat(bg);
+            for (let i = 0; i < bg.length; i += 1) words.push(bg[i]);
         }
         if (!words.length) continue;
         const last = words[words.length - 1];
         last.text = last.text.replace(TRAIL_WS_REGEX, '');
-        words = words.map(w => ({ text: w.text, startTime: Number(w.startTime.toFixed(3)), endTime: Number(w.endTime.toFixed(3)) }));
-        const lineEnd = Number.isFinite(lineEndRaw) ? lineEndRaw : Math.max(lineStart, ...words.map(w => w.endTime));
+        const wLen = words.length;
+        const outWords = new Array(wLen);
+        let maxWordEnd = lineStart;
+        let fullText = '';
+        for (let i = 0; i < wLen; i += 1) {
+            const w = words[i];
+            const st = Number(w.startTime.toFixed(3));
+            const et = Number(w.endTime.toFixed(3));
+            if (et > maxWordEnd) maxWordEnd = et;
+            fullText += w.text;
+            outWords[i] = { text: w.text, startTime: st, endTime: et };
+        }
+        const lineEnd = Number.isFinite(lineEndRaw) ? lineEndRaw : maxWordEnd;
         const line = {
-            words,
+            words: outWords,
             startTime: Number(lineStart.toFixed(3)),
             endTime: Number(Math.max(lineStart, lineEnd).toFixed(3)),
-            fullText: words.map(w => w.text).join('')
+            fullText
         };
         const tr = (translation.replace(WS_GLOBAL_REGEX, ' ').trim()) || (key && headTranslations.get(key)) || '';
         const ro = (romanization.replace(WS_GLOBAL_REGEX, ' ').trim()) || (key && headRomanizations.get(key)) || '';
@@ -616,15 +644,7 @@ function parseLRC(lrcString, translationString = '', romanizationString = '') {
         });
     }
 
-    if (translationEntries.length > 0 || romanizationEntries.length > 0) {
-        const startTimes = lines.map(l => l.startTime);
-        const translations = translationEntries.length > 0 ? matchTranslations(startTimes, translationEntries) : null;
-        const romanizations = romanizationEntries.length > 0 ? matchTranslations(startTimes, romanizationEntries) : null;
-        lines.forEach((line, idx) => {
-            if (translations && translations[idx]) line.translation = translations[idx];
-            if (romanizations && romanizations[idx]) line.romanization = romanizations[idx];
-        });
-    }
+    applyTimedSupplements(lines, translationEntries, romanizationEntries);
 
     return createLyricData(lines, false);
 }

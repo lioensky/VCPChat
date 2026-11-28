@@ -239,6 +239,11 @@
             if (idx === 0) return 100 * w;
             if (idx > 0) return 60 * w;
             if (ascii) {
+                // 单字符数字/符号不可能由汉字转拼音凭空产生，原文未命中直接跳过 py/ini 扫描
+                if (term.length === 1) {
+                    const tc = term.charCodeAt(0);
+                    if (tc < 97 || tc > 122) return 0;
+                }
                 if (py && py !== v) {
                     idx = py.indexOf(term);
                     if (idx === 0) return 45 * w;
@@ -344,6 +349,7 @@
                 const matchedIds = cacheable ? [] : null;
                 const t0 = terms[0].term;
                 const a0 = terms[0].ascii;
+                const t0Code = t0.charCodeAt(0);
                 if (kindCode === 1 || kindCode === 2) {
                     const isArtist = kindCode === 1;
                     const weight = isArtist ? 2 : 1;
@@ -407,7 +413,7 @@
                         } else sa0 = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0);
                         let best0;
                         if (sa0 === 200) {
-                            best0 = (e.title && e.title.startsWith(t0)) ? 300 : 200;
+                            best0 = (e.title && e.title.charCodeAt(0) === t0Code && e.title.startsWith(t0)) ? 300 : 200;
                         } else {
                             best0 = scoreField(e.title, e.titlePy, e.titleIni, 3, t0, a0);
                             if (sa0 > best0) best0 = sa0;
@@ -434,7 +440,7 @@
                             } else sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii);
                             let best;
                             if (sa === 200) {
-                                best = (e.title && e.title.startsWith(term)) ? 300 : 200;
+                                best = (e.title && e.title.charCodeAt(0) === term.charCodeAt(0) && e.title.startsWith(term)) ? 300 : 200;
                             } else {
                                 best = scoreField(e.title, e.titlePy, e.titleIni, 3, term, ascii);
                                 if (sa > best) best = sa;
