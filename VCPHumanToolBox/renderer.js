@@ -84,9 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (settings.vcpServerUrl) {
             try {
-                const url = new URL(settings.vcpServerUrl);
-                url.pathname = '/v1/human/tool';
-                VCP_SERVER_URL = url.toString();
+                VCP_SERVER_URL = globalThis.vcpServerRoutes.vcpServerEndpoint(settings.vcpServerUrl, 'humanTool');
             } catch (e) {
                 console.error("Invalid vcpServerUrl in settings:", settings.vcpServerUrl);
             }
@@ -821,7 +819,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { role: 'user', content: text }
             ];
             
-            const chatUrl = VCP_SERVER_URL.replace('/v1/human/tool', '/v1/chat/completions');
+            const chatUrl = globalThis.vcpServerRoutes.vcpChatUrl(settings.vcpServerUrl);
             const response = await fetch(chatUrl, {
                 method: 'POST',
                 headers: {
@@ -1084,8 +1082,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 url: VCP_SERVER_URL,
                 apiKey: VCP_API_KEY,
                 toolName: finalToolName,
-                userName: USER_NAME,
-                args: args
+                args
             });
 
             clearInterval(timerInterval);

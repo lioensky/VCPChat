@@ -10,20 +10,7 @@ let mainWindow = null;
 let openChildWindows = [];
 let PROJECT_ROOT = null;
 let APP_DATA_ROOT_IN_PROJECT = null;
-let SETTINGS_FILE = null;
 let isInitialized = false;
-
-async function readTranslatorSettings() {
-    try {
-        if (await fs.pathExists(SETTINGS_FILE)) {
-            return await fs.readJson(SETTINGS_FILE);
-        }
-    } catch (readError) {
-        console.error('Failed to read settings file for translator window:', readError);
-    }
-
-    return {};
-}
 
 async function createOrFocusTranslatorWindow() {
     if (translatorWindow && !translatorWindow.isDestroyed()) {
@@ -54,11 +41,7 @@ async function createOrFocusTranslatorWindow() {
         show: false
     });
 
-    const settings = await readTranslatorSettings();
-    const vcpServerUrl = settings.vcpServerUrl || '';
-    const vcpApiKey = settings.vcpApiKey || '';
-
-    const translatorUrl = `file://${path.join(PROJECT_ROOT, 'Translatormodules', 'translator.html')}?vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
+    const translatorUrl = require('node:url').pathToFileURL(path.join(PROJECT_ROOT, 'Translatormodules', 'translator.html')).href;
     console.log(`[TranslatorHandlers] Attempting to load URL in translator window: ${translatorUrl.substring(0, 200)}...`);
 
     translatorWindow.webContents.on('did-start-loading', () => {
@@ -128,7 +111,6 @@ function initialize(options) {
     openChildWindows = options.openChildWindows;
     PROJECT_ROOT = options.projectRoot;
     APP_DATA_ROOT_IN_PROJECT = options.APP_DATA_ROOT_IN_PROJECT;
-    SETTINGS_FILE = options.SETTINGS_FILE;
 
     const translatorDir = path.join(APP_DATA_ROOT_IN_PROJECT, 'Translatormodules');
     fs.ensureDirSync(translatorDir);

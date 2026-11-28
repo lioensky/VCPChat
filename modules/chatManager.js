@@ -510,13 +510,31 @@ export const chatManager = (() => {
     const deferredHistorySyncs = new Map();
     const projectingHistoryLoads = new Set();
     const historySyncKey = (itemId, itemType, topicId) => JSON.stringify([itemType, itemId, topicId]);
-    function deferHistorySync(itemId, itemType, topicId) {
-        deferredHistorySyncs.set(historySyncKey(itemId, itemType, topicId), { itemId, itemType, topicId });
+    function deferHistorySync(itemId, itemType, topicId, syncOptions = {}) {
+        const key = historySyncKey(itemId, itemType, topicId);
+        const existing = deferredHistorySyncs.get(key);
+        const autoRepairMessageIds = existing?.autoRepairMessageIds ? new Set(existing.autoRepairMessageIds) : new Set();
+        if (syncOptions?.autoRepairMessageId) autoRepairMessageIds.add(syncOptions.autoRepairMessageId);
+        if (syncOptions?.autoRepairMessageIds) {
+            for (const id of syncOptions.autoRepairMessageIds) autoRepairMessageIds.add(id);
+        }
+        deferredHistorySyncs.set(key, {
+            itemId,
+            itemType,
+            topicId,
+            ...(autoRepairMessageIds.size > 0 ? { autoRepairMessageIds } : {}),
+        });
     }
     async function flushDeferredHistorySync(itemId, itemType, topicId) {
         const key = historySyncKey(itemId, itemType, topicId);
+        const entry = deferredHistorySyncs.get(key);
         if (!deferredHistorySyncs.delete(key) || disposed) return;
-        await syncHistoryFromFile(itemId, itemType, topicId);
+        await syncHistoryFromFile(
+            itemId,
+            itemType,
+            topicId,
+            entry?.autoRepairMessageIds ? { autoRepairMessageIds: entry.autoRepairMessageIds } : {}
+        );
     }
     let lastOpenSaveQueue = Promise.resolve();
     let initialized = false;
@@ -2418,7 +2436,7 @@ export const chatManager = (() => {
                             // If it's the active chat, also update the UI and in-memory state
                             sendHistoryRef.set(finalHistory);
                             notifySendState();
-                            if (renderTarget) renderTarget.renderMessage(assistantMessage);
+                            if (renderTarget) renderTarget.renderMessage(assistantMessage, false, true, null, { allowAutoMermaidRepair: true });
                             if (!request?.conversation) await attemptTopicSummarizationIfNeeded();
                         } else {
                             console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${responseContext.agentId}, Topic ${responseContext.topicId}`);
@@ -2722,7 +2740,7 @@ export const chatManager = (() => {
     }
 
 
-    async function syncHistoryFromFile(itemId, itemType, topicId) {
+    async function syncHistoryFromFile(itemId, itemType, topicId, syncOptions = {}) {
         const syncGeneration = ++historySyncGeneration;
         const itemGeneration = itemSelectionGeneration;
         const topicGeneration = topicSelectionGeneration;
@@ -2739,7 +2757,7 @@ export const chatManager = (() => {
         };
         if (!isSyncCurrent()) return;
         if (pendingSendContexts.has(`${itemId}:${topicId}`) || projectingHistoryLoads.has(activeHistoryLoadToken)) {
-            deferHistorySync(itemId, itemType, topicId);
+            deferHistorySync(itemId, itemType, topicId, syncOptions);
             return;
         }
 
@@ -2771,7 +2789,7 @@ export const chatManager = (() => {
         // teardown. Only the still-selected conversation may update its view.
         if (!isSyncCurrent()) return;
         if (pendingSendContexts.has(`${itemId}:${topicId}`) || projectingHistoryLoads.has(activeHistoryLoadToken)) {
-            deferHistorySync(itemId, itemType, topicId);
+            deferHistorySync(itemId, itemType, topicId, syncOptions);
             return;
         }
 
@@ -2836,7 +2854,17 @@ export const chatManager = (() => {
         for (const newMsg of newHistory) {
             if (!oldHistoryMap.has(newMsg.id)) {
                 // Message was ADDED
-                await messageRenderer.renderMessage(newMsg, true); // Update UI without replay animation.
+                const allowAutoMermaidRepair = Boolean(
+                    (syncOptions?.autoRepairMessageId === newMsg.id || syncOptions?.autoRepairMessageIds?.has?.(newMsg.id))
+                    && newMsg.role === 'assistant'
+                );
+                await messageRenderer.renderMessage(
+                    newMsg,
+                    true,
+                    true,
+                    null,
+                    allowAutoMermaidRepair ? { allowAutoMermaidRepair: true } : undefined
+                ); // Update UI without replay animation.
                 if (!isSyncCurrent()) return;
                 historyInMem.push(newMsg); // Update Memory
             }

@@ -171,3 +171,32 @@ test('text that arrived while hidden is rendered in the first frame after the do
         dom.window.close();
     }
 });
+
+test('an atomic hosted call leaves subsequent prose on the ordinary smooth frame clock', async () => {
+    const { createStreamProjection, createStreamTransientHistory } = await loadFactory();
+    const dom = new JSDOM('<div id="chat"><article class="message-item" data-message-id="fc"><div class="md-content"></div></article></div>', { pretendToBeVisual: true });
+    const clock = installVisibilityControl(dom);
+    clock.set('visible');
+    const projection = createStreamProjection();
+    projection.attachStreamProjection(createHarness(dom, createStreamTransientHistory));
+    try {
+        const item = dom.window.document.querySelector('article');
+        const context = { agentId: 'visible-agent', topicId: 'visible-topic' };
+        await projection.startStreamingMessage({ id: 'fc', content: '', ...context }, item);
+        projection.appendStreamChunk('fc', { vcpHostedToolCalls: [{ id: 'lookup', type: 'function', function: { name: 'lookup', arguments: '{}' } }] }, context);
+        const prose = 'ordinary streaming text '.repeat(22).trim();
+        projection.appendStreamChunk('fc', { content: prose }, context);
+        clock.flushFrames(1000);
+        clock.flushFrames(1100);
+        const card = item.querySelector('[data-vcp-tool-call-id="lookup"]');
+        assert.ok(card);
+        const first = item.querySelector('.vcp-stream-tail-root')?.textContent;
+        assert.ok(first && prose.startsWith(first.trimEnd()) && first.length < prose.length);
+        for (let ts = 1200; ts <= 20000; ts += 100) clock.flushFrames(ts);
+        assert.equal(item.querySelector('.vcp-stream-tail-root').textContent, prose);
+        assert.equal(item.querySelector('[data-vcp-tool-call-id="lookup"]'), card);
+    } finally {
+        await projection.dispose();
+        dom.window.close();
+    }
+});

@@ -3,7 +3,7 @@
 const { ipcMain } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
-const { URL } = require('url');
+const { normalizeVcpServerUrl } = require('../utils/vcpServerRoutes');
 
 let emoticonLibrary = [];
 let settingsFilePath;
@@ -49,8 +49,11 @@ async function generateEmoticonLibrary() {
             return [];
         }
 
-        const urlObject = new URL(vcpServerUrl);
-        const baseUrl = `${urlObject.protocol}//${urlObject.host}`;
+        const baseUrl = normalizeVcpServerUrl(vcpServerUrl);
+        if (!baseUrl) {
+            setDegradedState('invalid VCP server address');
+            return [];
+        }
 
         const forumConfigPath = path.join(path.dirname(settingsFilePath), 'UserData', 'forum.config.json');
         let authHeader = null;

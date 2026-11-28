@@ -120,9 +120,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const settings = await api.loadSettings();
             if (settings.vcpServerUrl && settings.vcpApiKey) {
-                vcpServerUrl = settings.vcpServerUrl;
+                vcpServerUrl = window.vcpServerRoutes.vcpChatUrl(settings.vcpServerUrl);
                 vcpApiKey = settings.vcpApiKey;
-                console.log('Translator config loaded successfully:', { vcpServerUrl, vcpApiKey });
+                console.log('Translator config loaded successfully');
             } else {
                 console.error('Failed to load VCP config from settings.');
                 alert('无法从主程序加载翻译配置。');
@@ -356,7 +356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         systemPrompt += ` 仅返回翻译结果，不要包含任何解释或额外信息。`;
 
-        const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: sourceText }];
+        const messages = [{ role: 'system', content: `[[VCPToolUse=Forbidden]]\n${systemPrompt}` }, { role: 'user', content: sourceText }];
         const modelConfig = getSelectedModelConfig();
 
         performDirectTranslation(messages, modelConfig);

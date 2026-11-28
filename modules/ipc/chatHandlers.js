@@ -1,3 +1,4 @@
+const { vcpChatUrl, vcpServerEndpoint } = require('../utils/vcpServerRoutes');
 // modules/ipc/chatHandlers.js
 const { ipcMain, dialog, BrowserWindow } = require('electron');
 const fs = require('fs-extra');
@@ -224,8 +225,7 @@ function initialize(mainWindow, context) {
     const activeHandoffs = new Map();
     const handoffs = createToolLoopHandoff({
         async sendControl(payload, transport) {
-            const url = new URL('/v1/interrupt', transport.url);
-            const response = await fetch(url.toString(), {
+            const response = await fetch(vcpServerEndpoint(transport.url, 'interrupt'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${transport.apiKey}` },
                 body: JSON.stringify(payload),
@@ -1246,7 +1246,6 @@ function initialize(mainWindow, context) {
             hostHooks.emit('chat:request-start', messageId, context);
         }
 
-        let finalVcpUrl = vcpUrl;
         let settings = {};
         try {
             const settingsPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'settings.json');
@@ -1254,20 +1253,12 @@ function initialize(mainWindow, context) {
                 settings = await fs.readJson(settingsPath);
             }
 
-            // **强制检查和切换URL**
-            if (settings.enableVcpToolInjection === true) {
-                const urlObject = new URL(vcpUrl);
-                urlObject.pathname = '/v1/chatvcp/completions';
-                finalVcpUrl = urlObject.toString();
-                console.log(`[Main - sendToVCP] VCP tool injection is ON. URL switched to: ${finalVcpUrl}`);
-            } else {
-                console.log(`[Main - sendToVCP] VCP tool injection is OFF. Using original URL: ${vcpUrl}`);
-            }
         } catch (e) {
-            console.error(`[Main - sendToVCP] Error reading settings or switching URL: ${e.message}. Proceeding with original URL.`);
+            console.error(`[Main - sendToVCP] Error reading settings: ${e.message}. Using the standard chat route.`);
         }
 
         try {
+            const finalVcpUrl = vcpChatUrl(vcpUrl, settings.enableVcpToolInjection);
             // --- Agent Music Control Injection ---
             if (getMusicState) {
                 try {
@@ -1665,9 +1656,7 @@ function initialize(mainWindow, context) {
                 return { success: false, error: 'VCP Server URL is not configured.' };
             }
 
-            // Construct the interrupt URL from the base server URL
-            const urlObject = new URL(vcpUrl);
-            const interruptUrl = `${urlObject.protocol}//${urlObject.host}/v1/interrupt`;
+            const interruptUrl = vcpServerEndpoint(vcpUrl, 'interrupt');
 
             console.log(`[Main - interrupt] Sending interrupt for messageId: ${messageId} to ${interruptUrl}`);
 

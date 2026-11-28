@@ -209,6 +209,19 @@ textarea:focus {
   font-weight: bold;
 }
 
+body.light-theme .note-list-panel .dailynote-folder {
+  background: linear-gradient(
+    45deg,
+    rgba(118, 75, 162, 0.14),
+    rgba(102, 126, 234, 0.16)
+  );
+  box-shadow: inset 0 0 0 1px rgba(102, 126, 234, 0.32);
+}
+
+body.light-theme .note-list-panel .dailynote-folder .item-name {
+  color: var(--primary-text);
+}
+
 .folder-toggle {
   width: 16px;
   height: 16px;
@@ -285,19 +298,25 @@ textarea:focus {
 .note-list-panel .folder-header-row.active,
 .note-list-panel .note-item.active {
   background-color: var(--user-bubble-bg);
-  color: var(--text-on-accent);
+  color: var(--primary-text);
+  box-shadow: inset 3px 0 0 var(--highlight-text);
 }
 
 .note-list-panel .folder-header-row.active .item-name,
-.note-list-panel .note-item.active .item-name,
+.note-list-panel .note-item.active .item-name {
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
 .note-list-panel .note-item.active .note-timestamp-display {
-  color: var(--text-on-accent);
+  color: var(--secondary-text);
 }
 
 /* Multi-selection style */
 .note-list-panel .folder-header-row.selected,
 .note-list-panel .note-item.selected {
   background-color: var(--accent-bg);
+  color: var(--primary-text);
   box-shadow: inset 0 0 0 1px var(--highlight-text);
 }
 
@@ -306,7 +325,10 @@ textarea:focus {
   background-color: var(
     --user-bubble-bg
   ); /* Active selection should be more prominent */
-  box-shadow: inset 0 0 0 1px var(--highlight-text);
+  color: var(--primary-text);
+  box-shadow:
+    inset 3px 0 0 var(--highlight-text),
+    inset 0 0 0 1px color-mix(in oklab, var(--highlight-text) 55%, transparent);
 }
 
 /* Styles for drag and drop */

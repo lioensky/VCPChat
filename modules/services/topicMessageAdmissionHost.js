@@ -109,6 +109,7 @@ async function createTopicMessageAdmissionHost({
             if (index >= 0) {
                 if (history[index].role !== 'assistant') throw new Error('终稿 ID 与非 assistant 消息冲突');
                 history[index] = { ...history[index], ...terminal };
+                if (!Array.isArray(terminal.assistantSegments)) delete history[index].assistantSegments;
             } else {
                 history.push(terminal);
             }

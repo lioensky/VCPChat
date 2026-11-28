@@ -1,4 +1,4 @@
-import { normalizeStreamChunk } from '../chat/contentRuntime.js';
+import { createNativeToolCallStream } from '../chat/nativeToolCallStream.js';
 import { findToolReturnBoundary } from './toolReturnBoundary.js';
 
 const terminalTypes = new Set(['completed', 'failed', 'cancelled', 'discarded']);
@@ -32,6 +32,7 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
     let preparedType = null;
     const projection = capabilities.resolveProjection?.(messageId) || null;
     let accumulatedText = '';
+    const nativeCalls = createNativeToolCallStream();
     let checkedBoundary = 0;
     let checkingBoundary = false;
     let active = true;
@@ -94,7 +95,8 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
 
     return Object.freeze({
         surfaceGeneration: capabilities.getSurfaceGeneration?.(),
-        normalizeChunk: normalizeStreamChunk,
+        normalizeChunks: nativeCalls.push,
+        flushChunks: nativeCalls.flush,
         async prepare(event) {
             context = { ...context, ...(event.context || {}) };
             if (preparedType === null) {
@@ -108,6 +110,9 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             if (projection?.suppressed) {
                 if (terminal) projection.settle?.({ event, finalized: event.outcome?.persistence?.value, context, messageId });
                 return;
+            }
+            if (event.type === 'hosted_tool_calls') {
+                (projection?.append || capabilities.append)(messageId, { vcpHostedToolCalls: event.tool_calls }, context, operationId);
             }
             if (event.type === 'chunk') {
                 (projection?.append || capabilities.append)(messageId, event.text, context, operationId);
@@ -138,17 +143,21 @@ export function createMainChatStreamConsumer(initialEvent, capabilities) {
             if (terminal.phase === 'projection') {
                 throw terminal.error || new Error(`Stream projection failed: ${messageId}`);
             }
-            let fullResponse = terminal.fullResponse || value.snapshot?.text || '';
+            let assistantSegments = value.snapshot?.assistantSegments;
+            let fullResponse = assistantSegments ? value.snapshot.text : (terminal.fullResponse || value.snapshot?.text || '');
             const error = terminal.error?.message || terminal.error || '';
-            if (terminal.kind === 'failed' && fullResponse.trim()) {
-                fullResponse += `\n\n> [!WARNING]\n> **流式响应中断**: ${error || '未知连接错误'}。已保存已接收的部分内容。`;
+            if (terminal.kind === 'failed' && (fullResponse.trim() || assistantSegments)) {
+                const warning = `\n\n> [!WARNING]\n> **流式响应中断**: ${error || '未知连接错误'}。已保存已接收的部分内容。`;
+                fullResponse += warning;
+                if (assistantSegments) assistantSegments = [...assistantSegments, { content: warning }];
             }
             const projectTerminal = projection?.projectTerminal || capabilities.projectTerminal;
             const projected = await projectTerminal(
                 messageId,
                 terminal.kind === 'completed' ? (terminal.finishReason || 'completed') : terminal.kind,
                 terminal.context || context,
-                { fullResponse, error, streamOperationId: operationId, usage: terminal.kind === 'completed' ? terminal.usage : undefined },
+                { fullResponse, error, streamOperationId: operationId, usage: terminal.kind === 'completed' ? terminal.usage : undefined,
+                    ...(assistantSegments ? { assistantSegments } : {}) },
             );
             if (!projected) throw new Error(`Stream terminal projection failed: ${messageId}`);
 

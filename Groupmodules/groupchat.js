@@ -31,8 +31,10 @@ const {
 const topicTitleManager = require('./topicTitleManager');
 const { noteToolApprovalMessage, isWaitingForToolApproval, isWatchdogAbort, withWatchdogNote, getGroupErrorMessage, normalizeGroupFetchError } = require('./streamWatchdog');
 const { resolveGroupChatUrl } = require('./groupChatUrl');
+const { vcpServerEndpoint } = require('../modules/utils/vcpServerRoutes');
 const { readChatHttpError, chatResponseError } = require('../modules/chatRequestError');
 const { CHAT_STREAM_TIMEOUT_MS, getChatStreamDispatcher } = require('../modules/chat/sleepStreamIdle');
+const { createGroupStreamHistory, projectGroupFloor } = require('./groupHostedHistory');
 
 const GROUP_TTFT_TIMEOUT_MS = CHAT_STREAM_TIMEOUT_MS;
 const GROUP_CHUNK_IDLE_TIMEOUT_MS = CHAT_STREAM_TIMEOUT_MS;
@@ -132,6 +134,7 @@ function buildGroupAssistantHistoryEntry({
     agentId,
     agentName,
     agentConfig,
+    assistantSegments,
     content = '',
     modelResolution = null,
     model = undefined,
@@ -148,6 +151,7 @@ function buildGroupAssistantHistoryEntry({
             model: resolvedModel,
             modelSource: modelResolution?.usingUnifiedModel ? 'group_unified' : 'agent'
         } : {}),
+        ...(assistantSegments ? { assistantSegments } : {}),
         content,
         timestamp,
         id,
@@ -166,9 +170,7 @@ async function sendRemoteGroupInterrupt(messageId) {
         const globalSettings = await getVcpGlobalSettings();
         if (!globalSettings.vcpUrl || !globalSettings.vcpApiKey) return false;
 
-        const urlObj = new URL(globalSettings.vcpUrl);
-        urlObj.pathname = '/v1/interrupt';
-        const interruptUrl = urlObj.toString();
+        const interruptUrl = vcpServerEndpoint(globalSettings.vcpUrl, 'interrupt');
 
         console.log(`[GroupChat] Sending remote interrupt request to: ${interruptUrl}`);
         const response = await fetch(interruptUrl, {
@@ -1353,13 +1355,7 @@ ${canvasData.errors || 'No errors'}
                 }
             }
 
-            return attachTimestampMetaToVcpMessage(
-                {
-                    role: msg.role,
-                    content: vcpMessageContent, // This is now an array
-                },
-                msg
-            );
+            return projectGroupFloor(msg, vcpMessageContent, speakerName, textForAIContext, attachTimestampMetaToVcpMessage);
         });
 
         const contextForAgent = await Promise.all(contextForAgentPromises);
@@ -1387,6 +1383,7 @@ ${canvasData.errors || 'No errors'}
             });
             messagesForAI = [...sysMsgs, ...injected];
         }
+        messagesForAI = messagesForAI.flat();
         // --- VCP Thought Chain Stripping ---
         try {
             // 默认不注入元思考链，除非明确开启
@@ -1669,6 +1666,7 @@ ${canvasData.errors || 'No errors'}
 
                 // This function will now be awaited
                 async function processStreamForGroupAndUpdateHistory() {
+                    const hosted = createGroupStreamHistory();
                     let accumulatedResponse = "";
                     let buffer = '';
                     try {
@@ -1686,6 +1684,7 @@ ${canvasData.errors || 'No errors'}
                                     trajectoryCall.finish();
                                         console.log(`[GroupChat] VCP stream explicit [DONE] for ${agentName} (msgId: ${messageIdForAgentResponse})`);
                                         const doneAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                                        Object.assign(doneAiResponseEntry, hosted.fields());
                                         groupHistory = await persistAgentResponse(groupId, topicId, doneAiResponseEntry);
                                         if (typeof sendStreamChunkToRenderer === 'function') {
                                             sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
@@ -1698,39 +1697,8 @@ ${canvasData.errors || 'No errors'}
                                         if (responseError) throw responseError;
                                         trajectoryCall.chunk(parsedChunk);
 
-                                        // 更全面的安全检查，处理各种可能的响应格式
-                                        let hasContent = false;
-
-                                        // 标准OpenAI格式 (choices[0].delta.content)
-                                        if (parsedChunk.choices && Array.isArray(parsedChunk.choices) && parsedChunk.choices.length > 0) {
-                                            const choice = parsedChunk.choices[0];
-                                            if (choice && choice.delta) {
-                                                if (typeof choice.delta.content === 'string' && choice.delta.content !== '') {
-                                                    accumulatedResponse += choice.delta.content;
-                                                    hasContent = true;
-                                                }
-                                            }
-                                        }
-
-                                        // 备选格式1 (delta.content)
-                                        if (!hasContent && parsedChunk.delta) {
-                                            if (typeof parsedChunk.delta.content === 'string' && parsedChunk.delta.content !== '') {
-                                                accumulatedResponse += parsedChunk.delta.content;
-                                                hasContent = true;
-                                            }
-                                        }
-
-                                        // 备选格式2 (content)
-                                        if (!hasContent && typeof parsedChunk.content === 'string' && parsedChunk.content !== '') {
-                                            accumulatedResponse += parsedChunk.content;
-                                            hasContent = true;
-                                        }
-
-                                        // 备选格式3 (message.content) - 某些API的格式
-                                        if (!hasContent && parsedChunk.message && typeof parsedChunk.message.content === 'string' && parsedChunk.message.content !== '') {
-                                            accumulatedResponse += parsedChunk.message.content;
-                                            hasContent = true;
-                                        }
+                                        const hasContent = hosted.push(parsedChunk);
+                                        accumulatedResponse = hosted.text;
 
                                         // 总是发送chunk事件，即使没有新内容（保持流的连续性）
                                         if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1756,6 +1724,7 @@ ${canvasData.errors || 'No errors'}
                                 clearTimeout(activeTimer);
                                 console.log(`[GroupChat] VCP stream ended for ${agentName} (msgId: ${messageIdForAgentResponse})`);
                                 const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                                Object.assign(finalAiResponseEntry, hosted.fields());
                                 groupHistory = await persistAgentResponse(groupId, topicId, finalAiResponseEntry);
                                 if (typeof sendStreamChunkToRenderer === 'function') {
                                     sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
@@ -1779,6 +1748,7 @@ ${canvasData.errors || 'No errors'}
                                 agentConfig,
                                 modelResolution,
                                 model: modelConfigForAgent.model,
+                                ...hosted.fields(partialContent),
                                 content: partialContent,
                                 interrupted: true,
                                 finishReason: 'interrupted'
@@ -1799,6 +1769,7 @@ ${canvasData.errors || 'No errors'}
                                 agentConfig,
                                 modelResolution,
                                 model: modelConfigForAgent.model,
+                                ...hosted.fields(),
                                 content: accumulatedResponse,
                                 interrupted: true,
                                 finishReason: 'interrupted'
@@ -1822,6 +1793,7 @@ ${canvasData.errors || 'No errors'}
                                 agentConfig,
                                 modelResolution,
                                 model: modelConfigForAgent.model,
+                                ...hosted.fields(errorText),
                                 content: errorText
                             });
                             groupHistory = await persistAgentResponse(groupId, topicId, streamErrorResponseEntry);
@@ -2147,13 +2119,7 @@ ${canvasData.errors || 'No errors'}
             }
         }
 
-        return attachTimestampMetaToVcpMessage(
-            {
-                role: msg.role,
-                content: vcpMessageContent,
-            },
-            msg
-        );
+        return projectGroupFloor(msg, vcpMessageContent, speakerName, textForAIContext, attachTimestampMetaToVcpMessage);
     });
 
     const contextForAgent = await Promise.all(contextForAgentPromises);
@@ -2195,6 +2161,7 @@ ${canvasData.errors || 'No errors'}
         });
         messagesForAI = [...sysMsgs, ...injected];
     }
+    messagesForAI = messagesForAI.flat();
     // --- VCP Thought Chain Stripping ---
     try {
         // 默认不注入元思考链，除非明确开启
@@ -2476,6 +2443,7 @@ ${canvasData.errors || 'No errors'}
             };
 
             async function processStreamForInvitedAgent() {
+                const hosted = createGroupStreamHistory();
                 let accumulatedResponse = "";
                 let buffer = '';
                 try {
@@ -2492,6 +2460,7 @@ ${canvasData.errors || 'No errors'}
                                 if (jsonData === '[DONE]') {
                                 trajectoryCall.finish();
                                     const doneAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                                    Object.assign(doneAiResponseEntry, hosted.fields());
                                     groupHistory = await persistResponse(groupId, topicId, doneAiResponseEntry);
                                     if (typeof sendStreamChunkToRenderer === 'function') {
                                         sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
@@ -2504,39 +2473,8 @@ ${canvasData.errors || 'No errors'}
                                     if (responseError) throw responseError;
                                     trajectoryCall.chunk(parsedChunk);
 
-                                    // 更全面的安全检查，处理各种可能的响应格式
-                                    let hasContent = false;
-
-                                    // 标准OpenAI格式 (choices[0].delta.content)
-                                    if (parsedChunk.choices && Array.isArray(parsedChunk.choices) && parsedChunk.choices.length > 0) {
-                                        const choice = parsedChunk.choices[0];
-                                        if (choice && choice.delta) {
-                                            if (typeof choice.delta.content === 'string' && choice.delta.content !== '') {
-                                                accumulatedResponse += choice.delta.content;
-                                                hasContent = true;
-                                            }
-                                        }
-                                    }
-
-                                    // 备选格式1 (delta.content)
-                                    if (!hasContent && parsedChunk.delta) {
-                                        if (typeof parsedChunk.delta.content === 'string' && parsedChunk.delta.content !== '') {
-                                            accumulatedResponse += parsedChunk.delta.content;
-                                            hasContent = true;
-                                        }
-                                    }
-
-                                    // 备选格式2 (content)
-                                    if (!hasContent && typeof parsedChunk.content === 'string' && parsedChunk.content !== '') {
-                                        accumulatedResponse += parsedChunk.content;
-                                        hasContent = true;
-                                    }
-
-                                    // 备选格式3 (message.content) - 某些API的格式
-                                    if (!hasContent && parsedChunk.message && typeof parsedChunk.message.content === 'string' && parsedChunk.message.content !== '') {
-                                        accumulatedResponse += parsedChunk.message.content;
-                                        hasContent = true;
-                                    }
+                                    const hasContent = hosted.push(parsedChunk);
+                                    accumulatedResponse = hosted.text;
 
                                     // 总是发送chunk事件，即使没有新内容（保持流的连续性）
                                     if (typeof sendStreamChunkToRenderer === 'function') {
@@ -2562,6 +2500,7 @@ ${canvasData.errors || 'No errors'}
                             trajectoryCall.finish();
                             clearTimeout(activeTimer);
                             const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                            Object.assign(finalAiResponseEntry, hosted.fields());
                             groupHistory = await persistResponse(groupId, topicId, finalAiResponseEntry);
                             if (typeof sendStreamChunkToRenderer === 'function') {
                                 sendStreamChunkToRenderer({ type: 'end', messageId: messageIdForAgentResponse, context: { groupId, topicId, agentId: invitedAgentId, agentName, isGroupMessage: true }, fullResponse: accumulatedResponse });
@@ -2585,6 +2524,7 @@ ${canvasData.errors || 'No errors'}
                             agentConfig,
                             modelResolution,
                             model: modelConfigForAgent.model,
+                            ...hosted.fields(partialContent),
                             content: partialContent,
                             interrupted: true,
                             finishReason: 'interrupted'
@@ -2606,6 +2546,7 @@ ${canvasData.errors || 'No errors'}
                             agentConfig,
                             modelResolution,
                             model: modelConfigForAgent.model,
+                            ...hosted.fields(),
                             content: accumulatedResponse,
                             interrupted: true,
                             finishReason: 'interrupted'
@@ -2628,6 +2569,7 @@ ${canvasData.errors || 'No errors'}
                             agentConfig,
                             modelResolution,
                             model: modelConfigForAgent.model,
+                            ...hosted.fields(errorText),
                             content: errorText
                         });
                         groupHistory = await persistResponse(groupId, topicId, streamErrorResponseEntry);

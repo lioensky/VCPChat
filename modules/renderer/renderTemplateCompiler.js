@@ -11,6 +11,7 @@ import { sanitizeToolDataHtml } from './toolDataHtml.js';
 import { parseJevToolUse } from './jevToolUse.js';
 import { findMalformedToolFields, describeToolRequestMarkerProblem } from './toolRequestMarkers.js';
 import { escapeHtml as escapeTopicQuoteHtml } from '../ui-system/text-escape.js';
+import { renderDailyNoteCard } from './dailyNoteCard.js';
 
 // Decode one layer only. The result is escaped as HTML by renderTopicRiverQuote.
 const decodeTopicQuoteText = text => text.replace(/&#(\d{1,5});/g, (entity, digits) => {
@@ -495,94 +496,6 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, tool
         return escapeHtml(restoredText);
     };
 
-    const getDailyNoteAgentInfo = (source) => {
-        const maid = extractMarkedField(source, /(?:maid|maidName):\s*/i) || '';
-        const valet = extractMarkedField(source, /(?:valet|valetName):\s*/i) || '';
-
-        if (valet) {
-            return {
-                name: valet,
-                type: 'valet',
-                gender: 'male',
-                label: 'Valet',
-                title: "Valet's Diary"
-            };
-        }
-
-        return {
-            name: maid,
-            type: 'maid',
-            gender: 'female',
-            label: 'Maid',
-            title: "Maid's Diary"
-        };
-    };
-
-    const renderDailyNoteCreate = ({ agentName, agentType = 'maid', agentGender = 'female', agentLabel = 'Maid', defaultTitle = "Maid's Diary", date, fileName, folder, diaryContent, diaryTag }) => {
-        let html = `<div class="maid-diary-bubble ${agentType}-diary-bubble" data-vcp-block-type="maid-diary" data-agent-gender="${escapeHtml(agentGender)}" data-vcp-preserve-children="true">`;
-        html += `<div class="diary-header">`;
-        html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : escapeHtml(defaultTitle)}</span>`;
-        if (date) {
-            html += `<span class="diary-date">${escapeHtml(date)}</span>`;
-        }
-        html += `</div>`;
-
-        if (agentName || folder) {
-            html += `<div class="diary-maid-info">`;
-            if (agentName) {
-                html += `<span class="diary-maid-label">${escapeHtml(agentLabel)}:</span> `;
-                html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
-            }
-            if (folder) {
-                if (agentName) html += ` <span class="diary-meta-separator">·</span> `;
-                html += `<span class="diary-folder-label">Folder:</span> `;
-                html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
-            }
-            html += `</div>`;
-        }
-
-        let diaryBody = diaryContent || '[日记内容解析失败]';
-        if (diaryTag) {
-            diaryBody += `\n\nTag:${diaryTag}`;
-        }
-
-        html += `<div class="diary-content">${renderMarkdownField(diaryBody)}</div>`;
-        html += `</div>`;
-
-        return `\n\n${html}\n\n`;
-    };
-
-    const renderDailyNoteUpdate = ({ agentName, agentType = 'maid', agentGender = 'female', folder, target, replace }) => {
-        const hasTarget = target && target.trim();
-        const hasReplace = replace && replace.trim();
-
-        let html = `<div class="maid-diary-update-bubble ${agentType}-diary-update-bubble" data-vcp-block-type="maid-diary-update" data-agent-gender="${escapeHtml(agentGender)}" data-vcp-preserve-children="true">`;
-        html += `<div class="diary-update-header">`;
-        html += `<span class="diary-update-title">DailyNote Update</span>`;
-        if (agentName || folder) {
-            html += `<span class="diary-update-meta">`;
-            if (agentName) html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
-            if (agentName && folder) html += ` <span class="diary-meta-separator">·</span> `;
-            if (folder) html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
-            html += `</span>`;
-        }
-        html += `</div>`;
-
-        html += `<div class="diary-update-body">`;
-        html += `<div class="diary-update-side diary-update-before">`;
-        html += `<div class="diary-update-label">A</div>`;
-        html += `<div class="diary-update-content">${hasTarget ? renderMarkdownField(target) : '<em>原文解析失败</em>'}</div>`;
-        html += `</div>`;
-        html += `<div class="diary-update-arrow" aria-hidden="true">→</div>`;
-        html += `<div class="diary-update-side diary-update-after">`;
-        html += `<div class="diary-update-label">B</div>`;
-        html += `<div class="diary-update-content">${hasReplace ? renderMarkdownField(replace) : '<em>替换内容解析失败</em>'}</div>`;
-        html += `</div>`;
-        html += `</div>`;
-        html += `</div>`;
-
-        return `\n\n${html}\n\n`;
-    };
 
     // Process Tool Call Summaries
     const renderToolCallSummaryBlock = (rawContent) => renderToolCallSummaryHtml(restoreBlocks(rawContent || ''));
@@ -655,30 +568,20 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null, tool
         const isDailyNoteUpdate = isDailyNoteTool && (normalizedCommand === 'update' || (!normalizedCommand && dailyNoteTarget && dailyNoteReplace));
         const isDailyNoteCreate = isDailyNoteTool && !isDailyNoteUpdate && (normalizedCommand === 'create' || (!normalizedCommand && dailyNoteContent));
 
-        if (isDailyNoteCreate) {
-            const dailyNoteAgent = getDailyNoteAgentInfo(content);
-            return renderDailyNoteCreate({
-                agentName: dailyNoteAgent.name,
-                agentType: dailyNoteAgent.type,
-                agentGender: dailyNoteAgent.gender,
-                agentLabel: dailyNoteAgent.label,
-                defaultTitle: dailyNoteAgent.title,
-                date: extractMarkedField(content, /Date:\s*/i) || '',
-                fileName: extractMarkedField(content, /fileName:\s*/i) || '',
-                folder: extractMarkedField(content, /folder:\s*/i) || '',
-                diaryContent: dailyNoteContent || '[日记内容解析失败]',
-                diaryTag: extractMarkedField(content, /Tag:\s*/i) || ''
-            });
-        } else if (isDailyNoteUpdate) {
-            const dailyNoteAgent = getDailyNoteAgentInfo(content);
-            return renderDailyNoteUpdate({
-                agentName: dailyNoteAgent.name,
-                agentType: dailyNoteAgent.type,
-                agentGender: dailyNoteAgent.gender,
-                folder: extractMarkedField(content, /folder:\s*/i) || '',
-                target: dailyNoteTarget || '',
-                replace: dailyNoteReplace || ''
-            });
+        if (isDailyNoteCreate || isDailyNoteUpdate) {
+            const card = renderDailyNoteCard({
+                command: isDailyNoteUpdate ? 'update' : 'create',
+                maid: extractMarkedField(content, /(?:maid|maidName):\s*/i),
+                valet: extractMarkedField(content, /(?:valet|valetName):\s*/i),
+                date: extractMarkedField(content, /Date:\s*/i),
+                fileName: extractMarkedField(content, /fileName:\s*/i),
+                folder: extractMarkedField(content, /folder:\s*/i),
+                content: dailyNoteContent,
+                tag: extractMarkedField(content, /Tag:\s*/i),
+                target: dailyNoteTarget,
+                replace: dailyNoteReplace,
+            }, renderMarkdownField);
+            return `\n\n${card}\n\n`;
         } else if (detectedJev) {
             // JEV 是自然语言工具入口的兼容展示分支，不替代既有 tool_name/XML 协议。
             // 显式单引号工具名优先；未显式指定时才展示能力名称。

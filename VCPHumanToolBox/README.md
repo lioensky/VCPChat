@@ -91,10 +91,13 @@ start.bat
     → buildToolForm()           # 根据 params schema 生成表单
     →用户填写参数 + 点击执行
     → executeTool()             # 收集FormData
-    → electronAPI.invoke('vcp-ht-execute-tool-proxy', toolName, args)
-    → main.js 拼装<<<[TOOL_REQUEST]>>> 格式请求体→ POST https://{vcpServerUrl}/v1/human/tool (Bearer Token)
+    → electronAPI.invoke('vcp-ht-execute-tool-proxy', { url, apiKey, toolName, args })
+    → main.js 发送 { "name": toolName, "arguments": args }
+    → POST /v1/human/tool（application/json，Bearer Token）
     → renderResult()            # 多模态结果渲染
 ```
+
+工作流中的后端插件节点也使用同一 JSON 请求格式。工具箱不自动回退到旧文本协议，避免失败后重复执行。插件清单里的文本调用示例仍可用于生成表单。
 
 ### 安全三层
 

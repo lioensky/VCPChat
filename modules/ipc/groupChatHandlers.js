@@ -1,3 +1,4 @@
+const { vcpServerEndpoint } = require('../utils/vcpServerRoutes');
 // modules/ipc/groupChatHandlers.js
 const { ipcMain } = require('electron');
 const path = require('path');
@@ -120,8 +121,7 @@ function initialize(mainWindow, context) {
                         const settingsPath = path.join(path.dirname(USER_DATA_DIR), 'settings.json');
                         const settings = await fs.pathExists(settingsPath) ? await fs.readJson(settingsPath) : {};
                         if (settings?.vcpServerUrl) {
-                            const parsed = new URL(settings.vcpServerUrl);
-                            const modelsUrl = new URL('/v1/models', `${parsed.protocol}//${parsed.host}`).toString();
+                            const modelsUrl = vcpServerEndpoint(settings.vcpServerUrl, 'models');
                             const headers = settings.vcpApiKey
                                 ? { Authorization: `Bearer ${settings.vcpApiKey}` }
                                 : {};

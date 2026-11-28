@@ -1983,6 +1983,55 @@ body[data-vcp-theme="dark"] .mermaid-error {
     border-radius: 4px;
 }
 
+.mermaid-error-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mermaid-error-text {
+    font-weight: 600;
+}
+
+.mermaid-repair-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(216, 0, 12, 0.35);
+    background-color: rgba(255, 255, 255, 0.85);
+    color: #a8000a;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.mermaid-repair-btn:hover:not(:disabled) {
+    background-color: #ffffff;
+}
+
+.mermaid-repair-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+body[data-vcp-theme="dark"] .mermaid-repair-btn {
+    border-color: rgba(239, 154, 154, 0.4);
+    background-color: rgba(0, 0, 0, 0.25);
+    color: #ffcdd2;
+}
+
+body[data-vcp-theme="dark"] .mermaid-repair-btn:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.45);
+}
+
+.mermaid-repair-status {
+    margin-top: 6px;
+    font-size: 12px;
+    opacity: 0.9;
+}
+
 
 /* --- Configurable Stream Element Animation --- */
 @keyframes vcp-stream-slide-left {

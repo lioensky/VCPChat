@@ -56,7 +56,7 @@ function findFenceClose(source, contentStart, marker, openingLength) {
         if (source[markerStart] === marker) {
             const closingLength = countRun(source, markerStart, marker);
             const trailing = source.slice(markerStart + closingLength, lineEnd);
-            if (closingLength >= openingLength && /^[ \t]*$/.test(trailing)) {
+            if (closingLength >= openingLength && /^[ \t]*\r?$/.test(trailing)) {
                 return lineEnd < source.length ? lineEnd + 1 : lineEnd;
             }
         }

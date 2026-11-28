@@ -1444,6 +1444,7 @@ if (!gotTheLock) {
 
         // Function to fetch and cache models from the VCP server
         async function fetchAndCacheModels() {
+            const { vcpServerEndpoint } = require('./modules/utils/vcpServerRoutes');
             console.log('[Main] fetchAndCacheModels called');
             try {
                 const settings = await appSettingsManager.readSettings();
@@ -1455,10 +1456,7 @@ if (!gotTheLock) {
                     cachedModels = []; // Clear cache if URL is not set
                     return;
                 }
-                // Correctly construct the base URL by removing known API paths.
-                const urlObject = new URL(vcpServerUrl);
-                const baseUrl = `${urlObject.protocol}//${urlObject.host}`;
-                const modelsUrl = new URL('/v1/models', baseUrl).toString();
+                const modelsUrl = vcpServerEndpoint(vcpServerUrl, 'models');
 
                 console.log(`[Main] Fetching models from: ${modelsUrl}`);
                 const response = await fetch(modelsUrl, {

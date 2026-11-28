@@ -40,6 +40,7 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admi
         // 桌宠没打开时这些钩子全是空操作，用真实模块。
         ['../hostHooks', require('../modules/hostHooks.js')],
         ['../chatRequestError', require('../modules/chatRequestError.js')],
+        ['../utils/vcpServerRoutes', require('../modules/utils/vcpServerRoutes.js')],
     ]);
     const load = name => { assert.ok(dependencies.has(name), 'unreviewed fixture dependency: ' + name); return dependencies.get(name); };
     vm.runInNewContext('(function(require,module,exports){' + source + '\n})', {
@@ -58,6 +59,23 @@ function route(fetchResponse, { settings = null, abortSignal = AbortSignal, admi
 }
 
 const limitError = JSON.stringify({ error: { message: '模拟限流', status: 429 } });
+
+test('root server configuration reaches the correct main-chat route with and without tool injection', async () => {
+    const root = 'http://controlled.invalid';
+    for (const [settings, expectedPath] of [[null, '/v1/chat/completions'], [{ enableVcpToolInjection: true }, '/v1/chatvcp/completions']]) {
+        const urls = [];
+        const f = route(async url => {
+            urls.push(url);
+            return new Response(limitError, { status: 429 });
+        }, { settings });
+        try {
+            await f.start(root);
+            assert.deepEqual(urls, [root + expectedPath]);
+        } finally {
+            f.close();
+        }
+    }
+});
 
 test('object HTTP rejection has one readable error at the IPC and stream exits', async () => {
     const f = route(async () => new Response(limitError, { status: 429 }));

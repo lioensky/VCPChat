@@ -45,7 +45,8 @@ export function createNonStreamingEventConsumer({
                 await disposeStream?.(event.messageId, 'non-stream-full-response');
                 streamProjection?.discardStreamingMessage?.(event.messageId);
                 if (relevant) await messageRenderer.renderFullMessageProjection?.(
-                    event.messageId, event.fullResponse || '', event.context?.agentName, event.context?.agentId, renderTarget.root
+                    event.messageId, event.fullResponse || '', event.context?.agentName, event.context?.agentId, renderTarget.root,
+                    { allowAutoMermaidRepair: true }
                 );
                 notifySendStateChanged?.({ event, context: event.context, messageId: event.messageId });
                 try {

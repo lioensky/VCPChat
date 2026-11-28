@@ -48,9 +48,7 @@
                 const settings = await window.electronAPI.invoke('vcp-ht-get-settings');
 
                 if (settings.vcpServerUrl) {
-                    const url = new URL(settings.vcpServerUrl);
-                    url.pathname = '/v1/human/tool';
-                    this.VCP_SERVER_URL = url.toString();
+                    this.VCP_SERVER_URL = globalThis.vcpServerRoutes.vcpServerEndpoint(settings.vcpServerUrl, 'humanTool');
                 }
                 this.VCP_API_KEY = settings.vcpApiKey || '';
                 this.USER_NAME = settings.userName || 'Human';
@@ -601,42 +599,13 @@
             console.log(`[ExecutionEngine] 输入数据:`, inputData);
 
             // 合并节点配置和输入数据，支持数据引用解析
-            const allParams = {};
-
-            // 先添加节点配置中的参数，支持模板变量解析
-            if (node.config) {
-                for (const [key, value] of Object.entries(node.config)) {
-                    const resolvedValue = this._resolveValue(value, inputData);
-
-                    // 统一的数据传播机制下，解析结果应该是简单类型
-                    if (typeof resolvedValue === 'object' && resolvedValue !== null) {
-                        // 对于对象类型，JSON 字符串化
-                        allParams[key] = JSON.stringify(resolvedValue);
-                        console.log(`[ExecutionEngine] JSON 字符串化对象参数 ${key}: ${allParams[key]}`);
-                    } else {
-                        // 对于简单类型，直接使用
-                        allParams[key] = resolvedValue;
-                        console.log(`[ExecutionEngine] 添加参数 ${key}: ${allParams[key]}`);
-                    }
+            const allParams = Object.create(null);
+            for (const [key, value] of Object.entries(node.config || {})) {
+                const resolved = this._resolveValue(value, inputData);
+                if (resolved !== null && resolved !== undefined && resolved !== '') {
+                    allParams[key] = resolved;
                 }
             }
-
-            // 数据传播的目的是为模板变量提供数据源
-            // 一旦模板变量解析完成，就不需要再添加原始传播数据作为请求参数
-            // 只使用节点配置中已经解析好的参数即可
-
-            console.log(`[ExecutionEngine] 使用节点配置参数，跳过原始传播数据的添加`);
-            console.log(`[ExecutionEngine] 输入数据仅用于模板变量解析:`, Object.keys(inputData));
-
-            console.log(`[ExecutionEngine] 合并后的参数:`, allParams);
-
-            // 构建请求体，参考 renderer.js 的格式
-            let requestBody = `<<<[TOOL_REQUEST]>>>\n`;
-            const requestParams = [];
-
-            // 添加基础参数
-            requestParams.push(`maid:「始」${this.USER_NAME}「末」`);
-            requestParams.push(`tool_name:「始」${node.pluginId}「末」`);
 
             // 智能命令匹配：根据节点配置和插件信息选择正确的命令
             let needsCommand = false;
@@ -744,41 +713,12 @@
                 }
             }
 
-            // 只有需要command参数的插件才添加command参数
-            if (needsCommand && commandToUse) {
-                requestParams.push(`command:「始」${commandToUse}「末」`);
-                console.log(`[ExecutionEngine] 使用指令: ${commandToUse}`);
-            } else {
-                console.log(`[ExecutionEngine] 节点 ${node.id} (${node.pluginId}) 不需要command参数`);
-            }
-
-            // 添加所有参数（配置 + 输入数据）
-            for (const [key, value] of Object.entries(allParams)) {
-                // 确保值不是 null, undefined 或空字符串，除非插件明确需要空值
-                if (value !== null && value !== undefined && value !== '') {
-                    const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
-                    requestParams.push(`${key}:「始」${valueStr}「末」`);
-                    console.log(`[ExecutionEngine] 添加参数 ${key}: ${valueStr}`);
-                } else {
-                    console.log(`[ExecutionEngine] 参数 ${key} 的值为 ${value}，跳过添加`);
-                }
-            }
-
-            // 构建最终请求体，最后一个参数不加逗号
-            for (let i = 0; i < requestParams.length; i++) {
-                if (i === requestParams.length - 1) {
-                    // 最后一个参数不加逗号
-                    requestBody += `${requestParams[i]}\n`;
-                } else {
-                    // 其他参数加逗号
-                    requestBody += `${requestParams[i]},\n`;
-                }
-            }
-
-            requestBody += `<<<[END_TOOL_REQUEST]>>>`;
-
-            console.log(`[ExecutionEngine] 完整请求体:`, requestBody);
-            console.log(`[ExecutionEngine] 请求URL: ${this.VCP_SERVER_URL}`);
+            // 已解析的显式节点参数优先，保持旧协议同名字段的覆盖顺序。
+            const args = {
+                maid: this.USER_NAME,
+                ...(needsCommand && commandToUse ? { command: commandToUse } : {}),
+                ...allParams
+            };
 
             // 发送请求
             const startTime = Date.now();
@@ -787,10 +727,10 @@
             const response = await fetch(this.VCP_SERVER_URL, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'text/plain;charset=UTF-8',
+                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.VCP_API_KEY}`
                 },
-                body: requestBody
+                body: JSON.stringify({ name: node.pluginId, arguments: args })
             });
 
             const endTime = Date.now();

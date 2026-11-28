@@ -6,6 +6,7 @@
 // the desktop widgets. Agent tool calls cannot reach this interface, so decision tickets only come through here.
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { normalizeVcpServerUrl } = require('../../utils/vcpServerRoutes');
 
 const ROOT = path.resolve(__dirname, '../../..');
 const PAGE = '/admin_api/vtrade/duel/';
@@ -17,8 +18,7 @@ async function readCredentials(root = ROOT) {
     };
     const settings = await read(path.join(root, 'AppData', 'settings.json'));
     const account = await read(path.join(root, 'AppData', 'UserData', 'forum.config.json'));
-    let origin = '';
-    try { origin = new URL(settings.vcpServerUrl).origin; } catch { /* not configured */ }
+    const origin = normalizeVcpServerUrl(settings.vcpServerUrl);
     return { origin, username: account.username || '', password: account.password || '' };
 }
 

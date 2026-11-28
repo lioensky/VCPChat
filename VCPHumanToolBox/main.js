@@ -273,31 +273,15 @@ ipcMain.handle('vcp-ht-process-wallpaper', async (event, imagePath) => {
 });
 
 // --- IPC Handler for proxying tool execution requests ---
-ipcMain.handle('vcp-ht-execute-tool-proxy', async (event, { url, apiKey, toolName, userName, args }) => {
-    // 动态导入 node-fetch
-    const { default: fetch } = await import('node-fetch');
-
-    // 1. 构造请求体
-    let requestBody = `<<<[TOOL_REQUEST]>>>\n`;
-    requestBody += `maid:「始」${userName}「末」,\n`;
-    requestBody += `tool_name:「始」${toolName}「末」,\n`;
-    for (const key in args) {
-        if (args[key] !== undefined) {
-            const value = typeof args[key] === 'boolean' ? String(args[key]) : args[key];
-            requestBody += `${key}:「始」${value}「末」,\n`;
-        }
-    }
-    requestBody += `<<<[END_TOOL_REQUEST]>>>`;
-
-    // 2. 发起网络请求
+ipcMain.handle('vcp-ht-execute-tool-proxy', async (event, { url, apiKey, toolName, args }) => {
     try {
         const response = await fetch(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'text/plain;charset=UTF-8',
+                'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            body: requestBody
+            body: JSON.stringify({ name: toolName, arguments: args })
         });
 
         const responseText = await response.text();
@@ -404,12 +388,19 @@ function registerFileSystemHandlers() {
 }
 
 // --- Settings IPC Handlers ---
+const { normalizeVcpServerUrl } = require('../modules/utils/vcpServerRoutes');
+function normalizeServerSetting(settings) {
+    if (settings && Object.hasOwn(settings, 'vcpServerUrl')) {
+        return { ...settings, vcpServerUrl: normalizeVcpServerUrl(settings.vcpServerUrl) };
+    }
+    return settings;
+}
 ipcMain.handle('vcp-ht-get-settings', async () => {
     // 纠正路径以匹配原始应用程序结构
     const settingsPath = path.join(app.getAppPath(), '..', 'AppData', 'settings.json');
     try {
         const settingsData = await fs.promises.readFile(settingsPath, 'utf8');
-        return JSON.parse(settingsData);
+        return normalizeServerSetting(JSON.parse(settingsData));
     } catch (error) {
         // 如果文件不存在或无效，则返回默认对象
         console.warn(`[Main]无法从 ${settingsPath} 读取 settings.json，返回默认值。错误:`, error.code);
@@ -423,7 +414,7 @@ ipcMain.handle('vcp-ht-save-settings', async (event, settings) => {
     try {
         // 确保目录存在
         await fs.promises.mkdir(path.dirname(settingsPath), { recursive: true });
-        await fs.promises.writeFile(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
+        await fs.promises.writeFile(settingsPath, JSON.stringify(normalizeServerSetting(settings), null, 4), 'utf8');
         return { success: true };
     } catch (error) {
         console.error(`[Main] 无法将 settings.json 保存到 ${settingsPath}:`, error);

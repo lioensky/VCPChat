@@ -7,6 +7,7 @@
 // 删掉整个 modules/warpedFieldAtlas 目录，或在插件管理器里停用，Chat 照常运行。
 
 const path = require('path');
+const { normalizeVcpServerUrl } = require('../utils/vcpServerRoutes');
 
 const CHANNEL = 'warped-field-atlas:get';
 const OPEN = 'warped-field-atlas:open';
@@ -19,9 +20,9 @@ function createHandler({ allowed, readSettings, fetchImpl = globalThis.fetch }) 
         if (typeof route !== 'string' || !ROUTE.test(route)) return { success: false, message: '请求不对。' };
         try {
             const settings = await readSettings();
-            const base = new URL(settings.vcpServerUrl);
-            if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) throw new Error('invalid base');
-            const response = await fetchImpl(new URL(`/api/plugins/WarpedFieldAtlas${route}`, base.origin), {
+            const origin = normalizeVcpServerUrl(settings.vcpServerUrl);
+            if (!origin) throw new Error('invalid base');
+            const response = await fetchImpl(new URL(`/api/plugins/WarpedFieldAtlas${route}`, origin), {
                 headers: { Authorization: `Bearer ${settings.vcpApiKey}` },
                 signal: AbortSignal.timeout(60000),
                 redirect: 'error',

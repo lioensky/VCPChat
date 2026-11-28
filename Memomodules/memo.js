@@ -117,7 +117,8 @@ async function initApp() {
             alert('请先在主设置中配置 VCP 服务器 URL');
             return;
         }
-        serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
+        serverBaseUrl = globalThis.vcpServerRoutes.normalizeVcpServerUrl(settings.vcpServerUrl);
+        if (!serverBaseUrl) throw new Error('Invalid VCP server address');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
 
         // 2. 读取论坛配置获取 Auth
@@ -1206,35 +1207,14 @@ async function handleCreateMemo() {
 
     try {
         const settings = await api.loadSettings();
-        if (!settings?.vcpApiKey) throw new Error('API Key 未配置');
-
-        // 构造 TOOL_REQUEST（可选字段仅在有值时加入）
-        let toolFields = `maid:「始」${maid}「末」,
-tool_name:「始」DailyNote「末」,
-command:「始」create「末」,
-Date:「始」${date}「末」,`;
-
-        if (folder) {
-            toolFields += `\nfolder:「始」${folder}「末」,`;
-        }
-        if (fileName) {
-            toolFields += `\nfileName:「始」${fileName}「末」,`;
-        }
-        if (tags) {
-            toolFields += `\nTag:「始」${tags}「末」,`;
-        }
-
-        toolFields += `\nContent:「始」${content}「末」`;
-
-        const toolRequest = `<<<[TOOL_REQUEST]>>>\n${toolFields}\n<<<[END_TOOL_REQUEST]>>>`;
-
-        const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'text/plain;charset=UTF-8',
-                'Authorization': `Bearer ${settings.vcpApiKey}`
-            },
-            body: toolRequest
+        const res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'DailyNote', {
+            command: 'create',
+            maid,
+            Date: date,
+            ...(folder ? { folder } : {}),
+            ...(fileName ? { fileName } : {}),
+            ...(tags ? { Tag: tags } : {}),
+            Content: content
         });
 
         if (!res.ok) throw new Error(await res.text());
@@ -1311,32 +1291,17 @@ async function performSemanticSearch(query) {
     const myAbortController = searchAbortController;
     try {
         const settings = await api.loadSettings();
-        if (!settings?.vcpApiKey) throw new Error('API Key 未配置');
 
         // 竞态检查：如果在 await 期间有新搜索发起，放弃当前搜索
         if (myAbortController.signal.aborted || myAbortController !== searchAbortController) return;
 
-        let serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
-        if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
-
-        const toolRequest = `<<<[TOOL_REQUEST]>>>
-maid:「始」Memo「末」,
-tool_name:「始」LightMemo「末」,
-query:「始」${query}「末」,
-k:「始」10「末」,
-tag_boost:「始」0.6「末」,
-search_all_knowledge_bases:「始」true「末」
-<<<[END_TOOL_REQUEST]>>>`;
-
-        const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'text/plain;charset=UTF-8',
-                'Authorization': `Bearer ${settings.vcpApiKey}`
-            },
-            body: toolRequest,
-            signal: myAbortController.signal
-        });
+        const res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'LightMemo', {
+            maid: 'Memo',
+            query,
+            k: 10,
+            tag_boost: 0.6,
+            search_all_knowledge_bases: true
+        }, { signal: myAbortController.signal });
 
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         

@@ -13,7 +13,6 @@ function setupUtils(app) {
     const WS_SPLIT_RE = /\s+/;
     const FILE_BSLASH_RE = /\\/g;
     const FILE_ENC_RE = /[?#']/g;
-    const VCP_CHAT_URL_RE = /\/v1\/chat\/completions\/?$/;
     const SEM_ERR_SELF_RE = /^还没有设置|^VCP 服务器响应超时/;
     const SEM_ERR_NET_RE = /failed to fetch|networkerror|econnrefused/i;
     const SEM_ERR_AUTH_RE = /status: (401|403)/;
@@ -220,30 +219,16 @@ function setupUtils(app) {
             const settings = await api.loadSettings();
             // 没配 VCP 服务器地址时以前在这里抛 TypeError，按钮转一下就没了下文。
             if (!settings?.vcpServerUrl) throw new Error('还没有设置 VCP 服务器地址');
-            let serverBaseUrl = settings.vcpServerUrl.replace(VCP_CHAT_URL_RE, '');
-            if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
-
-            const toolRequest = `<<<[TOOL_REQUEST]>>>
-maid:「始」MusicPlay「末」,
-tool_name:「始」LightMemo「末」,
-query:「始」[音乐检索]${query}「末」,
-k:「始」10「末」,
-tag_boost:「始」0.95「末」
-<<<[END_TOOL_REQUEST]>>>`;
-
             const controller = typeof AbortController === 'function' ? new AbortController() : null;
             const fetchTimer = controller ? setTimeout(() => controller.abort(), 20000) : null;
             let res;
             try {
-                res = await fetch(`${serverBaseUrl}v1/human/tool`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'text/plain;charset=UTF-8',
-                        'Authorization': `Bearer ${settings.vcpApiKey}`
-                    },
-                    body: toolRequest,
-                    ...(controller ? { signal: controller.signal } : {})
-                });
+                res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'LightMemo', {
+                    maid: 'MusicPlay',
+                    query: `[音乐检索]${query}`,
+                    k: 10,
+                    tag_boost: 0.95
+                }, controller ? { signal: controller.signal } : {});
             } finally {
                 if (fetchTimer) clearTimeout(fetchTimer);
             }

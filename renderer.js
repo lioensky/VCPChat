@@ -322,6 +322,18 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
     });
     let localSettings = getGlobalSettings();
     let disposed = false;
+    const syncLocalSettingsFromGlobal = () => {
+        if (disposed) return;
+        localSettings = getGlobalSettings();
+    };
+    const syncLocalSettingsFromPatch = (event) => {
+        if (disposed) return;
+        const patch = event?.detail?.patch;
+        if (!patch || typeof patch !== 'object' || Object.keys(patch).length === 0) return;
+        localSettings = { ...(localSettings || getGlobalSettings()), ...patch };
+    };
+    window.addEventListener('global-settings-updated', syncLocalSettingsFromGlobal);
+    window.addEventListener('vcp-typed-settings-committed', syncLocalSettingsFromPatch);
     const streamProjection = createStreamProjection();
     const transientStreamHistory = createStreamTransientHistory({
         repository: chatRepository,
@@ -396,6 +408,8 @@ function createOwnedInternalChatRenderer({ root, mode = 'readonly', handleSendMe
         async dispose() {
             if (disposed) return;
             disposed = true;
+            window.removeEventListener('global-settings-updated', syncLocalSettingsFromGlobal);
+            window.removeEventListener('vcp-typed-settings-committed', syncLocalSettingsFromPatch);
             await streamProjection.dispose();
             await renderer.disposeRootResources(root);
             renderer.disposeRendererResources();
@@ -1278,11 +1292,11 @@ mainChatSettingsPresentationOwner.configureStartup({
         },
         notify: (message, type) => uiHelperFunctions.showToastNotification(message, type),
     });
-    const syncAdmissionHistory = async scope => {
+    const syncAdmissionHistory = async (scope, syncOptions = undefined) => {
         const selected = currentSelectedItemRef.get();
         if (selected?.id === scope.itemId && selected.type === scope.itemType
             && currentTopicIdRef.get() === scope.topicId) {
-            await chatManager.syncHistoryFromFile(scope.itemId, scope.itemType, scope.topicId);
+            await chatManager.syncHistoryFromFile(scope.itemId, scope.itemType, scope.topicId, syncOptions);
         }
     };
     const stopAdmissionCommitted = chatAPI.onTopicAdmissionCommitted(({ scope }) => {
@@ -1328,7 +1342,9 @@ mainChatSettingsPresentationOwner.configureStartup({
                     },
                     onCommitted: async scope => {
                         if (!streaming) await removeThinking();
-                        await syncAdmissionHistory(scope);
+                        await syncAdmissionHistory(scope, (!streaming && placeholder?.id)
+                            ? { autoRepairMessageId: placeholder.id }
+                            : undefined);
                     },
                     onFinalized: event => window.flowlockManager?.handleFinalizedMessage?.(event),
                 });

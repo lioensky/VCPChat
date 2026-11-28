@@ -1,3 +1,5 @@
+import { renderHostedAssistantSegments } from './renderer/hostedToolCallRendering.js';
+import { reconcileEditedAssistantSegments } from './chat/hostedToolHistory.js';
 import { collectStrictAnimationIslands } from './renderer/strictAnimationIsland.js';
 import { createOffscreenDomWindow } from './renderer/offscreenDomWindow.js';
 import { createRenderWorkerClient } from './renderer/renderWorkerClient.js';
@@ -16,6 +18,11 @@ import { createVisibilityOptimizer } from './renderer/visibilityOptimizer.js';
 
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
 import { createEmoticonUrlFixer } from './renderer/emoticonUrlFixer.js';
+import {
+    normalizePeleSource,
+    patchMessageMermaidContent,
+    repairMermaidDiagram,
+} from './renderer/peleRepair.js';
 import { applyMarkdownPolicy, hasOnlyMarkdownPolicyTokenizer, markdownWorkerOptions } from './renderer/markdownPolicy.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
 import { createContentRuntime } from './chat/contentRuntime.js';
@@ -75,6 +82,8 @@ const ownedStyleElements = new Set();
 const persistedAvatarColorKeys = new Set();
 const scopedCssCache = new Map();
 const ownedAnimationContents = new Set();
+const activeMermaidRepairControllers = new Set();
+const autoRepairedMermaidKeys = new Set();
 function processAnimationsInContent(content, optimizer, animationOptions = {}) {
     if (rendererDisposed) return;
     const controller = processOwnedAnimations(content, optimizer, animationOptions);
@@ -395,9 +404,281 @@ function generateUniqueId() {
  * and then calls the Mermaid API to render them.
  * @param {HTMLElement} container The container element to search within.
  */
-async function renderMermaidDiagrams(container) {
+async function waitForTerminalPersistence(messageDom, timeoutMs = 4000) {
+    if (!messageDom) return;
+    if (messageDom.dataset?.vcpTerminalPersisting === 'true' && !messageDom.dataset?.vcpPersistenceState) {
+        // Allow mainChatStreamConsumer one brief turn to advance from projectTerminal -> setPersistenceState('saving').
+        await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    if (messageDom.dataset?.vcpPersistenceState !== 'saving') return;
+
+    await new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            messageDom.removeEventListener?.('vcp:persistence-settled', finish);
+            resolve();
+        };
+        const timer = setTimeout(finish, timeoutMs);
+        messageDom.addEventListener?.('vcp:persistence-settled', finish, { once: true });
+    });
+}
+
+async function persistRepairedMermaidInHistory({ messageId, originalCode, fixedCode, targetContext, messageDom, isAutoRepair = false, manual = false }) {
+    if (!messageId || !originalCode || !fixedCode) return;
+
+    await waitForTerminalPersistence(messageDom);
+    if (rendererDisposed) return;
+
+    if (messageDom?.dataset?.vcpPersistenceState === 'unsaved') {
+        if (manual) {
+            mainRendererReferences?.uiHelper?.showToastNotification?.(
+                '原消息尚未保存至历史记录，本次图表仅临时显示修复结果；请先重试保存原消息',
+                'warning'
+            );
+        }
+        return;
+    }
+
+    if (messageDom?._vcpMessageModel && messageDom._vcpMessageModel.id === messageId) {
+        const modelPatch = patchMessageMermaidContent(messageDom._vcpMessageModel, originalCode, fixedCode);
+        if (modelPatch.updated) {
+            messageDom._vcpMessageModel = modelPatch.message;
+        }
+    }
+
+    const activeItem = mainRendererReferences?.currentSelectedItemRef?.get?.();
+    const activeTopicId = mainRendererReferences?.currentTopicIdRef?.get?.();
+    if (!targetContext || (activeItem?.id === targetContext.itemId && activeTopicId === targetContext.topicId)) {
+        const currentHistory = [...(mainRendererReferences?.currentChatHistoryRef?.get?.() || [])];
+        const idx = currentHistory.findIndex(m => m && m.id === messageId);
+        if (idx > -1) {
+            const memoryPatch = patchMessageMermaidContent(currentHistory[idx], originalCode, fixedCode);
+            if (memoryPatch.updated) {
+                currentHistory[idx] = memoryPatch.message;
+                mainRendererReferences.currentChatHistoryRef.set(currentHistory);
+            }
+        }
+    }
+
+    if (targetContext?.itemId && targetContext?.topicId && mainRendererReferences?.historyMutationAuthority) {
+        const tryMutateDisk = async () => {
+            let foundInLatest = false;
+            await mainRendererReferences.historyMutationAuthority.mutate({
+                itemId: targetContext.itemId,
+                itemType: targetContext.itemType || 'agent',
+                topicId: targetContext.topicId,
+                category: 'mermaid-repair',
+            }, (latest) => {
+                let changed = false;
+                const next = latest.map((msg) => {
+                    if (!msg || msg.id !== messageId) return msg;
+                    foundInLatest = true;
+                    const patch = patchMessageMermaidContent(msg, originalCode, fixedCode);
+                    if (!patch.updated) return msg;
+                    changed = true;
+                    return patch.message;
+                });
+                return changed ? next : latest;
+            });
+            return foundInLatest;
+        };
+
+        try {
+            const found = await tryMutateDisk();
+            // Auxiliary windows (without vcpPersistenceState) may settle persistTerminal right after DOM projection.
+            if (!found && isAutoRepair && !rendererDisposed) {
+                await new Promise((resolve) => setTimeout(resolve, 150));
+                if (!rendererDisposed) {
+                    await tryMutateDisk();
+                }
+            }
+        } catch (error) {
+            console.warn('[MessageRenderer] Failed to persist repaired Mermaid diagram:', error);
+        }
+    }
+}
+
+function renderMermaidErrorCard(el, { originalCode, errorMessage, messageId, renderSessionId, allowAutoRepair }) {
+    const doc = el.ownerDocument || document;
+    el.classList.add('mermaid-error');
+
+    const header = doc.createElement('div');
+    header.className = 'mermaid-error-header';
+
+    const messageSpan = doc.createElement('span');
+    messageSpan.className = 'mermaid-error-text';
+    messageSpan.textContent = `Pele 图表渲染失败: ${errorMessage}`;
+    header.append(messageSpan);
+
+    const getSettings = () => mainRendererReferences?.globalSettingsRef?.get?.() || {};
+    const repairModel = String(getSettings().mermaidRepairModel || '').trim();
+    const cardMessageDom = el.closest?.('.message-item');
+    const cardMessageId = messageId || cardMessageDom?.dataset?.messageId || '';
+    const isMessageStreaming = Boolean(
+        cardMessageDom?.classList?.contains('streaming')
+        || cardMessageDom?.classList?.contains('thinking')
+        || (cardMessageId && streamManager?.isMessageActive?.(cardMessageId))
+    );
+    let repairBtn = null;
+    let statusLine = null;
+
+    const setStatusText = (text) => {
+        if (!text) {
+            statusLine?.remove();
+            statusLine = null;
+            return;
+        }
+        if (!statusLine) {
+            statusLine = doc.createElement('div');
+            statusLine.className = 'mermaid-repair-status';
+            header.after(statusLine);
+        }
+        statusLine.textContent = text;
+    };
+
+    const runRepair = async ({ manual = false } = {}) => {
+        const messageDom = el.closest?.('.message-item');
+        const resolvedMessageId = messageId || messageDom?.dataset?.messageId || null;
+        if (messageDom?.classList?.contains('streaming')
+            || messageDom?.classList?.contains('thinking')
+            || (resolvedMessageId && streamManager?.isMessageActive?.(resolvedMessageId))) {
+            if (manual) {
+                mainRendererReferences?.uiHelper?.showToastNotification?.('消息仍在生成中，请待完成后再修复图表', 'info');
+            }
+            return;
+        }
+
+        const liveSettings = getSettings();
+        const activeModel = String(liveSettings.mermaidRepairModel || '').trim();
+        if (!activeModel) {
+            if (manual) {
+                repairBtn?.remove();
+                repairBtn = null;
+                const msg = '未选择图表修复模型，请先在全局设置 -> 高级功能中选择模型。';
+                setStatusText(msg);
+                mainRendererReferences?.uiHelper?.showToastNotification?.('请先在全局设置中选择图表修复模型', 'warning');
+            }
+            return;
+        }
+        if (el._vcpMermaidRepairRunning) return;
+
+        el._vcpMermaidRepairRunning = true;
+        if (repairBtn) {
+            repairBtn.disabled = true;
+            repairBtn.textContent = 'AI 修复中...';
+        }
+        setStatusText(manual ? `正在使用 ${activeModel} 修复图表语法...` : `检测到图表语法异常，正使用 ${activeModel} 自动修复...`);
+
+        const controller = new AbortController();
+        el._vcpMermaidRepairAbort = controller;
+        activeMermaidRepairControllers.add(controller);
+
+        const selectedItem = mainRendererReferences?.currentSelectedItemRef?.get?.();
+        const topicId = mainRendererReferences?.currentTopicIdRef?.get?.();
+        const targetContext = selectedItem?.id && topicId
+            ? { itemId: selectedItem.id, itemType: selectedItem.type, topicId }
+            : null;
+
+        try {
+            const result = await repairMermaidDiagram({
+                code: originalCode,
+                errorMessage,
+                settings: liveSettings,
+                signal: controller.signal,
+            });
+
+            if (controller.signal.aborted || rendererDisposed) return;
+            if (renderSessionId !== null && renderSessionId !== undefined && !isRenderSessionActive(renderSessionId)) {
+                return;
+            }
+
+            if (result.ok) {
+                if (el.isConnected) {
+                    el.classList.remove('mermaid-error');
+                    el.dataset.mermaidSource = result.code;
+                    el.innerHTML = result.svg;
+                    enhanceMermaidDiagram(el);
+                }
+                if (resolvedMessageId) {
+                    await persistRepairedMermaidInHistory({
+                        messageId: resolvedMessageId,
+                        originalCode,
+                        fixedCode: result.code,
+                        targetContext,
+                        messageDom,
+                        isAutoRepair: !manual,
+                        manual,
+                    });
+                }
+                return;
+            }
+
+            if (result.reason !== 'aborted') {
+                const failText = `AI 自动修复未通过：${result.error || '请点击重试'}`;
+                setStatusText(failText);
+                if (manual) {
+                    mainRendererReferences?.uiHelper?.showToastNotification?.(failText, 'warning');
+                }
+            }
+        } catch (unexpectedError) {
+            console.error('[MessageRenderer] Unexpected Mermaid AI repair failure:', unexpectedError);
+            const failText = `AI 修复失败：${unexpectedError?.message || '未知错误'}`;
+            setStatusText(failText);
+            if (manual) {
+                mainRendererReferences?.uiHelper?.showToastNotification?.(failText, 'warning');
+            }
+        } finally {
+            el._vcpMermaidRepairRunning = false;
+            if (el._vcpMermaidRepairAbort === controller) {
+                el._vcpMermaidRepairAbort = null;
+            }
+            activeMermaidRepairControllers.delete(controller);
+            if (repairBtn && el.classList.contains('mermaid-error')) {
+                repairBtn.disabled = false;
+                repairBtn.textContent = 'AI 修复';
+            }
+        }
+    };
+
+    if (repairModel && !isMessageStreaming) {
+        repairBtn = doc.createElement('button');
+        repairBtn.type = 'button';
+        repairBtn.className = 'mermaid-repair-btn';
+        repairBtn.textContent = 'AI 修复';
+        repairBtn.title = `使用小模型 (${repairModel}) 修复图表语法`;
+        repairBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void runRepair({ manual: true });
+        });
+        header.append(repairBtn);
+    }
+
+    const pre = doc.createElement('pre');
+    pre.textContent = originalCode;
+    el.replaceChildren(header, pre);
+
+    if (allowAutoRepair && repairModel && !isMessageStreaming) {
+        const dedupeKey = cardMessageId ? `${cardMessageId}::${hashStringFNV1a(originalCode)}` : '';
+        if (!dedupeKey || !autoRepairedMermaidKeys.has(dedupeKey)) {
+            if (dedupeKey) autoRepairedMermaidKeys.add(dedupeKey);
+            void runRepair({ manual: false });
+        }
+    }
+}
+
+async function renderMermaidDiagrams(container, diagramOptions = {}) {
     const placeholders = Array.from(container.querySelectorAll('.mermaid-placeholder'));
     if (placeholders.length === 0) return;
+
+    const {
+        messageId = null,
+        renderSessionId = null,
+        allowAutoMermaidRepair = false,
+    } = diagramOptions;
 
     // Prepare elements for rendering
     placeholders.forEach(placeholder => {
@@ -437,9 +718,26 @@ async function renderMermaidDiagrams(container) {
             el.innerHTML = svg;
             enhanceMermaidDiagram(el);
         } catch (error) {
+            const normalizedCode = normalizePeleSource(originalCode);
+            if (normalizedCode !== originalCode && typeof window.pele?.render === 'function' && normalizedCode.length <= 100000) {
+                try {
+                    const { svg } = window.pele.render(normalizedCode);
+                    el.dataset.mermaidSource = normalizedCode;
+                    el.innerHTML = svg;
+                    enhanceMermaidDiagram(el);
+                    continue;
+                } catch {
+                    // Fall through to error card & opt-in AI repair using original source.
+                }
+            }
             console.error("Error rendering diagram with Pele:", error);
-            el.classList.add('mermaid-error');
-            el.innerHTML = `<div class="mermaid-error">Pele 图表渲染失败: ${error.message}</div><pre>${escapeHtml(originalCode)}</pre>`;
+            renderMermaidErrorCard(el, {
+                originalCode,
+                errorMessage: error.message || String(error),
+                messageId,
+                renderSessionId,
+                allowAutoRepair: allowAutoMermaidRepair === true,
+            });
         }
     }
 }
@@ -630,6 +928,12 @@ function enhanceMermaidDiagram(mermaidElement) {
 }
 
 function cleanupMermaidViewers(contentDiv) {
+    contentDiv?.querySelectorAll?.('.pele-diagram, .mermaid-error').forEach(el => {
+        if (el._vcpMermaidRepairAbort) {
+            try { el._vcpMermaidRepairAbort.abort(); } catch { /* abort cleanup */ }
+            delete el._vcpMermaidRepairAbort;
+        }
+    });
     contentDiv?.querySelectorAll?.('.mermaid-viewer').forEach(wrapper => {
         wrapper._vcpDisposers?.splice(0).forEach(dispose => {
             try { dispose(); } catch { /* listener already removed */ }
@@ -1816,14 +2120,22 @@ async function restoreMessageContent(item, isValid) {
     const revision = content._vcpRenderRevision;
     const model = mainRendererReferences.currentChatHistoryRef.get().find(message => message.id === item.dataset.messageId);
     if (!model) throw new Error('Message no longer belongs to the current projection');
-    const prepared = prepareFinalTextForRender(model.id, model.content, model.role);
-    let text = prepared.text;
-    if (model.role === 'assistant') text = processAssistantScopedHtmlContent(text, item.id, item);
+    const prepare = source => {
+        const prepared = prepareFinalTextForRender(model.id, source, model.role);
+        const text = model.role === 'assistant' ? processAssistantScopedHtmlContent(prepared.text, item.id, item) : prepared.text;
+        return { ...prepared, text };
+    };
     const valid = () => isValid() && content._vcpRenderRevision === revision && isRenderSessionActive(session);
-    const html = await renderHistoryTemplate(text, {
-        message: model, settings: mainRendererReferences.globalSettingsRef.get(),
-        messageRole: prepared.role, depth: prepared.depth,
-    }, root, session, model, valid);
+    const settings = mainRendererReferences.globalSettingsRef.get();
+    const html = Array.isArray(model.assistantSegments)
+        ? renderHostedAssistantSegments(model.assistantSegments, source => {
+            const { text, role, depth } = prepare(source);
+            return renderMarkdownToHtml(text, { message: model, settings, messageRole: role, depth });
+        }, item.ownerDocument)
+        : await (async () => {
+            const { text, role, depth } = prepare(model.content);
+            return renderHistoryTemplate(text, { message: model, settings, messageRole: role, depth }, root, session, model, valid);
+        })();
     if (!valid()) { releaseUnMountedHtml(html); return; }
     if (html === null) throw new Error('Render settings changed during offscreen restoration');
     delete item.dataset.vcpHeavyActivated;
@@ -1904,6 +2216,11 @@ function disposeRendererListeners() {
 }
 function disposeRendererResources() {
     rendererDisposed = true;
+    for (const controller of [...activeMermaidRepairControllers]) {
+        try { controller.abort(); } catch { /* abort cleanup */ }
+    }
+    activeMermaidRepairControllers.clear();
+    autoRepairedMermaidKeys.clear();
     invalidateRenderSession();
     for (const content of [...ownedAnimationContents]) {
         try { cleanupAnimationsInContent(content); } catch (error) { console.warn('[Animation] renderer cleanup failed:', error); }
@@ -2069,6 +2386,11 @@ function removeMessageById(messageId, saveHistory = false, root = mainRendererRe
 }
 
 function clearChat(root = mainRendererReferences.chatMessagesDiv) {
+    for (const controller of [...activeMermaidRepairControllers]) {
+        try { controller.abort(); } catch { /* abort cleanup */ }
+    }
+    activeMermaidRepairControllers.clear();
+    autoRepairedMermaidKeys.clear();
     projectForgeTopicSurface.clear(root);
     invalidateRenderSession(root);
     chartEmbedHost?.clear();
@@ -2348,6 +2670,10 @@ function initializeMessageRenderer(refs) {
             }
         },
         chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
+        presentStreamTools(content) {
+            bindLazyTools(content);
+            toolPresentation?.apply(content);
+        },
         parseTail: parseStreamTailMarkdown,
         parseFull: parseFullMarkdown,
         prepareFinalTextForRender: prepareFinalTextForRender,
@@ -2945,7 +3271,8 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         includeAttachments = true,
         deferHighlights = true,
         processScripts = true,
-        mountStableIslands = false
+        mountStableIslands = false,
+        allowAutoMermaidRepair = false
     } = options;
 
     const messageItem = contentDiv.closest?.('.message-item');
@@ -3061,7 +3388,11 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
         contentProcessor.processRenderedContent(contentDiv, settings);
     }
     if (!isStillValid()) return;
-    await renderMermaidDiagrams(contentDiv);
+    await renderMermaidDiagrams(contentDiv, {
+        messageId: messageId || message?.id || messageItem?.dataset?.messageId || null,
+        renderSessionId,
+        allowAutoMermaidRepair: allowAutoMermaidRepair === true && (!message || message.role === 'assistant'),
+    });
 
     if (!isStillValid()) return;
 
@@ -3297,9 +3628,11 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     const isActiveStreamRequest = message.role === 'assistant'
         && typeof streamManager.isMessageActive === 'function'
         && streamManager.isMessageActive(message.id);
-    const messageTextIsEmpty = message.content === null
+    const hostedSegments = message.role === 'assistant' && Array.isArray(message.assistantSegments)
+        ? message.assistantSegments : null;
+    const messageTextIsEmpty = !hostedSegments && (message.content === null
         || message.content === undefined
-        || (typeof message.content === 'string' && message.content.trim() === '');
+        || (typeof message.content === 'string' && message.content.trim() === ''));
 
     if (message.isThinking || (isActiveStreamRequest && messageTextIsEmpty)) {
         contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
@@ -3326,7 +3659,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
         if (message.role === 'user') {
             textToRender = prepareUserMessageText(textToRender);
-        } else if (message.role === 'assistant') {
+        } else if (message.role === 'assistant' && !hostedSegments) {
             textToRender = processAssistantScopedHtmlContent(textToRender, scopeId, messageItem);
         }
 
@@ -3348,15 +3681,19 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         // 核心修复：将正则规则应用移出 preprocessFullContent，以避免在流式传输的块上执行
         // 这样可以确保正则表达式在完整的消息内容上运行
         const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
-        if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes)) {
-            textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, message.role, depth);
-        }
+        const applyDisplayRules = source => Array.isArray(agentConfigForRegex?.stripRegexes)
+            ? applyFrontendRegexRules(source, agentConfigForRegex.stripRegexes, message.role, depth) : source;
+        if (!hostedSegments) textToRender = applyDisplayRules(textToRender);
         // --- 正则规则应用结束 ---
 
         const templateOptions = { message, settings: globalSettings, messageRole: message.role, depth };
-        let rawHtml = isInitialLoad && !appendToDom && !renderContext.forceSyncTemplate
-            ? await renderHistoryTemplate(textToRender, templateOptions, renderRoot, renderSessionId, message)
-            : renderMarkdownToHtml(textToRender, templateOptions);
+        let rawHtml = hostedSegments
+            ? renderHostedAssistantSegments(hostedSegments, source => renderMarkdownToHtml(
+                applyDisplayRules(processAssistantScopedHtmlContent(source, scopeId, messageItem)), templateOptions
+            ), messageItem.ownerDocument)
+            : isInitialLoad && !appendToDom && !renderContext.forceSyncTemplate
+                ? await renderHistoryTemplate(textToRender, templateOptions, renderRoot, renderSessionId, message)
+                : renderMarkdownToHtml(textToRender, templateOptions);
         if (rawHtml === null || rendererDisposed || !isRenderSessionActive(renderSessionId)) {
             releaseUnMountedHtml(rawHtml);
             cleanupMessageDomResources(messageItem);
@@ -3404,7 +3741,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                 settings: globalSettings,
                 renderSessionId,
                 runHeavy: postOptions.runHeavy !== false,
-                includeAttachments: contentDiv.dataset.vcpAttachmentsProcessed !== 'true'
+                includeAttachments: contentDiv.dataset.vcpAttachmentsProcessed !== 'true',
+                allowAutoMermaidRepair: renderContext.allowAutoMermaidRepair === true && message.role === 'assistant'
             });
         };
 
@@ -3768,7 +4106,8 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId, opt
         settings: globalSettings,
         renderSessionId: getActiveRenderSessionId(chatMessagesDiv),
         runHeavy: true,
-        includeAttachments: !!messageFromHistoryForRegex
+        includeAttachments: !!messageFromHistoryForRegex,
+        allowAutoMermaidRepair: options.allowAutoMermaidRepair === true && messageRoleForRender === 'assistant'
     });
 
     mainRendererReferences.uiHelper.scrollToBottom();
@@ -3848,8 +4187,8 @@ function cancelPretextEstimate(contentDiv) {
     pretextEstimateQueues.get(queueOwner)?.jobs.delete(contentDiv);
 }
 
-async function renderFullMessageProjection(messageId, fullContent, agentName, agentId, root = mainRendererReferences.chatMessagesDiv) {
-    return renderFullMessage(messageId, fullContent, agentName, agentId, { persistHistory: false, root });
+async function renderFullMessageProjection(messageId, fullContent, agentName, agentId, root = mainRendererReferences.chatMessagesDiv, options = {}) {
+    return renderFullMessage(messageId, fullContent, agentName, agentId, { ...options, persistHistory: false, root });
 }
 
 function updateMessageContent(messageId, newContent) {
@@ -3879,25 +4218,21 @@ function updateMessageContent(messageId, newContent) {
     // --- 应用前端正则规则 (修复流式处理问题) ---
     const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
     const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
-    if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes) && messageInHistory) {
-        textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, messageInHistory.role, depthForUpdate);
-    }
-    // --- 正则规则应用结束 ---
-    if ((messageInHistory?.role || 'assistant') === 'assistant') {
-        let scopedMessageId = messageItem.id;
-        if (!scopedMessageId) {
-            scopedMessageId = generateUniqueId();
-            messageItem.id = scopedMessageId;
+    const role = messageInHistory?.role || 'assistant';
+    const renderText = source => {
+        if (Array.isArray(agentConfigForRegex?.stripRegexes) && messageInHistory) {
+            source = applyFrontendRegexRules(source, agentConfigForRegex.stripRegexes, role, depthForUpdate);
         }
-        textToRender = processAssistantScopedHtmlContent(textToRender, scopedMessageId, messageItem);
-    }
-
-    const rawHtml = renderMarkdownToHtml(textToRender, {
-        message: messageInHistory,
-        settings: globalSettings,
-        messageRole: messageInHistory?.role || 'assistant',
-        depth: depthForUpdate
-    });
+        if (role === 'assistant') {
+            if (!messageItem.id) messageItem.id = generateUniqueId();
+            source = processAssistantScopedHtmlContent(source, messageItem.id, messageItem);
+        }
+        return renderMarkdownToHtml(source, { message: messageInHistory, settings: globalSettings, messageRole: role, depth: depthForUpdate });
+    };
+    const segments = role === 'assistant' && reconcileEditedAssistantSegments(messageInHistory?.assistantSegments, newContent);
+    const rawHtml = Array.isArray(segments)
+        ? renderHostedAssistantSegments(segments, renderText, contentDiv.ownerDocument)
+        : renderText(textToRender);
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 
@@ -4212,6 +4547,17 @@ const messageRenderer = {
     disposeRootResources,
     createDomRenderer: (root = mainRendererReferences.chatMessagesDiv) => createChatDomRenderer({ root, renderer: messageRenderer }),
     restoreOffscreenMessages: () => offscreenWindow?.restoreAll(),
+    // UTTU: 导出图片前恢复并锁住这几条消息的完整 DOM（离屏回收会清空正文），再补跑延后的重渲染（公式、图表）。
+    holdMessagesForCapture: async (items) => {
+        const release = offscreenWindow ? await offscreenWindow.hold(items) : () => {};
+        try {
+            await Promise.all(items.map(item => item?._vcp_activateHeavy?.()));
+        } catch (error) {
+            release();
+            throw error;
+        }
+        return release;
+    },
     getOffscreenStats: () => offscreenWindow?.getStats() || null,
     getRenderWorkerStats: () => renderWorkerClient?.getStats() || null,
     getLazyToolStats: () => ({ entries: lazyToolContents.size }),

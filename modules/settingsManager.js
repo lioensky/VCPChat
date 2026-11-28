@@ -5,36 +5,8 @@
  * Handles displaying, populating, saving, and deleting items.
  */
 const settingsManager = (() => {
-    /**
-     * Completes a VCP Server URL to the full completions endpoint.
-     * @param {string} url - The URL to complete.
-     * @returns {string} The completed URL.
-     */
     function completeVcpUrl(url) {
-        if (!url) return '';
-        let trimmedUrl = url.trim();
-        if (trimmedUrl === '') return '';
-
-        // If it doesn't have a protocol, add http://
-        if (!/^https?:\/\//i.test(trimmedUrl)) {
-            trimmedUrl = 'http://' + trimmedUrl;
-        }
-
-        try {
-            const urlObject = new URL(trimmedUrl);
-            const requiredPath = '/v1/chat/completions';
-
-            // For any other case (e.g., root path '/', or some other path),
-            // we set the path to the required one.
-            urlObject.pathname = requiredPath;
-            return urlObject.toString();
-
-        } catch (e) {
-            // If URL parsing fails, it's likely an invalid URL.
-            // We return the original input for the user to see and correct.
-            console.warn(`Could not parse and complete URL: ${url}`, e);
-            return url;
-        }
+        return globalThis.vcpServerRoutes.normalizeVcpServerUrl(url) || String(url ?? '').trim();
     }
 
     // --- Private Variables ---
@@ -59,6 +31,7 @@ const settingsManager = (() => {
     let promptManager = null; // PromptManager instance
     let openModelSelectBtn, modelSelectModal, modelList, modelSearchInput, refreshModelsBtn;
     let topicSummaryModelInput, openTopicSummaryModelSelectBtn; // New elements for topic summary model
+    let mermaidRepairModelInput, openMermaidRepairModelSelectBtn;
     let agentTtsVoicePrimarySelect, agentTtsRegexPrimaryInput, agentTtsVoiceSecondarySelect, agentTtsRegexSecondaryInput, refreshTtsModelsBtn, agentTtsSpeedSlider;
     let currentAgentTtsDirectorPrompts = [];
     const TTS_DIRECTOR_TEMPLATE = `【角色】
@@ -1210,9 +1183,14 @@ const settingsManager = (() => {
                 if (modalId === 'globalSettingsModal') {
                     topicSummaryModelInput = document.getElementById('topicSummaryModel');
                     openTopicSummaryModelSelectBtn = document.getElementById('openTopicSummaryModelSelectBtn');
+                    mermaidRepairModelInput = document.getElementById('mermaidRepairModel');
+                    openMermaidRepairModelSelectBtn = document.getElementById('openMermaidRepairModelSelectBtn');
 
                     if (openTopicSummaryModelSelectBtn) {
                         openTopicSummaryModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(topicSummaryModelInput));
+                    }
+                    if (openMermaidRepairModelSelectBtn) {
+                        openMermaidRepairModelSelectBtn.addEventListener('click', () => handleOpenModelSelect(mermaidRepairModelInput));
                     }
                 }
             });
@@ -1220,12 +1198,26 @@ const settingsManager = (() => {
             if (!globalThis.vcpTopicSummaryClickDelegated) {
                 globalThis.vcpTopicSummaryClickDelegated = true;
                 document.addEventListener('click', (ev) => {
-                    const btn = ev.target?.closest?.('#openTopicSummaryModelSelectBtn');
-                    if (!btn) return;
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    const input = document.getElementById('topicSummaryModel');
-                    handleOpenModelSelect(input);
+                    const topicBtn = ev.target?.closest?.('#openTopicSummaryModelSelectBtn');
+                    if (topicBtn) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        handleOpenModelSelect(document.getElementById('topicSummaryModel'));
+                        return;
+                    }
+                    const mermaidBtn = ev.target?.closest?.('#openMermaidRepairModelSelectBtn');
+                    if (mermaidBtn) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        handleOpenModelSelect(document.getElementById('mermaidRepairModel'));
+                        return;
+                    }
+                    const refreshRowBtn = ev.target?.closest?.('#refreshTopicSummaryModelsBtn, #refreshMermaidRepairModelsBtn');
+                    if (refreshRowBtn && refreshRowBtn.dataset.vcpModelRefreshBound !== 'true') {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        void handleRefreshModels();
+                    }
                 });
             }
 
@@ -1467,8 +1459,8 @@ const settingsManager = (() => {
             const vcpServerUrlInput = document.getElementById('vcpServerUrl');
             if (vcpServerUrlInput) {
                 vcpServerUrlInput.addEventListener('blur', () => {
-                    const completedUrl = completeVcpUrl(vcpServerUrlInput.value);
-                    vcpServerUrlInput.value = completedUrl;
+                    const rootUrl = completeVcpUrl(vcpServerUrlInput.value);
+                    vcpServerUrlInput.value = rootUrl;
                 });
             }
         },

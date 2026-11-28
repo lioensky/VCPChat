@@ -333,7 +333,7 @@ export function setupEventListeners(deps) {
                             activeHistory.splice(0, activeHistory.length, ...finalHistory);
                         }
                         messageRenderer?.removeMessageById(thinkingMessage.id);
-                        await messageRenderer?.renderMessage(assistantMessage);
+                        await messageRenderer?.renderMessage(assistantMessage, false, true, null, { allowAutoMermaidRepair: true });
                         await chatManager.attemptTopicSummarizationIfNeeded();
                     }
                 } catch (uiError) {
@@ -1295,7 +1295,7 @@ export function setupEventListeners(deps) {
     }
 
     // 应用功能模块在主窗口这一侧的入口（feature.json 的 renderer）
-    installAppFeatures({ chatAPI, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn });
+    installAppFeatures({ chatAPI, messageRenderer, refs, itemListManager, chatManager, sendMessageBtn, globalSettingsBtn });
 
     // 语音聊天按钮事件处理
     const voiceChatBtn = document.getElementById('voiceChatBtn');

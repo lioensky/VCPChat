@@ -1,3 +1,4 @@
+import { reconcileEditedAssistantSegments } from '../chat/hostedToolHistory.js';
 // modules/renderer/messageContextMenu.js
 import { effectiveContextHistory, isContextCheckpoint } from '../chat/contextCompactionState.js';
 import { assertContextWithinLimit } from '../chat/contextCompactionService.js';
@@ -278,6 +279,16 @@ function showContextMenu(event, messageItem, message) {
             closeContextMenu();
         };
         menu.appendChild(copyOption);
+        const ownerCommands = ownerWindow?.VCPContributions?.commands;
+        for (const command of ownerCommands?.list(entry => entry.id.startsWith('message-menu.') && entry.label) || []) {
+            const option = ownerDocument.createElement('div');
+            option.classList.add('context-menu-item');
+            const icon = ownerDocument.createElement('i');
+            icon.className = /^[\w -]+$/.test(command.icon || '') ? command.icon : 'fas fa-puzzle-piece';
+            option.append(icon, ` ${command.label}`);
+            option.onclick = () => { closeContextMenu(); command.handler({ message, messageItem }); };
+            menu.appendChild(option);
+        }
 
         if (isEditing && textarea) {
             const cutOption = ownerDocument.createElement('div');
@@ -538,7 +549,6 @@ function showContextMenu(event, messageItem, message) {
         }
 
         // 这条回复对应的模型调用：在侧栏「调用轨迹」里定位到发出它的那次请求
-        const ownerCommands = ownerWindow?.VCPContributions?.commands;
         if (message.role === 'assistant' && message.id && ownerCommands?.get('sidepane.open-trajectory')) {
             const trajectoryOption = ownerDocument.createElement('div');
             trajectoryOption.classList.add('context-menu-item');
@@ -775,9 +785,13 @@ function toggleEditMode(messageItem, message) {
                             nextHistory.splice(liveIndex, 0, restoredMessage);
                         }
 
+                        const previous = nextHistory[liveIndex];
                         nextHistory[liveIndex] = {
-                            ...nextHistory[liveIndex],
+                            ...previous,
                             content: newContent,
+                            ...(Array.isArray(previous.assistantSegments) ? {
+                                assistantSegments: reconcileEditedAssistantSegments(previous.assistantSegments, newContent),
+                            } : {}),
                             updatedAt
                         };
                         return nextHistory;
@@ -1426,7 +1440,7 @@ async function handleRegenerateResponseOwned(originalAssistantMessage, admission
                     if (mainRefs.currentSelectedItemRef.get()?.id === currentSelectedItemVal.id
                         && mainRefs.currentTopicIdRef.get() === currentTopicIdVal) {
                         mainRefs.currentChatHistoryRef.set([...saved.history]);
-                        contextMenuDependencies.renderMessage(assistantMessage);
+                        contextMenuDependencies.renderMessage(assistantMessage, false, true, null, { allowAutoMermaidRepair: true });
                     }
                     return;
                 }
@@ -1447,7 +1461,7 @@ async function handleRegenerateResponseOwned(originalAssistantMessage, admission
 
                 if (isForActiveChat) {
                     mainRefs.currentChatHistoryRef.set(finalHistory);
-                    contextMenuDependencies.renderMessage(assistantMessage);
+                    contextMenuDependencies.renderMessage(assistantMessage, false, true, null, { allowAutoMermaidRepair: true });
                 }
             }
             if (isForActiveChat) {

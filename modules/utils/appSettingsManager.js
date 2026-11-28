@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const { normalizePromptSettings } = require('../services/workspacePromptPlaceholders');
 const { replaceFile } = require('./atomicReplace');
+const { normalizeVcpServerUrl } = require('./vcpServerRoutes');
 
 class SettingsValidator {
     static validate(settings, defaultSettings) {
@@ -30,6 +31,8 @@ class SettingsValidator {
                 validated[key] = null;
             }
         }
+
+        validated.vcpServerUrl = normalizeVcpServerUrl(validated.vcpServerUrl);
 
         // 数值范围检查
         if (validated.sidebarWidth < 100 || validated.sidebarWidth > 800) {
@@ -272,6 +275,7 @@ class SettingsManager extends EventEmitter {
             // Keep the settings-page default aligned with both topic-summary
             // request paths and the model picker placeholder.
             topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
+            mermaidRepairModel: '',
             enableContextCompaction: false,
             contextCompactionModel: '',
             contextCompactionFallbackModel: '',
@@ -437,8 +441,14 @@ class SettingsManager extends EventEmitter {
         if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
             throw new TypeError('Settings root must be an object.');
         }
+        if (typeof settings.vcpServerUrl === 'string') {
+            settings.vcpServerUrl = normalizeVcpServerUrl(settings.vcpServerUrl) || settings.vcpServerUrl;
+        }
         if (settings.topicSummaryModel === undefined || settings.topicSummaryModel === null) {
             settings.topicSummaryModel = this.defaultSettings.topicSummaryModel;
+        }
+        if (typeof settings.mermaidRepairModel !== 'string') {
+            settings.mermaidRepairModel = this.defaultSettings.mermaidRepairModel;
         }
         return settings;
     }

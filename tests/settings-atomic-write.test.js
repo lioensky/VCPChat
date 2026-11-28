@@ -13,6 +13,19 @@ async function sandbox(t) {
     return { dir, file, backup: `${file}.backup` };
 }
 const order = [{ id: 'a', type: 'agent' }];
+test('旧聊天 URL 读出根地址，下次原子保存时落盘并保留原始备份', async t => {
+    const s = await sandbox(t);
+    const previous = JSON.stringify({ vcpServerUrl: 'https://vcp.test:5890/v1/chat/completions', combinedItemOrder: [] });
+    await fsp.writeFile(s.file, previous);
+    const manager = new SettingsManager(s.file);
+    const migrated = await manager.readSettings();
+    assert.equal(migrated.vcpServerUrl, 'https://vcp.test:5890');
+    assert.equal(await fsp.readFile(s.file, 'utf8'), previous);
+    const result = await manager.updateSettings(setOrder, { expectedRevision: manager.getRevision(migrated) });
+    assert.equal(result.success, true);
+    assert.equal(JSON.parse(await fsp.readFile(s.file, 'utf8')).vcpServerUrl, migrated.vcpServerUrl);
+    assert.equal(await fsp.readFile(s.backup, 'utf8'), previous);
+});
 const setOrder = settings => ({ ...settings, combinedItemOrder: order });
 const leftovers = async dir => (await fsp.readdir(dir)).filter(name => name.endsWith('.tmp'));
 

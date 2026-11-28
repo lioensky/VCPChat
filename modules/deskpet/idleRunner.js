@@ -1,3 +1,4 @@
+const { vcpChatUrl } = require('../utils/vcpServerRoutes');
 // modules/deskpet/idleRunner.js
 // 闲时主动搭话的那一套时机和流程（说什么、能不能说的规则在 idleChat.js）：
 // 设置里打开后，每分钟看一眼：人在电脑前、这么久没和助手说话、没开免打扰、桌宠露着，就让助手说一句。
@@ -132,7 +133,7 @@ function createIdleRunner(deps) {
         });
         let line;
         try {
-            line = idleChat.cleanLine(await idleChat.generate({ url: appSettings.vcpServerUrl, key: appSettings.vcpApiKey, model: config?.model, messages }));
+            line = idleChat.cleanLine(await idleChat.generate({ url: vcpChatUrl(appSettings.vcpServerUrl), key: appSettings.vcpApiKey, model: config?.model, messages }));
         } catch (error) {
             console.warn('[DeskPet] idle chat generate failed:', error?.message || error);
             return fail('generate');

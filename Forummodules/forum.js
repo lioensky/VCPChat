@@ -163,7 +163,8 @@ async function getServerUrl() {
     try {
         const settings = await api.loadSettings();
         if (!settings?.vcpServerUrl) throw new Error('VCP Server URL not configured');
-        serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
+        serverBaseUrl = globalThis.vcpServerRoutes.normalizeVcpServerUrl(settings.vcpServerUrl);
+        if (!serverBaseUrl) throw new Error('Invalid VCP server address');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
         return serverBaseUrl;
     } catch (error) {
@@ -2031,19 +2032,8 @@ submitPostBtn.addEventListener('click', async () => {
     submitPostBtn.textContent = '发布中...';
     try {
         const settings = await api.loadSettings();
-        if (!settings?.vcpApiKey) throw new Error('API Key missing');
-        const toolRequest = `<<<[TOOL_REQUEST]>>>
-tool_name:「始」VCPForum「末」,
-command:「始」CreatePost「末」,
-maid:「始」${author}「末」,
-board:「始」${board}「末」,
-title:「始」${title}「末」,
-content:「始」${content}「末」
-<<<[END_TOOL_REQUEST]>>>`;
-        const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'Authorization': `Bearer ${settings.vcpApiKey}` },
-            body: toolRequest
+        const res = await globalThis.vcpServerRoutes.postHumanTool(settings, 'VCPForum', {
+            command: 'CreatePost', maid: author, board, title, content
         });
         if (!res.ok) throw new Error(await res.text());
         createPostModal.style.display = 'none';

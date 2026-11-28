@@ -1149,3 +1149,81 @@ test('history batch item carries its final tool presentation before it is mounte
         await disposeFixture(fixture);
     }
 });
+
+test('hosted FC cards appear before receipts and keep the same order after reopening history', { timeout: 5000 }, async () => {
+    const fixture = await createRendererFixture('', { toolPresentation: 'grouped', toolExpansion: 'none' });
+    try {
+        const { streamProjection, renderer, messageItem, historyRef } = fixture;
+        const id = messageItem.dataset.messageId;
+        const context = { agentId: 'tool-card-agent', topicId: 'tool-card-topic' };
+        const call = id => ({ id, type: 'function', function: { name: 'vcptools', arguments: '{"tool_name":"Demo"}' } });
+        const first = [call('a'), call('b')], second = [call('c')];
+        const receipt = stamp => '\n<<<[ROLE_DIVIDE_USER]>>>\n' +
+            `<<<[VCP_TOOL_BATCH_START:${stamp}]>>>\n` +
+            '[[VCP调用结果信息汇总:\n- 工具名称: Demo\n- 执行状态: ✅ SUCCESS\n- 返回内容: **完整回执正文**\nVCP调用结果结束]]\n' +
+            '[本轮工具调用摘要:]\nDemo 调用成功。\n[本轮工具调用摘要结束]\n' +
+            `<<<[VCP_TOOL_BATCH_END:${stamp}]>>>\n<<<[END_ROLE_DIVIDE_USER]>>>\n\n`;
+        const one = receipt('2026-11-26T20:00:00.000+08:00');
+        const two = receipt('2026-11-26T20:00:01.000+08:00');
+        const append = chunk => streamProjection.appendStreamChunk(id, chunk, context);
+        const order = item => [...item.querySelectorAll('.md-content h2, .md-content [data-vcp-tool-call-id]')]
+            .map(node => node.dataset.vcpToolCallId || node.textContent);
+        const waitFor = async predicate => {
+            for (let i = 0; i < 100 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 10));
+            assert.ok(predicate(), 'stream DOM did not reach expected state');
+        };
+        await streamProjection.startStreamingMessage({ ...historyRef.get()[0], ...context }, messageItem);
+        append('## A\n\n');
+        append({ vcpHostedToolCalls: first });
+        await waitFor(() => order(messageItem).length === 3);
+        assert.deepEqual(order(messageItem), ['A', 'a', 'b']);
+        const existing = messageItem.querySelector('[data-vcp-tool-call-id="a"]');
+        append(one + '## B\n\n');
+        await waitFor(() => !!messageItem.querySelector('.vcp-tool-result-bubble'));
+        assert.ok(messageItem.classList.contains('streaming'));
+        const result = messageItem.querySelector('.vcp-tool-result-bubble');
+        const group = result.closest('.vcp-tool-process');
+        assert.ok(group && group.contains(existing), 'native request and receipt share the ordinary group');
+        group.querySelector('.vcp-tool-process-toggle').click();
+        result.querySelector('.vcp-tool-row-toggle').click();
+        assert.match(result.querySelector('.vcp-tool-result-collapsible-content').textContent, /完整回执正文/);
+        append({ vcpHostedToolCalls: second });
+        append(two + '## C\n');
+        await waitFor(() => order(messageItem).includes('C'));
+        const live = order(messageItem);
+        assert.deepEqual(live, ['A', 'a', 'b', 'B', 'c', 'C']);
+        assert.equal(messageItem.querySelector('[data-vcp-tool-call-id="a"]'), existing);
+        assert.equal(messageItem.querySelector('.vcp-tool-result-bubble'), result);
+        assert.match(result.querySelector('.vcp-tool-result-collapsible-content').textContent, /完整回执正文/);
+        const assistantSegments = [
+            { content: '## A\n\n' }, { tool_calls: first }, { content: one + '## B\n\n' },
+            { tool_calls: second }, { content: two + '## C\n' },
+        ];
+        const terminal = await streamProjection.projectStreamTerminal(id, 'completed', context, {
+            fullResponse: assistantSegments.map(segment => segment.content ?? '').join(''), assistantSegments,
+        });
+        assert.ok(terminal);
+        assert.deepEqual(order(messageItem), live);
+        const reopenedModel = JSON.parse(JSON.stringify(historyRef.get().find(message => message.id === id)));
+        messageItem.remove();
+        const reopened = await renderer.renderMessage(reopenedModel, true, true);
+        assert.deepEqual(order(reopened), live);
+        assert.ok(reopened.querySelector('.vcp-tool-process [data-vcp-tool-call-id="a"]'));
+        const original = reopenedModel.content;
+        renderer.updateMessageContent(id, original);
+        assert.deepEqual(order(reopened), live, 'canceling the editor restores structured cards in place');
+        renderer.updateMessageContent(id, original.replace('## B', '## edited B'));
+        assert.deepEqual(order(reopened), ['A', 'a', 'b', 'edited B', 'c', 'C']);
+        assert.equal(reopened.querySelectorAll('[data-vcp-tool-call-id]').length, 3);
+        fixture.dom.window.dispatchEvent(new fixture.dom.window.CustomEvent('vcp-appearance-changed', {
+            detail: { profile: { toolPresentation: 'process', toolExpansion: 'none' } },
+        }));
+        const turn = reopened.querySelector('.vcp-tool-process');
+        assert.ok(turn?.querySelector('[data-vcp-tool-call-id="a"]'));
+        assert.ok(turn.querySelector('[data-vcp-tool-call-id="c"]'));
+        assert.equal(turn.querySelectorAll('.vcp-tool-result-bubble').length, 2);
+        assert.ok(!turn.contains([...reopened.querySelectorAll('h2')].find(node => node.textContent === 'C')));
+    } finally {
+        await disposeFixture(fixture);
+    }
+});

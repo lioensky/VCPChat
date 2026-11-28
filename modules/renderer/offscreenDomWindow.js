@@ -13,6 +13,8 @@ export function createOffscreenDomWindow({ canEvict, evict, restore, coldMargin 
     let scrollRevision = 0;
     let layoutRevision = 0;
     const entries = new Map();
+    // UTTU: 导出图片等需要整段 DOM 的功能先 hold 住消息：冷的立即恢复，持有期间不再回收。
+    const held = new Map();
     const stats = { evicted: 0, restored: 0, protected: 0, failures: 0 };
     const properties = ['height', 'minHeight', 'maxHeight', 'boxSizing', 'overflow', 'contentVisibility'];
     const saveStyle = node => Object.fromEntries(properties.map(key => [key, node.style[key]]));
@@ -83,7 +85,7 @@ export function createOffscreenDomWindow({ canEvict, evict, restore, coldMargin 
                 continue;
             }
             const far = rect.bottom < bounds.top - coldMargin || rect.top > bounds.bottom + coldMargin;
-            if (!far || entry.restoring) continue;
+            if (!far || entry.restoring || held.has(item)) continue;
             if (changed >= batchSize) { remaining = true; continue; }
             if (!canEvict?.(item)) { stats.protected++; continue; }
             const content = item.querySelector('.md-content');
@@ -140,6 +142,32 @@ export function createOffscreenDomWindow({ canEvict, evict, restore, coldMargin 
         }
         releaseMessagePreview(entry.content);
         delete item.dataset.vcpDomEvicted;
+    }
+    // UTTU: 返回 release()；恢复失败的消息仍带 data-vcp-dom-evicted，调用方据此报错。
+    async function hold(items) {
+        const list = [...new Set(items)].filter(item => item?.isConnected);
+        for (const item of list) held.set(item, (held.get(item) || 0) + 1);
+        let released = false;
+        const release = () => {
+            if (released) return;
+            released = true;
+            for (const item of list) {
+                const count = (held.get(item) || 1) - 1;
+                if (count > 0) held.set(item, count);
+                else held.delete(item);
+            }
+            schedule();
+        };
+        try {
+            await Promise.all(list.map(item => {
+                const entry = entries.get(item);
+                return entry?.cold || entry?.restoring ? wake(item, entry) : undefined;
+            }));
+        } catch (error) {
+            release();
+            throw error;
+        }
+        return release;
     }
     function observe(item) {
         if (!root?.contains(item)) return;
@@ -198,7 +226,7 @@ export function createOffscreenDomWindow({ canEvict, evict, restore, coldMargin 
             });
             mutationObserver.observe(root, { subtree: true, attributes: true, attributeFilter: ['class'] });
         },
-        observe, unobserve, check, restoreAll, invalidateLayout: onResize, destroy,
+        observe, unobserve, check, restoreAll, hold, invalidateLayout: onResize, destroy,
         getStats: () => ({ ...stats, tracked: entries.size, cold: [...entries.values()].filter(entry => entry.cold).length }),
     });
 }
