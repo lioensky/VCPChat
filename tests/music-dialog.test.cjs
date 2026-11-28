@@ -207,3 +207,63 @@ test('Batch 98: MusicDialog restores focus before class removal and avoids body.
     assert.equal(bodyFocusCalls, 0, 'closing dialog opened from body blurs active control without calling body.focus()');
     window.dispatchEvent(new window.Event('beforeunload'));
 });
+
+test('Batch 120: MusicDialog builds DOM with preventScroll focus, DeviceSound uses null-proto map, Motion skips redundant DOM writes, and stage/list CSS guards apply', async () => {
+    const { window, doc } = setup();
+    const pending = window.MusicDialog.confirm({ title: '确认操作', message: '说明内容', confirmText: '执行', cancelText: '返回' });
+    const overlay = doc.querySelector('.dialog-overlay.music-dialog');
+    const dialog = overlay.querySelector('.dialog');
+    assert.equal(dialog.getAttribute('role'), 'alertdialog');
+    assert.equal(dialog.getAttribute('aria-modal'), 'true');
+    assert.equal(dialog.getAttribute('aria-labelledby'), overlay.querySelector('h3').id);
+    assert.equal(dialog.getAttribute('aria-describedby'), overlay.querySelector('.music-dialog-msg').id);
+    const cancelBtn = overlay.querySelector('.dialog-btn.cancel');
+    const confirmBtn = overlay.querySelector('.dialog-btn.confirm');
+    const focusOpts = [];
+    const origCancelFocus = cancelBtn.focus.bind(cancelBtn);
+    const origConfirmFocus = confirmBtn.focus.bind(confirmBtn);
+    cancelBtn.focus = (opts) => { focusOpts.push(['cancel', Boolean(opts && opts.preventScroll)]); return origCancelFocus(opts); };
+    confirmBtn.focus = (opts) => { focusOpts.push(['confirm', Boolean(opts && opts.preventScroll)]); return origConfirmFocus(opts); };
+    key(window, 'Tab');
+    key(window, 'ArrowLeft');
+    assert.deepEqual(focusOpts, [
+        ['cancel', true],
+        ['confirm', true]
+    ], 'Tab and ArrowLeft focus buttons with preventScroll: true');
+    key(window, 'Escape');
+    assert.equal(await pending, false);
+    window.dispatchEvent(new window.Event('beforeunload'));
+
+    // DeviceSound null-prototype map avoids Object.prototype collisions (e.g. "toString" / "constructor")
+    const { setupMusicDeviceSound } = require('../Musicmodules/music-device-sound.js');
+    const store = new Map();
+    const fakeStorage = {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v))
+    };
+    const app = {
+        eqBands: { '60': 0 },
+        eqEnabled: true,
+        updateUIWithState() {},
+        sendEqSettings() {}
+    };
+    setupMusicDeviceSound(app, { storage: fakeStorage });
+    app.updateUIWithState({ output_device: 'toString' });
+    app.eqBands['60'] = 4;
+    app.sendEqSettings();
+    app.deviceSound.flush();
+    app.updateUIWithState({ output_device: 'constructor' });
+    app.deviceSound.flush();
+    const saved = app.deviceSound.profiles();
+    assert.equal(saved.toString.bands['60'], 4, 'device named toString is persisted safely without prototype collision');
+    assert.ok(saved.constructor && typeof saved.constructor === 'object', 'device named constructor is stored safely');
+
+    // Stage/archive CSS guards
+    const archiveListCss = read('Musicmodules/music-archive/archive-list.css');
+    assert.match(archiveListCss, /\.archive-list-viewport\s*\{[^}]*overflow-anchor:\s*none;/);
+    const stageCss = read('Musicmodules/music-stage/music-stage.css');
+    assert.match(stageCss, /body\.music-fl-low\s+\.music-stage-edge-flow[\s\S]*?animation:\s*none;/);
+    const reducedIdx = stageCss.lastIndexOf('@media (prefers-reduced-motion: reduce)');
+    const orbitIdx = stageCss.indexOf('animation: stage-edge-flow-orbit');
+    assert.ok(reducedIdx > orbitIdx, 'prefers-reduced-motion rule appears after stage-edge-flow-orbit so cascade overrides it');
+});

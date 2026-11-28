@@ -19,3 +19,9 @@ test('hides English-only technical messages behind the fallback', () => {
     assert.equal(errorText(undefined, '加载失败'), '加载失败');
     assert.equal(errorText('', '加载失败'), '加载失败');
 });
+
+test('Batch 120: errorText prefix guards preserve lowercase remote-method and typed Error stripping', () => {
+    assert.equal(errorText("error invoking remote method 'm': RangeError: 音量超出范围", '设置失败'), '音量超出范围');
+    assert.equal(errorText('CustomError: 本地缓存已损坏', '读取失败'), '本地缓存已损坏');
+    assert.equal(errorText('网络开小差了', '失败'), '网络开小差了');
+});
