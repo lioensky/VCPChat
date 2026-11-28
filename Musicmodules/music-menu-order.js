@@ -22,30 +22,65 @@
     const KNOWN = new Set(GROUPS.flat());
 
     function arrange(menu) {
-        const items = [...menu.children].filter((el) => el.classList.contains('context-menu-item'));
-        const byAction = new Map(items.map((el) => [el.dataset.action, el]));
-        const others = items.filter((el) => !KNOWN.has(el.dataset.action));
+        const byAction = new Map();
+        const others = [];
+        const now = [];
+        const dividers = [];
+        const kids = menu.children;
+        for (let i = 0; i < kids.length; i += 1) {
+            const el = kids[i];
+            if (el.classList.contains('context-menu-item')) {
+                const act = el.dataset.action;
+                byAction.set(act, el);
+                if (!KNOWN.has(act)) others.push(el);
+                now.push(el);
+            } else if (el.classList.contains('context-menu-divider')) {
+                now.push(el);
+                dividers.push(el);
+            }
+        }
         const wanted = [];
-        for (const group of GROUPS) {
-            const els = group.flatMap((a) => (a === '*' ? others : byAction.has(a) ? [byAction.get(a)] : []));
-            if (!els.length) continue;
-            if (wanted.length) wanted.push('divider');
-            wanted.push(...els);
+        for (let gi = 0; gi < GROUPS.length; gi += 1) {
+            const group = GROUPS[gi];
+            const startLen = wanted.length;
+            let added = false;
+            for (let ai = 0; ai < group.length; ai += 1) {
+                const a = group[ai];
+                if (a === '*') {
+                    for (let oi = 0; oi < others.length; oi += 1) {
+                        if (!added && startLen > 0) wanted.push('divider');
+                        added = true;
+                        wanted.push(others[oi]);
+                    }
+                } else if (byAction.has(a)) {
+                    if (!added && startLen > 0) wanted.push('divider');
+                    added = true;
+                    wanted.push(byAction.get(a));
+                }
+            }
         }
         // 已经是这个顺序就什么都不动（避免和观察器互相触发）
-        const now = [...menu.children].filter((el) => el.classList.contains('context-menu-item') || el.classList.contains('context-menu-divider'));
-        const same = now.length === wanted.length && now.every((el, i) => (wanted[i] === 'divider' ? el.classList.contains('context-menu-divider') : el === wanted[i]));
+        let same = now.length === wanted.length;
+        if (same) {
+            for (let i = 0; i < now.length; i += 1) {
+                if (wanted[i] === 'divider' ? !now[i].classList.contains('context-menu-divider') : now[i] !== wanted[i]) {
+                    same = false;
+                    break;
+                }
+            }
+        }
         if (same) return;
-        const dividers = now.filter((el) => el.classList.contains('context-menu-divider'));
         const frag = document.createDocumentFragment();
-        for (const w of wanted) {
+        let divIdx = 0;
+        for (let i = 0; i < wanted.length; i += 1) {
+            const w = wanted[i];
             if (w === 'divider') {
-                const d = dividers.shift() || document.createElement('div');
+                const d = divIdx < dividers.length ? dividers[divIdx++] : document.createElement('div');
                 d.className = 'context-menu-divider';
                 frag.appendChild(d);
             } else frag.appendChild(w);
         }
-        dividers.forEach((d) => d.remove());
+        for (let i = divIdx; i < dividers.length; i += 1) dividers[i].remove();
         // 菜单里别的东西（比如流体层）留在原地，菜单项排在它们前面
         menu.insertBefore(frag, menu.firstChild);
     }

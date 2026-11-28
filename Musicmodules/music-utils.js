@@ -12,6 +12,11 @@ function setupUtils(app) {
     const WS_SPLIT_RE = /\s+/;
     const FILE_BSLASH_RE = /\\/g;
     const FILE_ENC_RE = /[?#']/g;
+    const VCP_CHAT_URL_RE = /\/v1\/chat\/completions\/?$/;
+    const SEM_ERR_SELF_RE = /^还没有设置|^VCP 服务器响应超时/;
+    const SEM_ERR_NET_RE = /failed to fetch|networkerror|econnrefused/i;
+    const SEM_ERR_AUTH_RE = /status: (401|403)/;
+    const TXT_EXT_RE = /\.txt$/;
 
     // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
     app.stripAudioExtension = (title) => {
@@ -126,7 +131,7 @@ function setupUtils(app) {
             const settings = await api.loadSettings();
             // 没配 VCP 服务器地址时以前在这里抛 TypeError，按钮转一下就没了下文。
             if (!settings?.vcpServerUrl) throw new Error('还没有设置 VCP 服务器地址');
-            let serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
+            let serverBaseUrl = settings.vcpServerUrl.replace(VCP_CHAT_URL_RE, '');
             if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
 
             const toolRequest = `<<<[TOOL_REQUEST]>>>
@@ -173,9 +178,9 @@ tag_boost:「始」0.95「末」
             console.error('[Music] Semantic search error:', err);
             if (stillWanted()) {
                 const raw = err?.name === 'AbortError' ? 'VCP 服务器响应超时' : (err?.message || String(err));
-                const reason = /^还没有设置|^VCP 服务器响应超时/.test(raw) ? raw
-                    : /failed to fetch|networkerror|econnrefused/i.test(raw) ? '连不上 VCP 服务器'
-                    : /status: (401|403)/.test(raw) ? 'VCP 服务器拒绝了请求，检查 API Key'
+                const reason = SEM_ERR_SELF_RE.test(raw) ? raw
+                    : SEM_ERR_NET_RE.test(raw) ? '连不上 VCP 服务器'
+                    : SEM_ERR_AUTH_RE.test(raw) ? 'VCP 服务器拒绝了请求，检查 API Key'
                     : (globalThis.MusicErrorText ? globalThis.MusicErrorText(raw, '原因不明') : raw);
                 tell(`语义搜索没有完成：${reason}`);
             }
@@ -249,46 +254,51 @@ tag_boost:「始」0.95「末」
         
         const results = [];
         const sections = output.split('--- (来源:');
-        
-        sections.forEach(section => {
-            if (!section.trim()) return;
-            
+        for (let si = 0; si < sections.length; si += 1) {
+            const section = sections[si];
+            if (!section.trim()) continue;
             // 提取路径
             const pathMatch = PATH_MATCH_RE.exec(section);
             if (pathMatch) {
-                let path = pathMatch[1];
+                let p = pathMatch[1];
                 // 处理 file:/// 协议
-                if (path.startsWith('file:///')) {
-                    path = path.substring(8);
-                }
-                
+                if (p.startsWith('file:///')) p = p.substring(8);
                 // 提取文件名（不含扩展名）作为搜索关键词
-                const fileName = path.split('/').pop().replace(/\.txt$/, '');
-                results.push({
-                    path: path,
-                    fileName: fileName,
-                    originalSection: section
-                });
+                const slash = p.lastIndexOf('/');
+                const fileName = (slash >= 0 ? p.slice(slash + 1) : p).replace(TXT_EXT_RE, '');
+                results.push({ path: p, fileName, originalSection: section });
             }
-        });
+        }
 
         console.log('[Music] Parsed semantic results:', results);
 
         // 与本地播放列表匹配（预计算小写字段，避免每条结果/每行歌单重复扫全库转小写）
         const matchedTracks = [];
         const seenPaths = new Set();
-        const indexedPlaylist = (app.playlist || []).map((track) => ({
-            track,
-            title: (track.title || '').toLowerCase(),
-            artist: (track.artist || '').toLowerCase(),
-            path: (track.path || '').toLowerCase()
-        }));
+        const pl = app.playlist || [];
+        const indexedPlaylist = new Array(pl.length);
+        for (let i = 0; i < pl.length; i += 1) {
+            const track = pl[i];
+            indexedPlaylist[i] = {
+                track,
+                title: (track.title || '').toLowerCase(),
+                artist: (track.artist || '').toLowerCase(),
+                path: (track.path || '').toLowerCase()
+            };
+        }
 
-        results.forEach(res => {
+        for (let ri = 0; ri < results.length; ri += 1) {
+            const res = results[ri];
             // 1. 尝试通过文件名匹配 (处理歌单中的逐行扫描逻辑)
             const query = res.fileName.toLowerCase();
-            const queryParts = query.split('-').map(p => p.trim()).filter(p => p.length > 1);
-            
+            const rawParts = query.split('-');
+            const queryParts = [];
+            for (let pi = 0; pi < rawParts.length; pi += 1) {
+                const part = rawParts[pi].trim();
+                if (part.length > 1) queryParts.push(part);
+            }
+            const qPartsLen = queryParts.length;
+
             for (let i = 0; i < indexedPlaylist.length; i++) {
                 const item = indexedPlaylist[i];
                 const track = item.track;
@@ -299,15 +309,21 @@ tag_boost:「始」0.95「末」
                 const trackPath = item.path;
 
                 let isMatch = false;
-                
+
                 // A. 精确匹配标题或标题包含在查询中（要求标题长度大于2以避免误伤）
                 if (title && (title === query || (query.includes(title) && title.length > 2))) {
                     isMatch = true;
                 }
                 // B. 匹配 歌曲-歌手 结构：要求同时匹配标题和艺术家
-                else if (queryParts.length >= 2) {
-                    const matchesTitle = queryParts.some(p => title && (title.includes(p) || p.includes(title)));
-                    const matchesArtist = queryParts.some(p => artist && (artist.includes(p) || p.includes(artist)));
+                else if (qPartsLen >= 2) {
+                    let matchesTitle = false;
+                    let matchesArtist = false;
+                    for (let pi = 0; pi < qPartsLen; pi += 1) {
+                        const part = queryParts[pi];
+                        if (!matchesTitle && title && (title.includes(part) || part.includes(title))) matchesTitle = true;
+                        if (!matchesArtist && artist && (artist.includes(part) || part.includes(artist))) matchesArtist = true;
+                        if (matchesTitle && matchesArtist) break;
+                    }
                     if (matchesTitle && matchesArtist) isMatch = true;
                 }
                 // C. 路径匹配 (要求查询词有一定长度)
@@ -320,7 +336,7 @@ tag_boost:「始」0.95「末」
                     seenPaths.add(track.path);
                 }
             }
-            
+
             // 2. 处理歌单文件内容 (逐行扫描)
             const lines = res.originalSection.split(LINE_SPLIT_RE);
             for (let li = 0; li < lines.length; li += 1) {
@@ -344,7 +360,7 @@ tag_boost:「始」0.95「末」
                     }
                 }
             }
-        });
+        }
 
         console.log('[Music] Matched tracks count:', matchedTracks.length);
 

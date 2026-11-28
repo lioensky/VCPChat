@@ -219,6 +219,12 @@
             if (!syncedTopQueued) { syncedTopQueued = true; Promise.resolve().then(() => { syncedTopQueued = syncedTopFresh = false; }); }
         };
         const readScrollTop = () => (syncedTopFresh ? syncedTop : r.viewport.scrollTop);
+        const captureViewport = () => {
+            if (!el.isConnected || el.hidden) return;
+            viewportHeight();
+            recordScrollTop(readScrollTop());
+            viewportOffsetTop();
+        };
         const paintSlim = (entries) => {
             let elW = -1;
             cachedVpOff = -1;
@@ -442,18 +448,19 @@
             state.trackRows = new Map();
             let y = 0;
             let nth = 0;
-            out.rows.forEach((row, k) => {
+            for (let k = 0; k < out.rows.length; k += 1) {
+                const row = out.rows[k];
                 state.offsets[k] = y;
                 if (row.type === 'track') {
                     state.ord[k] = ++nth;
-                    let bucket = state.trackRows.get(row.i);
+                    const bucket = state.trackRows.get(row.i);
                     if (bucket === undefined) state.trackRows.set(row.i, k);
                     else if (typeof bucket === 'number') state.trackRows.set(row.i, [bucket, k]);
                     else bucket.push(k);
                 }
                 if (row.type === 'head') state.heads.push(k);
                 y += row.type === 'head' ? (isLetter(row) ? LETTER_H : LABEL_H) : ROW_H;
-            });
+            }
             state.offsets[out.rows.length] = y;
             const yh = y + 'px'; if (r.spacer.style.height !== yh) r.spacer.style.height = yh;
             const ed = out.count ? 'none' : 'block'; if (r.empty.style.display !== ed) r.empty.style.display = ed;
@@ -2099,6 +2106,7 @@
 
         return {
             el,
+            captureViewport,
             rebuild,
             reveal,
             setPlaying,

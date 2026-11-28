@@ -19,6 +19,18 @@ const TTML_TEXT_REGEX = /<text\b([^>]*)>([\s\S]*?)<\/text>/gi;
 const TTML_HEAD_REGEX = /<head\b[\s\S]*?<\/head>/i;
 const TTML_P_REGEX = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
 const TTML_TOKEN_REGEX = /<(\/?)([\w:-]+)\b([^>]*?)(\/?)>|([^<]+)/g;
+const BOM_REGEX = /^\uFEFF/;
+const NEWLINE_SPLIT_REGEX = /\r?\n/;
+const WS_SPLIT_REGEX = /\s+/;
+const WS_GLOBAL_REGEX = /\s+/g;
+const XML_TAG_STRIP_REGEX = /<[^>]+>/g;
+const ZH_LANG_REGEX = /^zh/i;
+const ALL_WS_REGEX = /^\s+$/;
+const CR_LF_REGEX = /[\r\n]/;
+const TAG_NS_REGEX = /^.*:/;
+const TRAIL_WS_ONE_REGEX = /\s$/;
+const LEAD_WS_REGEX = /^\s+/;
+const TRAIL_WS_REGEX = /\s+$/;
 
 function isSourceMigrationArtifact(text) {
     return typeof text === 'string' && text.trim() === '//';
@@ -43,19 +55,20 @@ function parseTimestamp(minute, second, fraction) {
  */
 function buildTimedWords(text, startTime, endTime) {
     const duration = Math.max(endTime - startTime, 0.1);
-    const rawTokens = text.split(/\s+/).filter(Boolean);
+    const rawTokens = text.split(WS_SPLIT_REGEX).filter(Boolean);
     const words = [];
     const tokens = [];
     let totalWeight = 0;
 
-    rawTokens.forEach((token, tokenIndex) => {
+    for (let tokenIndex = 0; tokenIndex < rawTokens.length; tokenIndex += 1) {
+        const token = rawTokens[tokenIndex];
         if (CJK_CHAR_REGEX.test(token)) {
-            token.split('').forEach(char => {
-                const isPunctuation = CJK_PUNCT_REGEX.test(char);
-                const weight = isPunctuation ? 0 : 1;
+            for (let ci = 0; ci < token.length; ci += 1) {
+                const char = token[ci];
+                const weight = CJK_PUNCT_REGEX.test(char) ? 0 : 1;
                 tokens.push({ text: char, weight });
                 totalWeight += weight;
-            });
+            }
         } else {
             const weight = 1 + (token.length * 0.15);
             tokens.push({ text: token, weight });
@@ -63,7 +76,7 @@ function buildTimedWords(text, startTime, endTime) {
         }
         // 原文里词和词之间的空格留在前一个词的末尾（和网易云逐字歌词一样），英文逐字显示时才不会粘成一串
         if (tokenIndex < rawTokens.length - 1) tokens[tokens.length - 1].text += ' ';
-    });
+    }
 
     if (totalWeight === 0) totalWeight = 1;
 
@@ -71,7 +84,8 @@ function buildTimedWords(text, startTime, endTime) {
     const timePerWeight = activeDuration / totalWeight;
     let currentWordStart = startTime;
 
-    tokens.forEach(token => {
+    for (let ti = 0; ti < tokens.length; ti += 1) {
+        const token = tokens[ti];
         const wordDuration = token.weight * timePerWeight;
         const finalDuration = Math.max(wordDuration, 0.04);
 
@@ -81,12 +95,8 @@ function buildTimedWords(text, startTime, endTime) {
             endTime: Number((currentWordStart + finalDuration).toFixed(3))
         });
 
-        if (token.weight > 0) {
-            currentWordStart += wordDuration;
-        } else {
-            currentWordStart += 0.04;
-        }
-    });
+        currentWordStart += token.weight > 0 ? wordDuration : 0.04;
+    }
 
     return words;
 }
@@ -119,7 +129,7 @@ function parseSimpleTimedTextEntries(line) {
 function parseTimedEntries(content) {
     if (!content) return [];
     const entries = [];
-    const rawLines = content.replace(/^\uFEFF/, '').split(/\r?\n/);
+    const rawLines = content.replace(BOM_REGEX, '').split(NEWLINE_SPLIT_REGEX);
 
     for (const rawLine of rawLines) {
         const line = rawLine.trim();
@@ -183,7 +193,7 @@ function matchTranslations(startTimes, entries) {
 function parseYRC(yrcString, translationString = '', romanizationString = '') {
     if (typeof yrcString !== 'string' || !yrcString) return createLyricData([], true);
     const lines = [];
-    const rawLines = yrcString.replace(/^\uFEFF/, '').split(/\r?\n/);
+    const rawLines = yrcString.replace(BOM_REGEX, '').split(NEWLINE_SPLIT_REGEX);
     const translationEntries = parseTimedEntries(translationString);
     const romanizationEntries = parseTimedEntries(romanizationString);
 
@@ -247,7 +257,7 @@ function parseYRC(yrcString, translationString = '', romanizationString = '') {
 function parseQRC(qrcString, translationString = '', romanizationString = '') {
     if (typeof qrcString !== 'string' || !qrcString) return createLyricData([], true);
     const lines = [];
-    const rawLines = qrcString.replace(/^\uFEFF/, '').split(/\r?\n/);
+    const rawLines = qrcString.replace(BOM_REGEX, '').split(NEWLINE_SPLIT_REGEX);
     const translationEntries = parseTimedEntries(translationString);
     const romanizationEntries = parseTimedEntries(romanizationString);
 
@@ -337,7 +347,7 @@ function parseKRC(krcString, translationString = '', romanizationString = '') {
     const { translations: embeddedTranslations, romanizations: embeddedRomanizations } = decodeKrcLanguageTag(krcString);
     const translationEntries = parseTimedEntries(translationString);
     const romanizationEntries = parseTimedEntries(romanizationString);
-    const rawLines = krcString.replace(/^\uFEFF/, '').split(/\r?\n/);
+    const rawLines = krcString.replace(BOM_REGEX, '').split(NEWLINE_SPLIT_REGEX);
 
     for (const rawLine of rawLines) {
         const lineMatch = rawLine.match(MS_TIMED_LINE_REGEX);
@@ -461,12 +471,12 @@ function ttmlHeadTexts(ttmlString, tag) {
     let m;
     while ((m = blockRe.exec(ttmlString)) !== null) blocks.push({ lang: ttmlAttr(m[1], 'lang'), body: m[2] });
     if (!blocks.length) return new Map();
-    const pick = blocks.find(b => /^zh/i.test(b.lang)) || blocks[0];
+    const pick = blocks.find(b => ZH_LANG_REGEX.test(b.lang)) || blocks[0];
     const out = new Map();
     TTML_TEXT_REGEX.lastIndex = 0;
     while ((m = TTML_TEXT_REGEX.exec(pick.body)) !== null) {
         const key = ttmlAttr(m[1], 'for');
-        const value = decodeXmlText(m[2].replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+        const value = decodeXmlText(m[2].replace(XML_TAG_STRIP_REGEX, '')).replace(WS_GLOBAL_REGEX, ' ').trim();
         if (key && value) out.set(key, value);
     }
     return out;
@@ -510,15 +520,15 @@ function parseTTML(ttmlString) {
                 if (isRoman) { romanization += text; continue; }
                 const target = isBg ? background : main;
                 if (wordFrame && wordFrame.word) wordFrame.word.text += text;
-                else if (/^\s+$/.test(text)) {
+                else if (ALL_WS_REGEX.test(text)) {
                     // 词之间的空格保留；带换行的是排版缩进（美化过的文件），不算
-                    if (!/[\r\n]/.test(text) && target.length) target[target.length - 1].text += ' ';
+                    if (!CR_LF_REGEX.test(text) && target.length) target[target.length - 1].text += ' ';
                 }
                 else plain += text; // 没有逐字时间的字：整行退回按字均分
                 continue;
             }
             const closing = tm[1] === '/';
-            const tag = tm[2].toLowerCase().replace(/^.*:/, '');
+            const tag = tm[2].toLowerCase().replace(TAG_NS_REGEX, '');
             if (tag === 'br' && !closing) { if (main.length) main[main.length - 1].text += ' '; continue; }
             if (tag !== 'span') continue;
             if (closing) { stack.pop(); continue; }
@@ -538,19 +548,19 @@ function parseTTML(ttmlString) {
         let words = main.filter(w => w.text !== '');
         const bg = background.filter(w => w.text.trim() !== '');
         if (!words.length) {
-            const cleanText = plain.replace(/\s+/g, ' ').trim();
+            const cleanText = plain.replace(WS_GLOBAL_REGEX, ' ').trim();
             const end = Number.isFinite(lineEndRaw) ? lineEndRaw : lineStart + 4;
             if (cleanText) words = buildTimedWords(cleanText, lineStart, end);
         }
         if (bg.length) {
-            if (words.length && !/\s$/.test(words[words.length - 1].text)) words[words.length - 1].text += ' ';
-            bg[0].text = '(' + bg[0].text.replace(/^\s+/, '');
-            bg[bg.length - 1].text = bg[bg.length - 1].text.replace(/\s+$/, '') + ')';
+            if (words.length && !TRAIL_WS_ONE_REGEX.test(words[words.length - 1].text)) words[words.length - 1].text += ' ';
+            bg[0].text = '(' + bg[0].text.replace(LEAD_WS_REGEX, '');
+            bg[bg.length - 1].text = bg[bg.length - 1].text.replace(TRAIL_WS_REGEX, '') + ')';
             words = words.concat(bg);
         }
         if (!words.length) continue;
         const last = words[words.length - 1];
-        last.text = last.text.replace(/\s+$/, '');
+        last.text = last.text.replace(TRAIL_WS_REGEX, '');
         words = words.map(w => ({ text: w.text, startTime: Number(w.startTime.toFixed(3)), endTime: Number(w.endTime.toFixed(3)) }));
         const lineEnd = Number.isFinite(lineEndRaw) ? lineEndRaw : Math.max(lineStart, ...words.map(w => w.endTime));
         const line = {
@@ -559,8 +569,8 @@ function parseTTML(ttmlString) {
             endTime: Number(Math.max(lineStart, lineEnd).toFixed(3)),
             fullText: words.map(w => w.text).join('')
         };
-        const tr = (translation.replace(/\s+/g, ' ').trim()) || (key && headTranslations.get(key)) || '';
-        const ro = (romanization.replace(/\s+/g, ' ').trim()) || (key && headRomanizations.get(key)) || '';
+        const tr = (translation.replace(WS_GLOBAL_REGEX, ' ').trim()) || (key && headTranslations.get(key)) || '';
+        const ro = (romanization.replace(WS_GLOBAL_REGEX, ' ').trim()) || (key && headRomanizations.get(key)) || '';
         if (tr) line.translation = tr;
         if (ro) line.romanization = ro;
         lines.push(line);
@@ -575,7 +585,7 @@ function parseTTML(ttmlString) {
  */
 function parseLRC(lrcString, translationString = '', romanizationString = '') {
     if (typeof lrcString !== 'string' || !lrcString) return createLyricData([], false);
-    const rawLines = lrcString.replace(/^\uFEFF/, '').split(/\r?\n/);
+    const rawLines = lrcString.replace(BOM_REGEX, '').split(NEWLINE_SPLIT_REGEX);
     const rawEntries = [];
     const translationEntries = parseTimedEntries(translationString);
     const romanizationEntries = parseTimedEntries(romanizationString);

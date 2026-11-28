@@ -521,7 +521,7 @@
         };
 
         const isContainerHidden = () => {
-            if (app.isArchiveActive || container.hidden) return true;
+            if (app.isArchiveActive || container.hidden || global.document?.body?.classList?.contains('music-archive-on')) return true;
             const inline = container.style;
             if (inline && (inline.display === 'none' || inline.visibility === 'hidden')) return true;
             if (typeof global.getComputedStyle === 'function') {

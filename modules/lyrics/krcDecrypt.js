@@ -7,6 +7,7 @@ const KRC_KEY = [
   0x40, 0x47, 0x61, 0x77, 0x5e, 0x32, 0x6e, 0x2d,
   0x41, 0x70, 0x66, 0x21, 0x5a, 0x53, 0x64, 0x32
 ];
+const KRC_LANG_TAG_RE = /\[language:([^\]]*)\]/;
 
 /**
  * Decrypts Kugou KRC buffer.
@@ -60,7 +61,7 @@ function krcDecrypt(content) {
  */
 function decodeKrcLanguageTag(krcString) {
   if (typeof krcString !== 'string' || !krcString) return { translations: [], romanizations: [] };
-  const match = krcString.match(/\[language:([^\]]*)\]/);
+  const match = KRC_LANG_TAG_RE.exec(krcString);
   if (!match) return { translations: [], romanizations: [] };
 
   try {

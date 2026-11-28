@@ -18,14 +18,23 @@
     const OPEN_OVERLAY = '.music-modal-overlay.visible, .music-modal-overlay.active, .dialog-overlay.visible, .dialog-overlay.active';
     const FOCUSABLE = 'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
     const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
+    const VALID_CLS_RE = /^[\w-]+$/;
     const openers = new WeakMap();
     const focusRafs = new WeakMap();
     const openOverlays = new Set();
 
     // 多数弹窗用 visible 开关，WebDAV 两个弹窗用的是 active：两种都算开着，不然开着的弹窗会被设成 inert，点什么都没反应
     const isOpen = (o) => o.classList.contains('visible') || o.classList.contains('active');
-    const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-    const focusables = (o) => [...o.querySelectorAll(FOCUSABLE)].filter((el) => !el.closest('[inert]') && shown(el));
+    const shown = (el) => !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    const focusables = (o) => {
+        const nodes = o.querySelectorAll(FOCUSABLE);
+        const out = [];
+        for (let i = 0; i < nodes.length; i += 1) {
+            const el = nodes[i];
+            if (!el.hidden && !el.closest('[inert]') && shown(el)) out.push(el);
+        }
+        return out;
+    };
     const topOverlay = () => {
         const open = document.querySelectorAll(OPEN_OVERLAY);
         return open.length ? open[open.length - 1] : null;
@@ -34,7 +43,15 @@
     const focusInside = (o) => {
         if (o.contains(document.activeElement)) return;
         const list = focusables(o);
-        const target = list.find((el) => el.matches('[autofocus]')) || list.find((el) => el.matches('input, textarea')) || list[0];
+        let auto = null;
+        let field = null;
+        for (let i = 0; i < list.length; i += 1) {
+            const el = list[i];
+            if (!auto && el.matches('[autofocus]')) auto = el;
+            if (!field && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) field = el;
+            if (auto) break;
+        }
+        const target = auto || field || list[0];
         target?.focus({ preventScroll: true });
     };
 
@@ -42,9 +59,20 @@
     // 记下它在最近一个带 id 的容器里、同类按钮中的第几个，重画后按位置找回新的那个。
     const remember = (el) => {
         const root = el.parentElement?.closest('[id]');
-        const cls = [...el.classList].filter((c) => /^[\w-]+$/.test(c)).map((c) => '.' + c).join('');
+        let cls = '';
+        for (let i = 0; i < el.classList.length; i += 1) {
+            const c = el.classList[i];
+            if (VALID_CLS_RE.test(c)) cls += '.' + c;
+        }
         const sel = el.tagName.toLowerCase() + cls;
-        return { el, root, sel, index: root ? [...root.querySelectorAll(sel)].indexOf(el) : -1 };
+        let index = -1;
+        if (root) {
+            const all = root.querySelectorAll(sel);
+            for (let i = 0; i < all.length; i += 1) {
+                if (all[i] === el) { index = i; break; }
+            }
+        }
+        return { el, root, sel, index };
     };
     const recall = (mark) => {
         if (!mark) return null;

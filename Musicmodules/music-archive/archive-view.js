@@ -167,10 +167,13 @@
             state.row = row;
             const col0 = columns[lane];
             if (col0 && col0.items.length) focusByColumn.set(col0.id, Model.wrap(row, col0.items.length));
+            // 写 HUD 与播放态 DOM 之前先采集目录视口滚动位置，避免随后 list.rebuild() 写后即读触发强制同步布局
+            if (!laterList) list?.captureViewport?.();
             state.scene?.jump(lane, row);
             state.scene?.refreshLabels?.();
             applyEmpty();
-            refs.files.textContent = String(tracks().length);
+            const fileCountStr = String(tracks().length);
+            if (refs.files.textContent !== fileCountStr) refs.files.textContent = fileCountStr;
             if (firstData && !pendingPlace && !placed) { placeSettled = true; followUntil.t = performance.now() + 4000; }
             renderHud();
             updatePlaying(true);
@@ -404,7 +407,8 @@
             refs.laneName.textContent = col.name || '';
         };
         const RULER_TICKS = 32;
-        let rulerKey = '';
+        let rulerTickCount = 0;
+        let rulerMax = -1;
         const rulerTicks = (count) => Math.min(count, RULER_TICKS);
         const renderRuler = (col, count, r) => {
             const el = refs.ruler;
@@ -412,16 +416,18 @@
             el.hidden = count < 2;
             if (count < 2) return;
             const n = rulerTicks(count);
-            const key = col.id + ':' + count;
-            if (key !== rulerKey) {
-                rulerKey = key;
+            if (n !== rulerTickCount) {
+                rulerTickCount = n;
                 refs.rulerTrack.style.setProperty('--ticks', n);
-                // 刻线用真元素画：HUD 整体缩放后，1px 的重复渐变会有几根被吃掉
+                // 刻线用真元素画：HUD 整体缩放后，1px 的重复渐变会有几根被吃掉；仅刻线数量变化时重建
                 refs.rulerTrack.querySelectorAll('.archive-ruler-tick').forEach((x) => x.remove());
                 const frag = document.createDocumentFragment();
                 for (let i = 0; i < n; i++) { const t = document.createElement('s'); t.className = 'archive-ruler-tick'; t.style.left = ((i + 0.5) / n * 100).toFixed(3) + '%'; frag.appendChild(t); }
                 refs.rulerTrack.insertBefore(frag, refs.rulerAt);
                 refs.rulerTrack.setAttribute('aria-valuemin', '1');
+            }
+            if (count !== rulerMax) {
+                rulerMax = count;
                 refs.rulerTrack.setAttribute('aria-valuemax', String(count));
             }
             // 刻线 i 管 [i*count/n, (i+1)*count/n) 这几首；位置线按所在那一段的中点放

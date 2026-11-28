@@ -32,9 +32,16 @@
     };
     const arc = (r, start, sweep, x = CX, y = CY) => {
         if (r <= 0 || sweep <= 0) return '';
-        const pt = (a) => `${(x + Math.cos(a) * r).toFixed(2)},${(y + Math.sin(a) * r).toFixed(2)}`;
-        if (sweep >= Math.PI * 1.999) return `M${pt(start)}A${r},${r} 0 1 1 ${pt(start + Math.PI)}A${r},${r} 0 1 1 ${pt(start + Math.PI * 2)}`;
-        return `M${pt(start)}A${r},${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${pt(start + sweep)}`;
+        const sx = (x + Math.cos(start) * r).toFixed(2);
+        const sy = (y + Math.sin(start) * r).toFixed(2);
+        if (sweep >= Math.PI * 1.999) {
+            const mx = (x + Math.cos(start + Math.PI) * r).toFixed(2);
+            const my = (y + Math.sin(start + Math.PI) * r).toFixed(2);
+            return `M${sx},${sy}A${r},${r} 0 1 1 ${mx},${my}A${r},${r} 0 1 1 ${sx},${sy}`;
+        }
+        const ex = (x + Math.cos(start + sweep) * r).toFixed(2);
+        const ey = (y + Math.sin(start + sweep) * r).toFixed(2);
+        return `M${sx},${sy}A${r},${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${ex},${ey}`;
     };
     const DEG = Math.PI / 180;
 
@@ -164,8 +171,8 @@
     const drawMark = (mp, t, t0, k = 1) => {
         const at = (a, b) => easeOut(progress(t, t0 + a * k, t0 + b * k));
         drawStroke(mp.ring, at(0, 0.55));
-        mp.outer.forEach((path, i) => drawStroke(path, at(0.4 + i * 0.07, 0.75 + i * 0.07)));
-        mp.inner.forEach((path, i) => drawStroke(path, at(0.8 + i * 0.04, 1.1 + i * 0.04)));
+        for (let i = 0; i < mp.outer.length; i += 1) drawStroke(mp.outer[i], at(0.4 + i * 0.07, 0.75 + i * 0.07));
+        for (let i = 0; i < mp.inner.length; i += 1) drawStroke(mp.inner[i], at(0.8 + i * 0.04, 1.1 + i * 0.04));
         const coreOp = t >= t0 + 1.1 * k ? '1' : '0';
         if (mp.core._op !== coreOp) { mp.core._op = coreOp; mp.core.setAttribute('opacity', coreOp); }
     };
@@ -282,14 +289,15 @@
             drawMark(n.markParts, t, 2.2);
             const word = typed('VCP · MUSIC', t, 3.0, 3.45);
             if (n._lastMarkWord !== word) { n._lastMarkWord = word; n.markWord.textContent = word; }
-            n.brand.forEach((line, i) => {
+            for (let i = 0; i < n.brand.length; i += 1) {
+                const line = n.brand[i];
                 const p = easeOut(progress(t, 3.3 + i * 0.08, 3.85 + i * 0.08));
                 if (line._bp !== p) {
                     line._bp = p;
                     line.setAttribute('opacity', String(clamp01(p * 3)));
                     line.setAttribute('transform', `translate(${(1 - p) * 60} 0)`);
                 }
-            });
+            }
             const markX = keys(K_MARK_X, t);
             if (n._markX !== markX) {
                 n._markX = markX;
@@ -550,9 +558,10 @@
             });
         };
         const releaseStage = () => {
-            if (!HOLD.some((c) => document.body.classList.contains(c))) return;
+            const cl = document.body.classList;
+            if (!cl.contains('mi-stage-hold-enter') && !cl.contains('mi-stage-hold-exit')) return;
             // 放开的那一下不要再走舞台自己的 0.38 秒淡入淡出，白场后面直接换好。
-            document.body.classList.remove(...HOLD);
+            cl.remove('mi-stage-hold-enter', 'mi-stage-hold-exit');
             scheduleSnapRelease();
         };
 
