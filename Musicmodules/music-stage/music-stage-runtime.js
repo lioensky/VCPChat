@@ -90,7 +90,8 @@
         let words = EMPTY_WORDS;
         if (Array.isArray(line?.words) && line.words.length) {
             const rawWords = line.words;
-            words = new Array(rawWords.length);
+            words = rawWords.slice(0, 0);
+            words.length = rawWords.length;
             for (let wordIndex = 0; wordIndex < rawWords.length; wordIndex += 1) {
                 const word = rawWords[wordIndex];
                 const wordStart = finiteNumber(word?.startTime, startTime);
@@ -98,7 +99,8 @@
                 let syllables = EMPTY_WORDS;
                 if (Array.isArray(word?.syllables)) {
                     const rawSyls = word.syllables;
-                    syllables = new Array(rawSyls.length);
+                    syllables = rawSyls.slice(0, 0);
+                    syllables.length = rawSyls.length;
                     for (let syllableIndex = 0; syllableIndex < rawSyls.length; syllableIndex += 1) {
                         const syllable = rawSyls[syllableIndex];
                         const syllableStart = finiteNumber(syllable?.startTime, wordStart);
@@ -159,7 +161,8 @@
         const cached = normalizedLinesCache.get(lines);
         if (cached) return cached;
         const len = lines.length;
-        const normalized = new Array(len);
+        const normalized = lines.slice(0, 0);
+        normalized.length = len;
         for (let index = 0; index < len; index += 1) normalized[index] = normalizeLine(lines[index], index, lines);
         normalizedLinesCache.set(lines, normalized);
         return normalized;
