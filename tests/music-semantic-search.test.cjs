@@ -8,6 +8,7 @@ const vm = require('node:vm');
 
 const utils = fs.readFileSync(path.join(__dirname, '../Musicmodules/music-utils.js'), 'utf8');
 const musicJs = fs.readFileSync(path.join(__dirname, '../Musicmodules/music.js'), 'utf8');
+const routes = fs.readFileSync(path.join(__dirname, '../modules/utils/vcpServerRoutes.js'), 'utf8');
 
 const OUTPUT = '--- (来源: MusicDiary, 相关性: 70%)\n[路径: file:///MusicDiary/Song A-Singer.txt]\nSong A';
 
@@ -16,12 +17,13 @@ function setup({ settings = { vcpServerUrl: 'http://127.0.0.1:6005/v1/chat/compl
     const classList = () => ({ add() {}, remove() {}, toggle() {} });
     const context = vm.createContext({
         console: { log() {}, warn() {}, error() {} },
-        setTimeout, clearTimeout,
+        setTimeout, clearTimeout, URL,
         document: { getElementById: () => null, querySelector: () => null },
         MusicToast: { show: (o) => toasts.push(o) },
         fetch: fetchImpl || (async () => ({ ok: true, json: async () => ({ result: OUTPUT }) }))
     });
     context.window = context;
+    vm.runInContext(routes, context);
     vm.runInContext(utils, context);
     const rendered = [];
     const app = {

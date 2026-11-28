@@ -83,7 +83,8 @@ function changedSince(known, scanned, root) {
         const tp = t && t.path;
         if (typeof tp !== 'string' || t.isRemote || (tp.indexOf('://') !== -1 && URL_SCHEME_RE.test(tp))) continue;
         let under;
-        if (!tp.includes('..')) {
+        // 按目录缓存只在 path.dirname 认得这种分隔符时用（非 Windows 上遇到反斜杠路径就逐条判断）
+        if (!tp.includes('..') && (path.sep === '\\' || !tp.includes('\\'))) {
             const d = path.dirname(tp);
             under = dirUnderCache.get(d);
             if (under === undefined) {

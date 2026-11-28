@@ -1047,7 +1047,7 @@ test('Batch 100: watchToasts defers solo toast measurement to rAF to avoid synch
 });
 
 test('Batch 102: watchTrails mirrors .mf-trail-on on host row, CSS eliminates hot :has() rules & contains .md-pnl, and M3U single-pass helpers work', async () => {
-    const kitCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.css'), 'utf8');
+    const kitCss = ['music-fluid-kit.css', 'music-fluid-surfaces.css'].map((f) => fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock', f), 'utf8')).join('\n');
     const drawerCss = fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-dock-drawer.css'), 'utf8');
     assert.doesNotMatch(kitCss, /:has\(>\s*\.mf-trail\.mf-on\)/, 'hot :has(> .mf-trail.mf-on) selectors replaced with .mf-trail-on');
     assert.doesNotMatch(kitCss, /\.md-ql:has\(\.md-qdrag\)/, ':has(.md-qdrag) replaced with .md-qdragging');

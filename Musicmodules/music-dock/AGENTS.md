@@ -13,6 +13,7 @@
 | `music-dock-palette.js` | `createMusicDockPalette`、`MusicDockPaletteQuery` | Ctrl+K 命令面板：搜歌 + 命令 |
 | `music-dock-icons.js` | `MusicDockIcons` | 线性图标路径（Lucide，ISC）和自绘图标 |
 | `music-fluid-kit.js/.css` | `MusicFluid` | 弹出层「长出来」等通用流体动作 |
+| `music-fluid-surfaces.css` | — | music-fluid-kit.css 的后半（弹窗列表、输入框、引擎提示、悬停的那一汪、底栏圆钮），紧跟它加载 |
 | `music-fluid-marker.js` | `createMusicFluidMarker` | 一排选项下面跟着走的流体选中标记 |
 | `music-fluid-select.js` | `MusicFluidSelect` | 把原生 `<select>` 换成主程序同款选项卡片（所有下拉都用它） |
 | `music-toast.js` | `MusicToast` | 全窗口提示 |
