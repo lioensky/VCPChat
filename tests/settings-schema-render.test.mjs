@@ -298,7 +298,8 @@ test('advanced-features：依赖行、分隔线与模型复合控件', () => {
     for (const id of ['enableDistributedServer', 'enableVcpToolInjection', 'enableThoughtChainInjection',
         'enableAiMessageButtons', 'enableContextSanitizer', 'contextSanitizerDepthContainer',
         'contextSanitizerDepth', 'agentMusicControl', 'topicSummaryModelContainer', 'topicSummaryModel',
-        'openTopicSummaryModelSelectBtn']) {
+        'openTopicSummaryModelSelectBtn', 'refreshTopicSummaryModelsBtn', 'mermaidRepairModelContainer',
+        'mermaidRepairModel', 'openMermaidRepairModelSelectBtn', 'refreshMermaidRepairModelsBtn']) {
         assert.ok(form.querySelector(`#${id}`), `missing #${id}`);
     }
     // 净化深度行：依赖子句 + 历史样式
@@ -320,13 +321,28 @@ test('advanced-features：依赖行、分隔线与模型复合控件', () => {
     const topicSummaryInput = form.querySelector('#topicSummaryModel');
     assert.equal(topicSummaryInput.value, 'gemini-2.5-flash-preview-05-20');
     assert.equal(topicSummaryInput.placeholder, '默认: gemini-2.5-flash-preview-05-20');
+    const mermaidRepairIcon = form.querySelector('#openMermaidRepairModelSelectBtn .vcp-ui-icon');
+    assert.ok(mermaidRepairIcon, '图表修复模型选择按钮应直出 vcp-ui-icon');
+    assert.equal(mermaidRepairIcon.textContent, 'chevron-down');
+    const refreshMermaidIcon = form.querySelector('#refreshMermaidRepairModelsBtn .vcp-ui-icon');
+    assert.ok(refreshMermaidIcon, '图表修复模型刷新按钮应直出 vcp-ui-icon');
+    assert.equal(refreshMermaidIcon.textContent, 'list-restart');
+    const refreshTopicIcon = form.querySelector('#refreshTopicSummaryModelsBtn .vcp-ui-icon');
+    assert.ok(refreshTopicIcon, '话题总结模型刷新按钮应直出 vcp-ui-icon');
+    assert.equal(refreshTopicIcon.textContent, 'list-restart');
+    const mermaidRepairInput = form.querySelector('#mermaidRepairModel');
+    assert.equal(mermaidRepairInput.value, '');
+    assert.equal(mermaidRepairInput.placeholder, '未选择（默认关闭图表 AI 修复）');
     // 复合控件内部输入可快照迁移
     topicSummaryInput.value = 'gpt-x';
+    mermaidRepairInput.value = 'gpt-4o-mini';
     const snapshot = captureSectionValues(form, advancedFeaturesSection);
     assert.equal(snapshot.get('topicSummaryModel'), 'gpt-x');
+    assert.equal(snapshot.get('mermaidRepairModel'), 'gpt-4o-mini');
     host.replaceChildren(...renderSchemaSection(advancedFeaturesSection, doc));
     restoreSectionValues(form, snapshot);
     assert.equal(form.querySelector('#topicSummaryModel').value, 'gpt-x');
+    assert.equal(form.querySelector('#mermaidRepairModel').value, 'gpt-4o-mini');
 });
 
 test('appearance-settings：裸 select 行、几何滑杆与主页视觉开关', () => {

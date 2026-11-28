@@ -14,6 +14,7 @@ const agentModelPickerReleases = new Map();
 export function mountTypedModelPicker(form, {
     inputId = 'agentModel',
     triggerId = 'openModelSelectBtn',
+    refreshButtonId = null,
     marker = 'vcpTypedAgentModelPicker',
     scopeLabel = 'agent-model-picker-production',
     eventKind = 'agent',
@@ -51,7 +52,9 @@ export function mountTypedModelPicker(form, {
                 ? '选择模型'
                 : inputId === 'groupUnifiedModelInput'
                     ? '选择群组统一模型'
-                    : '选择话题总结模型',
+                    : inputId === 'mermaidRepairModel'
+                        ? '选择图表修复模型'
+                        : '选择话题总结模型',
             selectedId: input.value || undefined,
             options: modelDirectory.options,
             directory: modelDirectory,
@@ -114,9 +117,44 @@ export function mountTypedModelPicker(form, {
 
         pickerScope.listen(input, 'input', () => picker?.setSelected(input.value || undefined));
         pickerScope.listen(input, 'change', () => picker?.setSelected(input.value || undefined));
+        pickerScope.listen(input, 'vcp-uiux-sync', () => picker?.setSelected(input.value || undefined));
         pickerScope.listen(document, 'vcp-settings-surface-updated', event => {
             if (event.detail?.root === form || event.detail?.kind === eventKind) picker?.setSelected(input.value || undefined);
         });
+        const refreshBtn = refreshButtonId ? form?.querySelector?.(`#${refreshButtonId}`) : null;
+        if (refreshBtn && refreshBtn.dataset.vcpModelRefreshBound !== 'true') {
+            refreshBtn.dataset.vcpModelRefreshBound = 'true';
+            pickerScope.listen(refreshBtn, 'click', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (refreshBtn.disabled) return;
+                if (typeof electronAPI?.refreshModels !== 'function') {
+                    window.uiHelperFunctions?.showToastNotification?.('当前环境不支持刷新模型列表', 'warning');
+                    return;
+                }
+                refreshBtn.disabled = true;
+                refreshBtn.classList.add('is-refreshing');
+                try {
+                    const result = await electronAPI.refreshModels();
+                    const count = Array.isArray(result?.models) ? result.models.length : (result?.count ?? 0);
+                    if (result?.success !== false && count > 0) {
+                        window.uiHelperFunctions?.showToastNotification?.(`已刷新模型列表（共 ${count} 个模型）`, 'success');
+                    } else {
+                        window.uiHelperFunctions?.showToastNotification?.('已尝试刷新模型列表，但未获取到可用模型', 'warning');
+                    }
+                } catch (err) {
+                    window.uiHelperFunctions?.showToastNotification?.(`刷新模型列表失败: ${err?.message || err}`, 'error');
+                } finally {
+                    refreshBtn.disabled = false;
+                    refreshBtn.classList.remove('is-refreshing');
+                }
+            });
+            pickerScope.own(() => {
+                delete refreshBtn.dataset.vcpModelRefreshBound;
+                refreshBtn.classList.remove('is-refreshing');
+                refreshBtn.disabled = false;
+            }, `${scopeLabel}-refresh-btn`, 'ui-primitive');
+        }
         const release = scope.own(async () => {
             delete trigger.dataset[marker];
             for (const [property, [value, priority]] of Object.entries(originalTriggerInline)) {
@@ -152,9 +190,22 @@ export function mountTypedTopicSummaryModelPicker(form) {
     mountTypedModelPicker(form, {
         inputId: 'topicSummaryModel',
         triggerId: 'openTopicSummaryModelSelectBtn',
+        refreshButtonId: 'refreshTopicSummaryModelsBtn',
         marker: 'vcpTypedTopicSummaryModelPicker',
         scopeLabel: 'topic-summary-model-picker-production',
         eventKind: 'topic-summary',
+        portalZIndex: 'calc(var(--vcp-ui-z-overlay, 1400) + 1)',
+    });
+}
+
+export function mountTypedMermaidRepairModelPicker(form) {
+    mountTypedModelPicker(form, {
+        inputId: 'mermaidRepairModel',
+        triggerId: 'openMermaidRepairModelSelectBtn',
+        refreshButtonId: 'refreshMermaidRepairModelsBtn',
+        marker: 'vcpTypedMermaidRepairModelPicker',
+        scopeLabel: 'mermaid-repair-model-picker-production',
+        eventKind: 'mermaid-repair',
         portalZIndex: 'calc(var(--vcp-ui-z-overlay, 1400) + 1)',
     });
 }

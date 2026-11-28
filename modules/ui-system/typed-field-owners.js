@@ -694,6 +694,7 @@ const TYPED_FIELD_DEFINITIONS = Object.freeze({
     // The model-selection button still uses the shared legacy modal, but the
     // canonical text value can already use the single typed save owner.
     topicSummaryModel: { path: 'topicSummaryModel', kind: 'string' },
+    mermaidRepairModel: { path: 'mermaidRepairModel', kind: 'string', trimValue: true },
     enableContextCompaction: { path: 'enableContextCompaction', kind: 'boolean' },
     contextCompactionModel: { path: 'contextCompactionModel', kind: 'string', trimValue: true },
     contextCompactionFallbackModel: { path: 'contextCompactionFallbackModel', kind: 'string', trimValue: true },

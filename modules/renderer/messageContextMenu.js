@@ -1440,7 +1440,7 @@ async function handleRegenerateResponseOwned(originalAssistantMessage, admission
                     if (mainRefs.currentSelectedItemRef.get()?.id === currentSelectedItemVal.id
                         && mainRefs.currentTopicIdRef.get() === currentTopicIdVal) {
                         mainRefs.currentChatHistoryRef.set([...saved.history]);
-                        contextMenuDependencies.renderMessage(assistantMessage);
+                        contextMenuDependencies.renderMessage(assistantMessage, false, true, null, { allowAutoMermaidRepair: true });
                     }
                     return;
                 }
@@ -1461,7 +1461,7 @@ async function handleRegenerateResponseOwned(originalAssistantMessage, admission
 
                 if (isForActiveChat) {
                     mainRefs.currentChatHistoryRef.set(finalHistory);
-                    contextMenuDependencies.renderMessage(assistantMessage);
+                    contextMenuDependencies.renderMessage(assistantMessage, false, true, null, { allowAutoMermaidRepair: true });
                 }
             }
             if (isForActiveChat) {

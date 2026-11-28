@@ -2285,13 +2285,18 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
                     ? renderHostedAssistantSegments(assistantSegments, renderText, contentDiv.ownerDocument)
                     : renderText(finalFullText);
 
+                if ((message?.role || 'assistant') === 'assistant') {
+                    messageItem.dataset.vcpTerminalPersisting = 'true';
+                }
+
                 if (typeof refs.renderPostProcessedHtml === 'function') {
                     await refs.renderPostProcessedHtml(contentDiv, rawHtml, {
                         messageId,
                         message,
                         settings: refs.globalSettingsRef?.get?.(),
                         runHeavy: true,
-                        includeAttachments: true
+                        includeAttachments: true,
+                        allowAutoMermaidRepair: (message?.role || 'assistant') === 'assistant'
                     });
                 } else {
                     // Perform the final, high-quality render using the original global refresh method.
@@ -2302,7 +2307,10 @@ async function projectStreamTerminalInternal(messageId, finishReason, context, f
                     refs.processRenderedContent(contentDiv);
 
                     if (typeof refs.renderMermaidDiagrams === 'function') {
-                        await refs.renderMermaidDiagrams(contentDiv);
+                        await refs.renderMermaidDiagrams(contentDiv, {
+                            messageId,
+                            allowAutoMermaidRepair: (message?.role || 'assistant') === 'assistant'
+                        });
                     }
 
                     // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable

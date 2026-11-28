@@ -275,6 +275,7 @@ class SettingsManager extends EventEmitter {
             // Keep the settings-page default aligned with both topic-summary
             // request paths and the model picker placeholder.
             topicSummaryModel: 'gemini-2.5-flash-preview-05-20',
+            mermaidRepairModel: '',
             enableContextCompaction: false,
             contextCompactionModel: '',
             contextCompactionFallbackModel: '',
@@ -445,6 +446,9 @@ class SettingsManager extends EventEmitter {
         }
         if (settings.topicSummaryModel === undefined || settings.topicSummaryModel === null) {
             settings.topicSummaryModel = this.defaultSettings.topicSummaryModel;
+        }
+        if (typeof settings.mermaidRepairModel !== 'string') {
+            settings.mermaidRepairModel = this.defaultSettings.mermaidRepairModel;
         }
         return settings;
     }

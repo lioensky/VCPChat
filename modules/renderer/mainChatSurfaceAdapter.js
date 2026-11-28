@@ -46,9 +46,16 @@ function createStreamCapabilities(root, services, recovery) {
             }
         },
         setPersistenceState(messageId, state, error = '') {
-            const messageItem = root.querySelector(`.message-item[data-message-id="${messageId}"]`);
+            const messageItem = root.querySelector(`.message-item[data-message-id="${messageId}"]`)
+                || ownerDocument.querySelector(`.message-item[data-message-id="${messageId}"]`);
             if (!messageItem) return;
             messageItem.dataset.vcpPersistenceState = state;
+            if (state === 'saved' || state === 'unsaved') {
+                delete messageItem.dataset.vcpTerminalPersisting;
+                if (typeof CustomEvent === 'function') {
+                    messageItem.dispatchEvent(new CustomEvent('vcp:persistence-settled', { detail: { state } }));
+                }
+            }
             if (state === 'unsaved') {
                 messageItem.dataset.vcpPersistenceError = String(error || '持久化失败');
                 messageItem.setAttribute('aria-label', '消息尚未保存');

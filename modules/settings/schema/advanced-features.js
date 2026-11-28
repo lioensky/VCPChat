@@ -5,35 +5,74 @@
 import { section, switchField, number, custom, text, textarea, disclosure } from './kernel.js';
 import { buildFormIcon } from '../render/shared.js';
 
-function buildTopicSummaryModelRow(doc) {
+function buildModelPickerRow(doc, { rowId, inputId, buttonId, refreshButtonId, labelText, value = '', placeholder = '', hintText }) {
     const row = doc.createElement('div');
     row.className = 'vcp-settings-row';
-    row.id = 'topicSummaryModelContainer';
+    row.id = rowId;
     const label = doc.createElement('label');
-    label.setAttribute('for', 'topicSummaryModel');
-    label.textContent = '话题总结模型';
+    label.setAttribute('for', inputId);
+    label.textContent = labelText;
+    const controls = doc.createElement('div');
+    controls.className = 'vcp-model-picker-controls';
     const container = doc.createElement('div');
     container.className = 'model-input-container';
     const input = doc.createElement('input');
     input.type = 'text';
-    input.id = 'topicSummaryModel';
-    input.name = 'topicSummaryModel';
-    input.value = 'gemini-2.5-flash-preview-05-20';
-    input.placeholder = '默认: gemini-2.5-flash-preview-05-20';
+    input.id = inputId;
+    input.name = inputId;
+    input.value = value;
+    input.placeholder = placeholder;
     const button = doc.createElement('button');
     button.type = 'button';
-    button.id = 'openTopicSummaryModelSelectBtn';
+    button.id = buttonId;
     button.className = 'small-button';
     button.title = '选择模型';
     // M5-c pass6：表单图标直出（原 form-icons pass 收编为 vcp-ui-icon 节点，
     // 由 lucide-adapter 统一渲染为下拉箭头）。
     button.append(buildFormIcon(doc, 'chevron-down'));
     container.append(input, button);
+    controls.append(container);
+    if (refreshButtonId) {
+        const refreshButton = doc.createElement('button');
+        refreshButton.type = 'button';
+        refreshButton.id = refreshButtonId;
+        refreshButton.className = 'small-button vcp-model-refresh-btn';
+        refreshButton.title = '从服务器刷新模型列表';
+        refreshButton.setAttribute('aria-label', '从服务器刷新模型列表');
+        refreshButton.append(buildFormIcon(doc, 'list-restart'));
+        controls.append(refreshButton);
+    }
     const hint = doc.createElement('small');
     hint.setAttribute('data-vcp-style', '4');
-    hint.textContent = '用于自动生成话题摘要的模型';
-    row.append(label, container, hint);
+    hint.textContent = hintText;
+    row.append(label, controls, hint);
     return row;
+}
+
+function buildTopicSummaryModelRow(doc) {
+    return buildModelPickerRow(doc, {
+        rowId: 'topicSummaryModelContainer',
+        inputId: 'topicSummaryModel',
+        buttonId: 'openTopicSummaryModelSelectBtn',
+        refreshButtonId: 'refreshTopicSummaryModelsBtn',
+        labelText: '话题总结模型',
+        value: 'gemini-2.5-flash-preview-05-20',
+        placeholder: '默认: gemini-2.5-flash-preview-05-20',
+        hintText: '用于自动生成话题摘要的模型',
+    });
+}
+
+function buildMermaidRepairModelRow(doc) {
+    return buildModelPickerRow(doc, {
+        rowId: 'mermaidRepairModelContainer',
+        inputId: 'mermaidRepairModel',
+        buttonId: 'openMermaidRepairModelSelectBtn',
+        refreshButtonId: 'refreshMermaidRepairModelsBtn',
+        labelText: '图表修复模型',
+        value: '',
+        placeholder: '未选择（默认关闭图表 AI 修复）',
+        hintText: '用于自动修复渲染失败的 Mermaid/Pele 图表；留空则仅使用本地轻量语法纠偏',
+    });
 }
 
 export const advancedFeaturesSection = section('advanced-features', '高级功能', [
@@ -116,5 +155,8 @@ export const advancedFeaturesSection = section('advanced-features', '高级功�
     // 由 canonical 行自带的 hairline 承担，投影 pass 本就挂载即删（M5-b）。
     custom('topicSummaryModelContainer', buildTopicSummaryModelRow, ['topicSummaryModel'], {
         saveMap: { topicSummaryModel: { trim: true } },
+    }),
+    custom('mermaidRepairModelContainer', buildMermaidRepairModelRow, ['mermaidRepairModel'], {
+        saveMap: { mermaidRepairModel: { trim: true } },
     }),
 ]);

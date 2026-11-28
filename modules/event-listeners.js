@@ -333,7 +333,7 @@ export function setupEventListeners(deps) {
                             activeHistory.splice(0, activeHistory.length, ...finalHistory);
                         }
                         messageRenderer?.removeMessageById(thinkingMessage.id);
-                        await messageRenderer?.renderMessage(assistantMessage);
+                        await messageRenderer?.renderMessage(assistantMessage, false, true, null, { allowAutoMermaidRepair: true });
                         await chatManager.attemptTopicSummarizationIfNeeded();
                     }
                 } catch (uiError) {

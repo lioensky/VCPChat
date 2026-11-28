@@ -2024,7 +2024,7 @@
     color: var(--vcp-ui-accent) !important;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(#topicSummaryModelContainer, #mermaidRepairModelContainer) {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2033,12 +2033,12 @@
     border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, .1));
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > .vcp-uiux-row-copy {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(#topicSummaryModelContainer, #mermaidRepairModelContainer) > .vcp-uiux-row-copy {
     flex: 1;
     min-width: 0;
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > .vcp-uiux-row-copy label {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(#topicSummaryModelContainer, #mermaidRepairModelContainer) > .vcp-uiux-row-copy label {
     display: block;
     margin: 0;
     font-size: var(--vcp-ui-font-body, 14px);
@@ -2047,7 +2047,7 @@
     color: var(--dsw-alias-label-primary, var(--vcp-ui-text-0));
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > .vcp-uiux-row-copy small {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(#topicSummaryModelContainer, #mermaidRepairModelContainer) > .vcp-uiux-row-copy small {
     display: block;
     margin-top: 2px;
     font-size: var(--vcp-ui-font-caption, 12px);
@@ -2056,11 +2056,51 @@
     color: var(--dsw-alias-label-tertiary, var(--vcp-ui-text-3));
 }
 
-:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal #topicSummaryModelContainer > small {
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal :is(#topicSummaryModelContainer, #mermaidRepairModelContainer) > small {
     grid-column: 1 / -1;
     grid-row: 2;
     margin: 0;
     line-height: 18px;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-model-picker-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    max-width: 100%;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-model-refresh-btn {
+    flex: 0 0 36px;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 18px;
+    background: var(--dsw-alias-bg-module-platform, rgb(245, 246, 247)) !important;
+    color: var(--dsw-alias-label-secondary, var(--vcp-ui-text-2)) !important;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color var(--vcp-ui-transition-fast, 120ms), color var(--vcp-ui-transition-fast, 120ms);
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-model-refresh-btn:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .08)) !important;
+    color: var(--vcp-ui-accent) !important;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-model-refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+:is(html, html.vcp-global-settings-host) .vcp-ui-scope#globalSettingsModal .vcp-model-refresh-btn.is-refreshing .vcp-ui-icon {
+    animation: vcp-spin 0.9s linear infinite;
 }
 
 /* Sidebar section headers use the same Uiux disclosure row. The upstream
