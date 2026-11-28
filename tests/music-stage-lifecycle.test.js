@@ -2493,3 +2493,104 @@ test('Batch 93: edge spectrum quantizes alpha to 8-bit precision and redraws cle
         dom.window.close();
     }
 });
+
+test('Batch 100: edge spectrum uses integer flat signatures, detects DPR change & caches visualizerColor; runtime quantizes interlude bars; config skips no-op mode patch', () => {
+    const dom = createStageDom();
+    try {
+        let strokeCalls = 0;
+        dom.window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+            if (type !== '2d') return null;
+            return new Proxy({ stroke() { strokeCalls += 1; } }, {
+                get(target, prop) { return prop in target ? target[prop] : () => {}; },
+                set(target, prop, value) { target[prop] = value; return true; }
+            });
+        };
+        for (const dep of ['music-stage-runtime.js', 'music-stage-config.js', 'modes/stage-mode-utils.js', 'music-stage-edge.js']) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const root = dom.window.document.getElementById('music-stage');
+        Object.defineProperty(root, 'clientWidth', { value: 960 });
+        Object.defineProperty(root, 'clientHeight', { value: 540 });
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        const visColor = { r: 80, g: 160, b: 240 };
+        const app = { visualizerColor: visColor };
+        let resolveAccentCalls = 0;
+        const origUtils = dom.window.MusicStageModeUtils;
+        dom.window.MusicStageModeUtils = {
+            ...origUtils,
+            resolveAccent: (...args) => { resolveAccentCalls += 1; return origUtils.resolveAccent(...args); }
+        };
+        const state = { config: { quality: 'standard', edgeSpectrum: true } };
+        const edge = dom.window.MusicStageEdge.create({
+            app,
+            root,
+            elements: { edgeSpectrum: root.querySelector('.music-stage-edge-spectrum'), edgeCanvas },
+            state,
+            scope: { add() {} },
+            clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+        });
+
+        const quiet = new Float32Array(64);
+        edge.draw({ now: 1000, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0, spectrum: quiet } });
+        assert.equal(resolveAccentCalls, 1);
+        assert.equal(edgeCanvas.width, 960);
+        assert.equal(strokeCalls, 8);
+
+        // Unchanged visualizerColor + quiet spectrum skips resolveAccent and flat redraw
+        strokeCalls = 0;
+        edge.draw({ now: 1100, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0, spectrum: quiet } });
+        assert.equal(resolveAccentCalls, 1, 'unchanged visualizerColor skips resolveAccent');
+        assert.equal(strokeCalls, 0, 'integer flat signature skips redundant quiet redraw');
+
+        // DPR change triggers resize even within throttle window
+        edge.draw({ now: 1110, isPlaying: true, viewport: { dpr: 1.5 }, audio: { power: 0, spectrum: quiet } });
+        assert.equal(edgeCanvas.width, 1440, 'viewport DPR change triggers immediate strip resize');
+        assert.equal(strokeCalls, 8, 'resize redraws flat strips at new DPR');
+
+        // In-place mutation of visualizerColor invalidates accent cache and redraws flat strips
+        visColor.r = 250;
+        strokeCalls = 0;
+        edge.draw({ now: 1200, isPlaying: true, viewport: { dpr: 1.5 }, audio: { power: 0, spectrum: quiet } });
+        assert.equal(resolveAccentCalls, 2, 'mutated visualizerColor triggers resolveAccent');
+        assert.equal(strokeCalls, 8, 'color change invalidates flat signature and redraws');
+
+        // Runtime: normalizeLines fallback words + vocalEndTime, and interlude quantized bar updates
+        const R = dom.window.MusicStageRuntime;
+        const norm = R.normalizeLines([{ time: 1, endTime: 4, fullText: 'A B' }]);
+        assert.equal(norm[0].resolvedWords.length, 3);
+        assert.ok(norm[0].vocalEndTime >= 4);
+        const interlude = R.createInterludeVisualizer({ barCount: 20 });
+        const bar0 = interlude.root.querySelector('.stage-interlude-bars i');
+        let tfWrites = 0;
+        const origTf = Object.getOwnPropertyDescriptor(dom.window.CSSStyleDeclaration.prototype, 'transform');
+        Object.defineProperty(bar0.style, 'transform', {
+            configurable: true,
+            get() { return origTf ? origTf.get.call(this) : ''; },
+            set(v) { tfWrites += 1; if (origTf) origTf.set.call(this, v); }
+        });
+        const spec = new Float32Array(64).fill(0.5);
+        interlude.update({ playbackTime: 1, isPlaying: true, audio: { power: 0.5, spectrum: spec } }, { visible: true, intensity: 1 });
+        assert.equal(tfWrites, 1);
+        interlude.update({ playbackTime: 1.001, isPlaying: true, audio: { power: 0.5, spectrum: spec } }, { visible: true, intensity: 1 });
+        assert.equal(tfWrites, 1, 'quantized interlude bar skips redundant transform write on identical spectrum');
+        interlude.destroy();
+
+        // Config: setModePatch skips no-op listener notify & toggleMode preserves order
+        const cfg = dom.window.MusicStageConfig;
+        let notifies = 0;
+        const unsub = cfg.subscribe(() => { notifies += 1; });
+        const curGlow = cfg.get().modes.luminous.glow;
+        cfg.setModePatch('luminous', { glow: curGlow });
+        assert.equal(notifies, 0, 'no-op setModePatch skips notify');
+        cfg.setModePatch('luminous', { glow: curGlow === 1 ? 1.5 : 1 });
+        assert.equal(notifies, 1, 'changed setModePatch notifies subscribers once');
+        cfg.toggleMode('fume', false);
+        assert.equal(cfg.get().enabledModes.includes('fume'), false);
+        cfg.toggleMode('fume', true);
+        assert.equal(cfg.get().enabledModes.includes('fume'), true);
+        unsub();
+        edge.release();
+    } finally {
+        dom.window.close();
+    }
+});

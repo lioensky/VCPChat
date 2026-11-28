@@ -2197,3 +2197,32 @@ test('Batch 95: archive-view rebuild pre-captures list viewport before HUD write
         f.close();
     }
 });
+
+test('Batch 100: archive-index artist-first short-circuit preserves exact ranking and caches identical-term queries safely', () => {
+    const idxMod = require('../Musicmodules/music-archive/archive-index.js');
+    // Build >64 tracks so useFieldCache is enabled and artistMap short-circuit runs
+    const tracks = [
+        { path: '/t0.flac', title: 'Alpha Dawn', artist: 'Alpha Band', album: 'Other' },       // title prefix (300) beats artist prefix (200)
+        { path: '/t1.flac', title: 'Night Alpha', artist: 'Alpha Band', album: 'Other' },      // artist prefix (200) beats title substring (180)
+        { path: '/t2.flac', title: 'Night Alpha', artist: 'Other Band', album: 'Other' },      // title substring (180)
+        { path: '/t3.flac', title: 'Quiet Song', artist: 'Other Band', album: 'Alpha Vol' }    // album prefix (100)
+    ];
+    for (let i = 4; i < 80; i += 1) {
+        tracks.push({ path: `/t${i}.flac`, title: `Filler ${i}`, artist: i % 2 === 0 ? 'Alpha Band' : 'Beta Band', album: `Album ${i % 10}` });
+    }
+    const index = idxMod.createIndex(tracks);
+    const top4 = index.query('alpha', { limit: 4 });
+    assert.equal(top4[0], 0, 'title prefix (300) still beats artist prefix (200) under artist-first short-circuit');
+    assert.equal(top4[1], 1, 'artist prefix (200) beats title substring (180)');
+    // Exact-same-terms hit (trailing space) returns isolated copy; mutating it must not corrupt cache
+    const copy1 = index.query('alpha ', { limit: 4 });
+    assert.deepEqual(copy1, top4);
+    copy1.pop();
+    const copy2 = index.query('alpha', { limit: 4 });
+    assert.deepEqual(copy2, top4, 'exact-same-terms cache returns an isolated array copy');
+    // Requesting a larger limit than previously cached expands cleanly beyond 4
+    const allHits = index.query('alpha', { limit: 100 });
+    assert.ok(allHits.length > 40, `larger limit returns full hit set (${allHits.length})`);
+    assert.ok(allHits.includes(2) && allHits.includes(3), 'title substring and album prefix hits included in order');
+    assert.ok(allHits.indexOf(1) < allHits.indexOf(2) && allHits.indexOf(2) < allHits.indexOf(3));
+});

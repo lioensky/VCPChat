@@ -988,3 +988,56 @@ test('Batch 98: dock fluid and fluid marker quantize numeric SVG attrs to skip s
         dom.window.close();
     }
 });
+
+test('Batch 100: watchToasts defers solo toast measurement to rAF to avoid synchronous reflow, then animates stacked shift', async () => {
+    const dom = new JSDOM('<!doctype html><body><div class="mtst-layer"></div></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    const { window } = dom;
+    const doc = window.document;
+    const rafs = [];
+    window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+    window.cancelAnimationFrame = () => {};
+    window.Element.prototype.animate = () => ({ cancel() {} });
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-kit.js'), 'utf8'));
+        if (doc.readyState === 'loading') await new Promise((r) => doc.addEventListener('DOMContentLoaded', r, { once: true }));
+        const layer = doc.querySelector('.mtst-layer');
+
+        let t1Reads = 0;
+        let t1Anims = 0;
+        let t1Top = 200;
+        const t1 = doc.createElement('div');
+        t1.getBoundingClientRect = () => { t1Reads += 1; return { top: t1Top, left: 0, width: 200, height: 40 }; };
+        t1.animate = () => { t1Anims += 1; return { cancel() {} }; };
+
+        // Appending a solo toast into an empty layer must NOT synchronously read getBoundingClientRect in MutationObserver
+        layer.appendChild(t1);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Reads, 0, 'solo toast mount avoids synchronous getBoundingClientRect reflow');
+        assert.equal(t1Anims, 0);
+        assert.equal(rafs.length, 1, 'solo toast schedules one rAF to record initial position');
+
+        // After rAF records t1 position, adding t2 shifts t1 and triggers FLIP animation
+        rafs.splice(0).forEach((fn) => fn(16));
+        assert.equal(t1Reads, 1, 'rAF records solo toast baseline top');
+
+        t1Top = 152;
+        const t2 = doc.createElement('div');
+        t2.getBoundingClientRect = () => ({ top: 200, left: 0, width: 200, height: 40 });
+        t2.animate = () => ({ cancel() {} });
+        layer.appendChild(t2);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Anims, 1, 'adding second toast still animates shifted existing toast');
+
+        // Reduced motion performs 0 getBoundingClientRect reads on mutations
+        doc.body.classList.add('music-reduce-motion');
+        const readsBefore = t1Reads;
+        const t3 = doc.createElement('div');
+        t3.getBoundingClientRect = () => { t1Reads += 1; return { top: 250, left: 0, width: 200, height: 40 }; };
+        layer.appendChild(t3);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(t1Reads, readsBefore, 'reduced motion skips watchToasts layout reads');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
