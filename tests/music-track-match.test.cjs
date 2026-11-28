@@ -95,3 +95,17 @@ test('Batch 93: ASCII/CJK/hiragana tracks skip String.prototype.normalize while 
         String.prototype.normalize = origNorm;
     }
 });
+
+test('Batch 104: untitled path basename extraction supports POSIX, Windows, and bare filenames; 3-part queries stay single-string', () => {
+    const list = [
+        { path: 'D:\\Music\\Sub\\Midnight_Rain.flac', title: '', artist: 'Nova' },
+        { path: '/mnt/audio/Solar Flare.mp3', title: '', artist: 'Kira' },
+        { path: 'BareTrack.wav', title: '', artist: '' }
+    ];
+    assert.equal(findTrack(list, 'Midnight Rain')?.path, list[0].path);
+    assert.equal(findTrack(list, 'Solar Flare')?.path, list[1].path);
+    assert.equal(findTrack(list, 'BareTrack')?.path, list[2].path);
+    assert.equal(findTrack(list, 'Midnight Rain - Nova')?.path, list[0].path);
+    // 3-part separated query does not false-match as 2-part pair
+    assert.equal(findTrack(list, 'a - b - c'), null);
+});

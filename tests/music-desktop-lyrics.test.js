@@ -806,3 +806,100 @@ test('Batch 86: desktop-lyrics replaces :has(b) with explicit .dl-size-btn class
     assert.match(html, /class="dl-size-btn"[^>]*data-cmd="smaller"/);
     assert.match(html, /class="dl-size-btn"[^>]*data-cmd="bigger"/);
 });
+
+test('Batch 104: desktop-lyrics quantizes --f integer progress without redundant writes and flushSaveSync reuses dirEnsured', async () => {
+    const vm = require('vm');
+    const { JSDOM } = require('jsdom');
+    const html = fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.html'), 'utf8');
+    const script = fs.readFileSync(path.join(__dirname, '../Musicmodules/desktop-lyrics/desktop-lyrics.js'), 'utf8');
+    const dom = new JSDOM(html, { pretendToBeVisual: true });
+    const { window } = dom;
+    try {
+        let stateCb = null;
+        let rafCb = null;
+        window.requestAnimationFrame = (cb) => { rafCb = cb; return 1; };
+        window.cancelAnimationFrame = () => { rafCb = null; };
+        window.utilityAPI = {
+            onDesktopLyricsState: (cb) => { stateCb = cb; return () => {}; },
+            onDesktopLyricsPrefs: () => () => {},
+            sendDesktopLyricsCommand: () => {}
+        };
+        let fakeNow = 10000;
+        const FakeDate = { now: () => fakeNow };
+        const ctx = vm.createContext({
+            window, document: window.document, Date: FakeDate, console,
+            requestAnimationFrame: window.requestAnimationFrame,
+            cancelAnimationFrame: window.cancelAnimationFrame
+        });
+        ctx.window = window;
+        vm.runInContext(script, ctx);
+
+        stateCb({
+            path: '/a.flac', index: 0, playing: true, position: 1.0, at: fakeNow, hasLyrics: true,
+            line: { text: '你好', time: 0, words: [{ text: '你', s: 0, e: 2 }, { text: '好', s: 2, e: 4 }] },
+            next: null
+        });
+        const spans = window.document.querySelectorAll('#cur .w');
+        assert.strictEqual(spans.length, 2);
+        assert.strictEqual(spans[0].style.getPropertyValue('--f'), '50.0%');
+        assert.strictEqual(spans[1].style.getPropertyValue('--f'), '0.0%');
+
+        let writes = 0;
+        const origSetProp = spans[0].style.setProperty.bind(spans[0].style);
+        spans[0].style.setProperty = (k, v) => { writes += 1; return origSetProp(k, v); };
+        // Tiny sub-0.1% delta (+0.5ms on 2000ms word = 0.025%) rounds to same 500 tenth-percent
+        fakeNow += 0.5;
+        rafCb();
+        assert.strictEqual(writes, 0, 'sub-0.1% frame delta skips redundant --f style write');
+        fakeNow += 200;
+        rafCb();
+        assert.strictEqual(writes, 1, 'meaningful progress updates --f once');
+        assert.strictEqual(spans[0].style.getPropertyValue('--f'), '60.0%');
+    } finally {
+        window.close();
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dl-b104-'));
+    const origMkdirSync = fs.mkdirSync;
+    let syncMkdirCalls = 0;
+    fs.mkdirSync = (dir, ...args) => {
+        if (String(dir).startsWith(tmpDir)) syncMkdirCalls += 1;
+        return origMkdirSync.call(fs, dir, ...args);
+    };
+    try {
+        const handles = new Map();
+        const ons = new Map();
+        const musicWin = { isDestroyed: () => false, webContents: { send() {}, isDestroyed: () => false } };
+        class MiniWin {
+            constructor() {
+                this.handlers = new Map();
+                this.webContents = { on() {}, send() {}, setWindowOpenHandler() {}, isDestroyed: () => false };
+            }
+            isDestroyed() { return false; }
+            setAlwaysOnTop() {}
+            setMenu() {}
+            loadFile() {}
+            once(e, fn) { this.handlers.set(e, fn); }
+            on(e, fn) { this.handlers.set(e, fn); }
+            setIgnoreMouseEvents() {}
+            showInactive() {}
+            getBounds() { return { x: 0, y: 0, width: 600, height: 140 }; }
+            close() { this.handlers.get('closed')?.(); }
+        }
+        const dl = createDesktopLyrics({
+            ipcMain: { handle: (c, fn) => handles.set(c, fn), on: (c, fn) => ons.set(c, fn) },
+            getMusicWindow: () => musicWin,
+            stateFile: path.join(tmpDir, 'nested', 'state.json'),
+            projectRoot: path.join(__dirname, '..'),
+            electronApi: { BrowserWindow: MiniWin, screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1280, height: 720 } }), getAllDisplays: () => [] } }
+        });
+        await handles.get('music-desktop-lyrics-toggle')({ sender: musicWin.webContents }, true);
+        await new Promise((r) => setTimeout(r, 380));
+        await handles.get('music-desktop-lyrics-toggle')({ sender: musicWin.webContents }, false);
+        dl.musicClosed();
+        assert.strictEqual(syncMkdirCalls, 0, 'flushSaveSync skips mkdirSync when async save already ensured directory');
+    } finally {
+        fs.mkdirSync = origMkdirSync;
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});

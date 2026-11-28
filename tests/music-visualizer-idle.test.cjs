@@ -434,3 +434,41 @@ test('Batch 86: drawVisualizer rolling-window Catmull-Rom Bezier matches exact r
         dom.window.close();
     }
 });
+
+test('Batch 104: drawVisualizer caches gradient by integer height/RGB and resets on destroyVisualizer', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true });
+    try {
+        const { window } = dom;
+        let gradCreations = 0;
+        const ctx = {
+            clearRect() {},
+            createLinearGradient() { gradCreations += 1; return { addColorStop() {} }; },
+            beginPath() {}, moveTo() {}, lineTo() {}, bezierCurveTo() {}, closePath() {}, fill() {}
+        };
+        window.eval(`${source}\nwindow.setupVisualizer = setupVisualizer;`);
+        const app = {
+            particles: [], PARTICLE_COUNT: 4, easingFactor: 0.2,
+            visualizerCanvas: { width: 240, height: 80 },
+            visualizerCtx: ctx,
+            visualizerColor: { r: 20, g: 140, b: 220 },
+            targetVisualizerData: [], currentVisualizerData: [],
+            isPlaying: false, isTrackLoading: false, bassScale: 1.0
+        };
+        window.setupVisualizer(app);
+        const data = [0.2, 0.5, 0.7, 0.3];
+        app.drawVisualizer(data);
+        app.drawVisualizer(data);
+        app.drawVisualizer(data);
+        assert.equal(gradCreations, 1, 'steady height and RGB reuses gradient once');
+        app.visualizerColor = { r: 30, g: 140, b: 220 };
+        app.drawVisualizer(data);
+        assert.equal(gradCreations, 2, 'RGB change rebuilds gradient');
+        app.visualizerCanvas.height = 96;
+        app.drawVisualizer(data);
+        assert.equal(gradCreations, 3, 'height change rebuilds gradient');
+        app.destroyVisualizer();
+        assert.equal(app._visualizerGradient, null, 'destroyVisualizer clears cached gradient');
+    } finally {
+        dom.window.close();
+    }
+});

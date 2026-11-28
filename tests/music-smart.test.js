@@ -98,3 +98,10 @@ test('Batch 94: smart evaluate skips NFKC on ASCII/CJK/hiragana tracks while nor
     assert.equal(app.refreshSmartPlaylists(), false);
     assert.equal(pl.tracks, firstTracksRef, 'unchanged smart playlist keeps existing tracks array reference');
 });
+
+test('Batch 104: smart evaluate handles single-term fast path and multi-term whitespace queries cleanly', () => {
+    assert.deepEqual(Smart.evaluate(lib, '  周杰伦  ', ctx).map((t) => t.path), ['/b', '/c']);
+    assert.deepEqual(Smart.evaluate(lib, '晴天   叶惠美', ctx).map((t) => t.path), ['/b']);
+    assert.deepEqual(Smart.evaluate(lib, '喜欢   aki   x', ctx).map((t) => t.path), ['/a']);
+    assert.deepEqual(Smart.evaluate(lib, '晴天   不存在的词', ctx), []);
+});
