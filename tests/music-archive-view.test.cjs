@@ -2544,3 +2544,56 @@ test('Batch 129: archive-view hides classic container before readTheme, avoids g
         f.close();
     }
 });
+
+test('Batch 130: archive-grid reuses cells in-place on scroll without DOM detachment and archive-wall applies size containment', () => {
+    const wallCss = read('Musicmodules/music-archive/archive-wall.css');
+    assert.match(wallCss, /\.aw-tile\s*\{[^}]*contain:\s*size layout style;/, '.aw-tile applies size layout style containment');
+
+    const rafs = [];
+    const f = fixture({
+        n: 240,
+        playlists: [],
+        setup: (w) => {
+            Object.defineProperty(w, 'innerWidth', { configurable: true, value: 1440 });
+            Object.defineProperty(w, 'innerHeight', { configurable: true, value: 900 });
+            w.Element.prototype.scrollTo = w.Element.prototype.scrollTo || function () {};
+            w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+            w.cancelAnimationFrame = () => {};
+            w.eval(read('Musicmodules/music-archive/archive-wall.js'));
+            w.eval(read('Musicmodules/music-archive/archive-grid.js'));
+        }
+    });
+    try {
+        const root = f.w.document.getElementById('music-archive-view');
+        const rect = (l, t, w, h) => ({ left: l, top: t, right: l + w, bottom: t + h, width: w, height: h });
+        root.getBoundingClientRect = () => rect(0, 0, 1440, 900);
+        root.querySelector('.archive-hud').getBoundingClientRect = () => rect(0, 0, 1440, 900);
+        root.querySelector('.archive-nav').getBoundingClientRect = () => rect(0, 0, 1440, 56);
+        root.querySelector('.archive-footer').getBoundingClientRect = () => rect(0, 840, 1440, 48);
+
+        f.view.setLayout('grid', { persist: false });
+        while (rafs.length) rafs.shift()(16);
+        const scroller = root.querySelector('.ag-scroll');
+        const content = scroller.querySelector('.ag-content');
+        // Prime top overscan at scrollTop = 600 so top+bottom rows are filled
+        scroller.scrollTop = 600;
+        scroller.dispatchEvent(new f.w.Event('scroll'));
+        while (rafs.length) rafs.shift()(16);
+        const cells = [...content.querySelectorAll('.ag-cell')];
+        assert.ok(cells.length >= 12, `grid renders cells (${cells.length})`);
+
+        let cellRemoves = 0;
+        for (const c of cells) {
+            const origRemove = c.remove.bind(c);
+            c.remove = () => { cellRemoves += 1; return origRemove(); };
+        }
+        // Scroll further down by 600px: off-screen cells must be reused in-place with zero remove()
+        scroller.scrollTop = 1200;
+        scroller.dispatchEvent(new f.w.Event('scroll'));
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(cellRemoves, 0, 'grid scrolling reuses off-screen .ag-cell nodes in-place without remove()');
+        assert.ok([...content.querySelectorAll('.ag-cell')].some((c) => Number(c.dataset.id?.split(':')[1]) >= 20), 'reused cells display newly scrolled tracks');
+    } finally {
+        f.close();
+    }
+});
