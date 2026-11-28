@@ -2333,27 +2333,22 @@
             track: (i) => tracks()[i], cover: (t) => coverOf(t, true), selected: selectedIndex,
             playing: wallOpts.playing, meta: wallOpts.meta, pick: wallOpts.pick, play: wallOpts.play, menu: wallOpts.menu, reducedMotion
         }) : null;
-        /* 墙只占目录、歌词、导航和页脚之间的空地：按它们实际的位置量（HUD 整体有缩放） */
-        function syncWallRoom() {
-            const fl = flat();
-            if (!fl || !fl.on) return;
-            const box = root.getBoundingClientRect();
-            const hud = refs.hud.getBoundingClientRect();
+        function readWallRoom() {
+            const box = root.getBoundingClientRect(), hud = refs.hud.getBoundingClientRect();
             const listEl = list && listOpen() ? list.el : null;
             const lr = listEl && listEl.offsetWidth ? listEl.getBoundingClientRect() : null;
             const stacked = refs.hud.classList.contains('tiny');
             const lyr = lyrics && !lyrics.el.hidden && state.lyricsOn ? lyrics.el.getBoundingClientRect() : null;
-            const nav = refs.nav.getBoundingClientRect();
-            // 页脚（正在播放 · 经典视图）那一行在底栏上方，墙停在它上面
-            const foot = refs.hud.querySelector('.archive-footer')?.getBoundingClientRect();
+            const nav = refs.nav.getBoundingClientRect(), foot = refs.hud.querySelector('.archive-footer')?.getBoundingClientRect();
             const gutter = Math.max(24, Math.round(hud.width * 0.022));
             const left = lr && !stacked ? lr.right - box.left + gutter * 0.6 : gutter;
-            const right = (lyr ? lyr.left - box.left - gutter * 0.6 : hud.right - box.left - gutter);
+            const right = lyr ? lyr.left - box.left - gutter * 0.6 : hud.right - box.left - gutter;
             const top = nav.bottom - box.top + 14;
             const bottomEdge = foot && foot.height ? foot.top - box.top - 16 : box.height - 90;
             const bottom = lr && stacked ? Math.min(bottomEdge, lr.top - box.top - 10) : bottomEdge;
-            fl.setRoom({ left, top, width: right - left, height: bottom - top });
+            return { left, top, width: right - left, height: bottom - top };
         }
+        function syncWallRoom(r) { const fl = flat(); if (fl?.on) fl.setRoom(r || readWallRoom()); }
         /*
          * 换视图的过场，分两段：
          *   盖上：纸色面板从左边推进来把画面盖满（前缘一道强调色扫描头），旧视图一点点被遮住；
@@ -2411,18 +2406,20 @@
         };
         const applyLayout = (layout, persist) => {
             if (!LAYOUTS.includes(layout) || (layout === 'wall' && !wall) || (layout === 'table' && !table) || (layout === 'grid' && !grid)) layout = 'array';
-            state.layout = layout;
             const flatOn = layout !== 'array';
+            const preRoom = flatOn && isShown() ? readWallRoom() : null;
+            state.layout = layout;
             root.classList.toggle('layout-wall', layout === 'wall');
             root.classList.toggle('layout-table', layout === 'table');
             root.classList.toggle('layout-grid', layout === 'grid');
             root.classList.toggle('layout-flat', flatOn);
             markLayoutButtons(layout);
-            if (persist) { try { localStorage.setItem(LAYOUT_KEY, state.layout); } catch (e) { /* 只是记住 */ } }
+            if (persist) { try { localStorage.setItem(LAYOUT_KEY, state.layout); } catch (e) {} }
+            if (preRoom) flat()?.setRoom(preRoom);
             wall?.show(layout === 'wall' && isShown());
             table?.show(layout === 'table' && isShown());
             grid?.show(layout === 'grid' && isShown());
-            if (flatOn) { syncWallRoom(); flat()?.sync(); } else { state.lastDraw = 0; kick(); }
+            if (flatOn) { if (!preRoom) syncWallRoom(); flat()?.sync(); } else { state.lastDraw = 0; kick(); }
         };
         const setLayout = (layout, { persist = true } = {}) => {
             const target = layoutJob ? layoutJob.layout : state.layout;

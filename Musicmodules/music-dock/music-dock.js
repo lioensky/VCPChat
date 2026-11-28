@@ -1491,13 +1491,13 @@
             if (shiftFrame || state.destroyed) return;
             shiftFrame = requestAnimationFrame(() => { shiftFrame = 0; if (!state.destroyed) syncShift(); });
         };
-        let hookedHud = null;
-        let hudObserver = null;
+        let hookedHud = null, hudObserver = null;
+        const hudKey = (h) => (h.classList.contains('list-open') ? 1 : 0) | (h.classList.contains('lyrics-open') ? 2 : 0) | (h.classList.contains('tiny') ? 4 : 0);
         function hookHud(hud) {
             if (!hud || hud === hookedHud) return;
-            hookedHud = hud;
-            hudObserver?.disconnect();
-            hudObserver = new MutationObserver(queueShift);
+            hookedHud = hud; hudObserver?.disconnect();
+            let k = hudKey(hud);
+            hudObserver = new MutationObserver((rs) => { const n = hudKey(hud); if (n !== k || rs.some((r) => r.attributeName === 'style')) { k = n; queueShift(); } });
             hudObserver.observe(hud, { attributes: true, attributeFilter: ['class', 'style'] });
         }
         cleanups.push(() => { cancelAnimationFrame(shiftFrame); hudObserver?.disconnect(); hudObserver = null; document.body.classList.remove('music-dock-beside-list', 'music-dock-beside-lyrics', 'music-drawer-open'); });
@@ -1898,55 +1898,39 @@
             observer.observe(target, options);
             observers.push(observer);
         };
-        // 进出舞台、切换首页或经典视图时，重新计算播放条的位置。
-        observe(document.getElementById('music-archive-view'), { attributes: true, attributeFilter: ['class'] }, queueShift);
+        const observeKey = (el, keyOf, fn) => {
+            if (!el) return;
+            let prev = keyOf(el);
+            observe(el, { attributes: true, attributeFilter: ['class'] }, () => { const next = keyOf(el); if (next !== prev) { prev = next; fn(); } });
+        };
+        observeKey(document.getElementById('music-archive-view'), (e) => e.classList.contains('is-empty'), queueShift);
         queueShift();
         if (dspCard) syncFx(false);
         let lastPlaying = null, lastStage = null, lastTheme = document.body.classList.contains('light-theme');
         const bodyLayoutKey = () => { const c = document.body.classList; return (c.contains('music-stage-active') ? 1 : 0) | (c.contains('music-archive-on') ? 2 : 0) | (c.contains('music-stage-entering') ? 4 : 0); };
         let lastBodyLayout = bodyLayoutKey();
-        // 主题文件换了（样式表重新加载、换了 href）或舞台换了自定义主题：颜色跟着换。
         let glowTimer = 0;
         const queueGlow = () => {
             if (glowTimer) { clearTimeout(glowTimer); timers.delete(glowTimer); }
             const id = setTimeout(() => { timers.delete(id); glowTimer = 0; syncGlow(); }, 60);
-            glowTimer = id;
-            timers.add(id);
+            glowTimer = id; timers.add(id);
         };
         const isThemeNode = (n) => n && (n.tagName === 'LINK' || (n.tagName === 'STYLE' && !n.dataset?.md));
         observe(document.head, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] }, (recs) => {
-            for (const r of recs) {
-                if (r.type === 'attributes' ? r.target?.tagName === 'LINK' : r.target === document.head && [...r.addedNodes, ...r.removedNodes].some(isThemeNode)) { queueGlow(); return; }
-            }
+            for (const r of recs) if (r.type === 'attributes' ? r.target?.tagName === 'LINK' : r.target === document.head && [...r.addedNodes, ...r.removedNodes].some(isThemeNode)) { queueGlow(); return; }
         });
         listen(document, 'load', (event) => { if (event.target?.tagName === 'LINK') queueGlow(); }, true);
         const stageRootEl = document.getElementById('music-stage');
-        if (stageRootEl) {
-            const STAGE_CLS = ['stage-theme-custom', 'stage-theme-light', 'stage-theme-dark', 'stage-night', 'stage-scene-3d', 'stage-opaque', 'is-visible'];
-            const stageGlowKey = () => { let m = 0, c = stageRootEl.classList; for (let i = 0; i < 7; i += 1) if (c.contains(STAGE_CLS[i])) m |= 1 << i; return m; };
-            let lastStageGlow = stageGlowKey();
-            observe(stageRootEl, { attributes: true, attributeFilter: ['class'] }, () => {
-                const next = stageGlowKey();
-                if (next === lastStageGlow) return;
-                lastStageGlow = next;
-                queueGlow();
-            });
-        }
-        // 离选中项越远的舞台页签越淡，切换舞台时也更新播放条配色。
+        const STAGE_CLS = ['stage-theme-custom', 'stage-theme-light', 'stage-theme-dark', 'stage-night', 'stage-scene-3d', 'stage-opaque', 'is-visible'];
+        observeKey(stageRootEl, (e) => { let m = 0, c = e.classList; for (let i = 0; i < 7; i += 1) if (c.contains(STAGE_CLS[i])) m |= 1 << i; return m; }, queueGlow);
         const switcher = stageRootEl?.querySelector('.music-stage-mode-switcher');
         if (switcher) {
             const syncStageTabDistances = () => {
-                const buttons = Array.from(switcher.querySelectorAll('[data-stage-mode]'));
-                const activeIndex = buttons.findIndex((button) => button.getAttribute('aria-pressed') === 'true');
-                buttons.forEach((button, index) => {
-                    const distance = activeIndex < 0 ? 4 : Math.min(4, Math.abs(index - activeIndex));
-                    button.dataset.mdDist = String(distance);
-                });
+                const btns = [...switcher.querySelectorAll('[data-stage-mode]')];
+                const at = btns.findIndex((b) => b.getAttribute('aria-pressed') === 'true');
+                btns.forEach((b, i) => { b.dataset.mdDist = String(at < 0 ? 4 : Math.min(4, Math.abs(i - at))); });
             };
-            observe(switcher, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-pressed'] }, () => {
-                syncStageTabDistances();
-                queueGlow();
-            });
+            observe(switcher, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-pressed'] }, () => { syncStageTabDistances(); queueGlow(); });
             syncStageTabDistances();
         }
         // 合并原三条 document.body class 监听，仅在布局相关类变化时才触发 queueShift/syncFx

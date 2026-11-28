@@ -96,7 +96,7 @@ body.light-theme .archive-list { --glow: .85; }
 .archive-list-sort-menu button[aria-checked="true"]::before { content: ""; position: absolute; left: 12px; top: 50%; width: 6px; height: 6px; margin-top: -3px; background: var(--ar-square); }
 
 .archive-list-viewport {
-    position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overflow-anchor: none; outline: none; overscroll-behavior: contain; scrollbar-width: none;
+    position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overflow-anchor: none; outline: none; overscroll-behavior: contain; scrollbar-width: none; contain: layout paint style;
     /* 上下只留一小段渐隐：1280×800 下目录只有五六行高，渐隐太长会让第一行看着像被分类标签压住 */
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
@@ -199,7 +199,7 @@ body.music-reduce-motion .archive-list-group.live-on::before { animation: none; 
 .archive-list .archive-list-row.drop-after::after { top: auto; bottom: -4px; }
 .archive-list-shelf button.drop-over { border-color: var(--ar-accent); color: var(--ar-accent-text, var(--ar-accent)); }
 
-.archive-list-row { position: absolute; left: calc(var(--gutter) - var(--row-icon-space)); right: 0; top: 0; height: 58px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; padding-inline: calc(var(--row-icon-space) - var(--row-inline-border)) calc(var(--text-end-inset) - var(--row-inline-border)); cursor: pointer; color: var(--ar-summary, var(--ar-muted)); }
+.archive-list-row { position: absolute; left: calc(var(--gutter) - var(--row-icon-space)); right: 0; top: 0; height: 58px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; padding-inline: calc(var(--row-icon-space) - var(--row-inline-border)) calc(var(--text-end-inset) - var(--row-inline-border)); cursor: pointer; color: var(--ar-summary, var(--ar-muted)); contain: layout style; }
 .archive-list-row .tx { min-width: 0; display: grid; gap: 4px; }
 .archive-list-row .tx b { font-size: 18px; line-height: 24px; font-weight: 600; color: var(--ar-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: font-weight .2s; }
 .archive-list-row .tx em { font-style: normal; font-size: 11px; letter-spacing: 1px; color: var(--ar-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s; }

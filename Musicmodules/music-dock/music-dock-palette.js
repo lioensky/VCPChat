@@ -899,7 +899,7 @@
             if (!state.open) return;
             const row = pre?.row || (activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector(`[data-i="${state.active}"]`));
             if (!row) return;
-            // 选中的那一行背后是一滴玻璃，上下键换行时流过去（drop 已在 render 阶段挂好，避免在读 offsetTop 前写入 DOM 触发同步回流）
+            if (scroll) row.scrollIntoView?.({ block: 'nearest' });
             if (global.MusicFluid?.slide) {
                 const top = pre ? pre.top : row.offsetTop;
                 const height = pre ? pre.height : row.offsetHeight;
@@ -908,7 +908,6 @@
                 list.classList.toggle('md-has-drop', Boolean(drop));
                 if (drop) global.MusicFluid.slide(drop, { top, height }, { key: 'md-cmd', axis: 'y', lead: 140, trail: 300 });
             }
-            if (scroll) row.scrollIntoView?.({ block: 'nearest' });
         };
 
         const syncActive = (scroll = true, fromRender = false) => {
