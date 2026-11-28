@@ -74,9 +74,19 @@ function setupUtils(app) {
         }
         return true;
     };
+    const WS_RE = /\s/;
     app.searchTracks = (tracks, query) => {
-        const words = searchKey(query).split(WS_SPLIT_RE).filter(Boolean);
+        const key = searchKey(query).trim();
         const list = Array.isArray(tracks) ? tracks : [];
+        if (!key) return list;
+        let words;
+        if (!WS_RE.test(key)) {
+            words = [key];
+        } else {
+            const parts = key.split(WS_SPLIT_RE);
+            words = [];
+            for (let i = 0; i < parts.length; i += 1) if (parts[i]) words.push(parts[i]);
+        }
         const wLen = words.length;
         if (!wLen) return list;
         const len = list.length;

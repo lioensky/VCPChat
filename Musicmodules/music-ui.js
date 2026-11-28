@@ -115,14 +115,11 @@ function setupUI(app) {
         positionOf = map;
         return map;
     };
-    let syncedScrollTop = 0;
-    let syncedScrollTopFresh = false;
-    const markScrollTopFresh = (v) => {
-        syncedScrollTop = v;
-        if (!syncedScrollTopFresh) {
-            syncedScrollTopFresh = true;
-            Promise.resolve().then(() => { syncedScrollTopFresh = false; });
-        }
+    let cachedScrollTop = 0;
+    let scrollTopDirty = true;
+    const setCachedScrollTop = (v) => {
+        cachedScrollTop = v > 0 ? v : 0;
+        scrollTopDirty = false;
     };
     let renderedBase = null;
     let renderedBaseLength = -1;
@@ -176,7 +173,15 @@ function setupUI(app) {
             view = list.clientHeight;
             if (view > 0) cachedListHeight = view;
         }
-        const scrollTop = knownScrollTop !== undefined ? knownScrollTop : list.scrollTop;
+        let scrollTop;
+        if (knownScrollTop !== undefined) {
+            scrollTop = knownScrollTop;
+        } else if (!scrollTopDirty) {
+            scrollTop = cachedScrollTop;
+        } else {
+            scrollTop = list.scrollTop;
+            setCachedScrollTop(scrollTop);
+        }
         let from = 0;
         let to = Math.min(total, FALLBACK_ROWS);
         if (pitch > 0 && view > 0) {
@@ -187,7 +192,9 @@ function setupUI(app) {
         if (!force && from === windowStart && to === windowEnd && list.children.length === to - from) return;
         const keep = new Map();
         const unused = [];
-        for (const li of list.children) {
+        const existingKids = list.children;
+        for (let i = 0; i < existingKids.length; i += 1) {
+            const li = existingKids[i];
             const t = li._track;
             const idx = t && libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
             if (t && !keep.has(t) && li.dataset.index === String(idx)) keep.set(t, li);
@@ -328,10 +335,11 @@ function setupUI(app) {
     let listResizeObserver = null;
     const onListWindowResize = () => {
         cachedListHeight = 0;
+        scrollTopDirty = true;
         renderWindowSoon();
     };
     const onListScroll = () => {
-        syncedScrollTopFresh = false;
+        scrollTopDirty = true;
         renderWindowSoon();
     };
     if (app.playlistEl) {
@@ -359,6 +367,7 @@ function setupUI(app) {
             wasHidden = nowHidden;
             wasListNone = nowListNone;
             if (nowHidden) return;
+            if (unhidClassic || unhidList) scrollTopDirty = true;
             if (deferred) {
                 const { filtered } = deferred;
                 deferred = null;
@@ -408,8 +417,16 @@ function setupUI(app) {
         }
         let preScrollTop = 0;
         if (app.playlistEl) {
-            if (syncedScrollTopFresh) preScrollTop = syncedScrollTop;
-            else { preScrollTop = app.playlistEl.scrollTop; markScrollTopFresh(preScrollTop); }
+            if (!scrollTopDirty) {
+                preScrollTop = cachedScrollTop;
+                if (preScrollTop > 0 && rowPitch > 0 && preView > 0) {
+                    const maxTop = Math.max(0, songs.length * rowPitch - preView);
+                    if (preScrollTop > maxTop) { preScrollTop = maxTop; cachedScrollTop = maxTop; }
+                }
+            } else {
+                preScrollTop = app.playlistEl.scrollTop;
+                setCachedScrollTop(preScrollTop);
+            }
         }
         if (empty) {
             if (app.playlistEl.dataset.emptyText !== empty) app.playlistEl.dataset.emptyText = empty;
@@ -436,7 +453,9 @@ function setupUI(app) {
         if (unchanged) {
             // 列表没变：单趟同步高亮
             const cur = app.currentTrackIndex;
-            for (const li of app.playlistEl.children) {
+            const kids = app.playlistEl.children;
+            for (let i = 0; i < kids.length; i += 1) {
+                const li = kids[i];
                 const isActive = Number(li.dataset.index) === cur;
                 if (li._active !== isActive || li.classList.contains('active') !== isActive) {
                     li._active = isActive;
@@ -464,7 +483,8 @@ function setupUI(app) {
         renderedBaseLast = plLast;
         renderedTitles = nextTitles;
         // 换了一组歌：已建的行按新下标重算，不能复用
-        for (const li of app.playlistEl.children) li._track = null;
+        const prevKids = app.playlistEl.children;
+        for (let i = 0; i < prevKids.length; i += 1) prevKids[i]._track = null;
         renderWindow(true, preView, preScrollTop);
         app.updateAllCount();
     };
@@ -486,7 +506,7 @@ function setupUI(app) {
             const desired = curTop + itemRect.top - playlistRect.top - viewH * 0.25;
             const nextTop = Math.min(maxScrollTop, Math.max(0, desired));
             if (nextTop !== curTop) playlist.scrollTop = nextTop;
-            markScrollTopFresh(nextTop);
+            setCachedScrollTop(nextTop);
             renderWindow(false, viewH, nextTop);
             return true;
         }
@@ -500,7 +520,7 @@ function setupUI(app) {
         const maxScrollTop = Math.max(0, playlist.scrollHeight - viewH);
         const nextTop = Math.min(maxScrollTop, Math.max(0, at * rowPitch - viewH * 0.25));
         if (playlist.scrollTop !== nextTop) playlist.scrollTop = nextTop;
-        markScrollTopFresh(nextTop);
+        setCachedScrollTop(nextTop);
         renderWindow(false, viewH, nextTop);
         return true;
     };

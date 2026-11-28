@@ -605,7 +605,11 @@
             }
             per[key] = rank;
             per[key + 'Order'] = packed;
-            if (index.entry) LAST_ORDER[key] = order.map((i) => index.entry(i));
+            if (index.entry) {
+                const last = new Array(order.length);
+                for (let k = 0; k < order.length; k += 1) last[k] = index.entry(order[k]);
+                LAST_ORDER[key] = last;
+            }
             done = true;
         };
         return (budgetMs = 8, now = () => performance.now()) => {
@@ -615,7 +619,12 @@
                 const quick = mergeOrder(index, LAST_ORDER[key], cmp);
                 if (quick) { finish(quick); return true; }
                 runs = [];
-                for (let i = 0; i < index.size; i += 1024) runs.push(Array.from({ length: Math.min(1024, index.size - i) }, (_, k) => i + k));
+                for (let i = 0; i < index.size; i += 1024) {
+                    const chunkLen = Math.min(1024, index.size - i);
+                    const chunk = new Array(chunkLen);
+                    for (let k = 0; k < chunkLen; k += 1) chunk[k] = i + k;
+                    runs.push(chunk);
+                }
                 if (!runs.length) { finish([]); return true; }
             }
             while (sorted < runs.length) { runs[sorted++].sort(cmp); if (now() >= end) return false; }
@@ -643,43 +652,68 @@
     };
     const TITLE_CMP = (index) => (a, b) => COLLATE(index.sortKey(a), index.sortKey(b)) || a - b;
     // 先仅对去重后的非空歌手键做一次 Collator 排序（邻项 Collator 判等时共享名次），
-    // 再用纯整数比较排全曲库，避免上万首曲目重复触发数万次 ICU Collator 调用。
-    const buildArtistKeyRanks = (index) => {
+    // 再基于已排好的 titleOrder 做 O(N) 稳定计数排序，免去全曲库 O(N log N) JS 比较器回调。
+    const artistRankOf = (index) => {
+        let per = RANKS.get(index);
+        if (!per) RANKS.set(index, per = {});
+        if (per.artist) return per.artist;
         const n = index.size;
+        const titleOrder = per.titleOrder || (() => { rankOf(index, 'title', () => TITLE_CMP(index)); return RANKS.get(index).titleOrder; })();
         const uniq = new Map();
+        const sorted = [];
         const rawKeys = new Array(n);
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < n; i += 1) {
             const k = index.artistKey(i);
             rawKeys[i] = k;
-            if (k && !uniq.has(k)) uniq.set(k, 0);
+            if (k && !uniq.has(k)) { uniq.set(k, 0); sorted.push(k); }
         }
-        const sorted = [...uniq.keys()].sort(COLLATE);
+        sorted.sort(COLLATE);
         let curRank = 0;
-        for (let j = 0; j < sorted.length; j++) {
+        for (let j = 0; j < sorted.length; j += 1) {
             if (j > 0 && COLLATE(sorted[j - 1], sorted[j]) !== 0) curRank = j;
             uniq.set(sorted[j], curRank);
         }
-        const emptyRank = sorted.length + 1;
+        const emptyRank = sorted.length;
+        const counts = new Uint32Array(emptyRank + 1);
         const keyRanks = new Uint32Array(n);
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < n; i += 1) {
             const k = rawKeys[i];
-            keyRanks[i] = k ? uniq.get(k) : emptyRank;
+            const r = k ? uniq.get(k) : emptyRank;
+            keyRanks[i] = r;
+            counts[r] += 1;
         }
-        return keyRanks;
+        const offsets = new Uint32Array(emptyRank + 1);
+        let acc = 0;
+        for (let r = 0; r <= emptyRank; r += 1) {
+            offsets[r] = acc;
+            acc += counts[r];
+        }
+        const packed = new Uint32Array(n);
+        const rank = new Uint32Array(n);
+        for (let k = 0; k < n; k += 1) {
+            const idx = titleOrder[k];
+            const pos = offsets[keyRanks[idx]]++;
+            packed[pos] = idx;
+            rank[idx] = pos;
+        }
+        per.artist = rank;
+        per.artistOrder = packed;
+        if (index.entry) {
+            const last = new Array(n);
+            for (let k = 0; k < n; k += 1) last[k] = index.entry(packed[k]);
+            LAST_ORDER.artist = last;
+        }
+        return rank;
     };
-    const ARTIST_CMP = (index, titleRank) => {
-        const keyRanks = buildArtistKeyRanks(index);
-        return (a, b) => (keyRanks[a] - keyRanks[b]) || (titleRank[a] - titleRank[b]);
-    };
+    const DURATION_META = new Map(DURATION_BUCKETS.map(([id, , name, ref], k) => [id, { k, name, ref }]));
     /* 给界面用：为某种排序方式分片备好名次。返回 step(budgetMs) → 是否完成 */
     const prepareSort = (index, mode = 'title') => {
         const title = rankJob(index, 'title', TITLE_CMP(index));
-        let artist = null;
         return (budgetMs = 8) => {
             if (!title(budgetMs)) return false;
             if (mode !== 'artist') return true;
-            if (!artist) { artist = rankJob(index, 'artist', ARTIST_CMP(index, RANKS.get(index).title)); return false; }
-            return artist(budgetMs);
+            artistRankOf(index);
+            return true;
         };
     };
 
@@ -689,7 +723,7 @@
         const byTitle = (a, b) => titleRank[a] - titleRank[b];
         const letter = { rank: (g) => GROUP_RANK.get(g) ?? 999, name: groupName, ref: groupRef, family: familyOf };
         if (mode === 'artist') {
-            const artistRank = rankOf(index, 'artist', () => ARTIST_CMP(index, titleRank));
+            const artistRank = artistRankOf(index);
             const order = RANKS.get(index)?.artistOrder || null;
             return { mode, ...letter, group: (i) => index.artistGroup(i), cmp: (a, b) => artistRank[a] - artistRank[b], order };
         }
@@ -702,15 +736,17 @@
             const bucketOf = (i) => {
                 const d = len(i);
                 if (!(d > 0)) return 'd?';
-                return DURATION_BUCKETS.find(([, max]) => d < max)[0];
+                for (let b = 0; b < DURATION_BUCKETS.length; b += 1) {
+                    if (d < DURATION_BUCKETS[b][1]) return DURATION_BUCKETS[b][0];
+                }
+                return DURATION_BUCKETS[DURATION_BUCKETS.length - 1][0];
             };
-            const meta = new Map(DURATION_BUCKETS.map(([id, , name, ref], k) => [id, { k, name, ref }]));
             return {
                 mode,
                 group: bucketOf,
-                rank: (g) => (meta.has(g) ? meta.get(g).k : 999),
-                name: (g) => (meta.get(g) || {}).name || g,
-                ref: (g) => (meta.get(g) || {}).ref || g,
+                rank: (g) => (DURATION_META.has(g) ? DURATION_META.get(g).k : 999),
+                name: (g) => (DURATION_META.get(g) || {}).name || g,
+                ref: (g) => (DURATION_META.get(g) || {}).ref || g,
                 family: (g) => g, // 时长段不合并
                 cmp: (a, b) => {
                     const da = len(a), db = len(b);
@@ -741,7 +777,7 @@
         return { mode: 'title', ...letter, group: (i) => index.group(i), cmp: byTitle, order };
     };
 
-    const familyOf = (g) => (/^[A-Z]$/.test(g) ? 'latin' : KANA_ROW_OF.has(g) ? 'kana' : g);
+    const familyOf = (g) => (typeof g === 'string' && g.length === 1 && g >= 'A' && g <= 'Z' ? 'latin' : KANA_ROW_OF.has(g) ? 'kana' : g);
     const mergedName = (a, b) => {
         if (a === b) return groupName(a);
         if (familyOf(a) === 'kana') return a + '–' + b + '行';

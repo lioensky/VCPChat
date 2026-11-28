@@ -493,6 +493,7 @@ body.music-reduce-motion #music-dock-root *::after { transition-duration: 0s !im
 .md-cmd-body { display: flex; flex-direction: column; min-height: 0; opacity: 0; transition: opacity .16s ease-out .06s; }
 .md-cmd.md-open .md-cmd-body { opacity: 1; }
 .md-cmd-list {
+  width: 100%;
   height: min(496px, 50vh);
   overflow-y: auto;
   padding: 8px;
@@ -500,7 +501,7 @@ body.music-reduce-motion #music-dock-root *::after { transition-duration: 0s !im
   flex-direction: column-reverse;
   gap: 2px;
   scrollbar-width: thin;
-  contain: layout style;
+  contain: strict;
 }
 #music-dock-root .md-cmd-row {
   display: flex;

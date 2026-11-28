@@ -559,11 +559,22 @@
         const tops = new WeakMap();
         // 量屏幕上的位置：提示层是贴着底边往上长的，条在层里的 offsetTop 不变，层自己在动
         const record = (layer) => { for (const el of layer.children) tops.set(el, el.getBoundingClientRect().top); };
-        const attach = (layer) => {
+        const attach = (layer, deferInitialRecord = false) => {
             if (watched.has(layer)) return;
             watched.add(layer);
-            record(layer);
             let recordRaf = 0;
+            const scheduleRecord = () => {
+                if (recordRaf || typeof global.requestAnimationFrame !== 'function') return;
+                recordRaf = global.requestAnimationFrame(() => {
+                    recordRaf = 0;
+                    if (layer.isConnected) record(layer);
+                });
+            };
+            if (deferInitialRecord) {
+                if (layer.children.length) scheduleRecord();
+            } else {
+                record(layer);
+            }
             const layerObs = new global.MutationObserver(() => {
                 const motion = enabled() && typeof global.Element?.prototype?.animate === 'function';
                 if (!motion) return;
@@ -576,12 +587,7 @@
                     if (tops.has(children[i])) { hasPrev = true; break; }
                 }
                 if (!hasPrev) {
-                    if (!recordRaf && typeof global.requestAnimationFrame === 'function') {
-                        recordRaf = global.requestAnimationFrame(() => {
-                            recordRaf = 0;
-                            if (layer.isConnected) record(layer);
-                        });
-                    }
+                    scheduleRecord();
                     return;
                 }
                 const shifts = [];
@@ -603,11 +609,11 @@
                 layerObs.disconnect();
             });
         };
-        for (const layer of doc.querySelectorAll('body > .mtst-layer')) attach(layer);
+        for (const layer of doc.querySelectorAll('body > .mtst-layer')) attach(layer, false);
         const bodyObs = new global.MutationObserver((records) => {
             for (const r of records) {
                 for (const node of r.addedNodes) {
-                    if (node.classList?.contains('mtst-layer')) attach(node);
+                    if (node.classList?.contains('mtst-layer')) attach(node, true);
                 }
             }
         });

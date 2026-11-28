@@ -379,7 +379,8 @@
                     if (n.nodeType !== 1) continue;
                     const tag = n.tagName;
                     if (tag !== 'SELECT' && (!n.firstElementChild || LEAF_TAGS.has(tag))) continue;
-                    if (n.classList?.contains('mfs-trigger') || n.classList?.contains('mfs-menu')) continue;
+                    const ncl = n.classList;
+                    if (ncl && (ncl.contains('mfs-trigger') || ncl.contains('mfs-menu') || ncl.contains('md-ql') || ncl.contains('md-ql-sizer') || ncl.contains('md-qh') || ncl.contains('md-cmd-list') || ncl.contains('mtst-layer'))) continue;
                     if (!checkedTgt) {
                         checkedTgt = true;
                         const tgt = r.target;

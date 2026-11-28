@@ -1003,15 +1003,16 @@
             state.lastFocus = document.activeElement;
             if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
             const capRect = readCapRect();
-            root.hidden = false;
+            // 趁 root 仍处于 hidden(display:none) 完成定位变量写入与初始列表构建，避免解隐 focus() 先按旧位置/旧 60 行排版再二次重排。
+            applyPlace(capRect);
             input.value = initial;
-            // 先在仅解隐 .md-cmd（contain: layout style）且未改动 #music-dock-root / body 类名时聚焦，
+            build();
+            root.hidden = false;
+            // 在仅解隐 .md-cmd（contain: layout style）且未改动 #music-dock-root / body 类名时聚焦，
             // 避免 focus() 触发整个底栏与抽屉子树的同步样式重算。
             input.focus({ preventScroll: true });
-            applyPlace(capRect);
             host.classList.add('md-cmd-open');
             document.body.classList.add('music-dock-cmd-open');
-            build();
             if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
             if (state.openRaf) { cancelAnimationFrame(state.openRaf); state.openRaf = 0; }
             state.openRaf = requestAnimationFrame(() => {
