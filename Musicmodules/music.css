@@ -1593,7 +1593,6 @@ body.light-theme option {
     color: var(--music-text);
 }
 
-#music-legacy-btn[hidden],
 body:not(.light-theme) #music-theme-toggle-btn .music-theme-moon,
 body.light-theme #music-theme-toggle-btn .music-theme-sun {
     display: none;

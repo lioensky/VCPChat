@@ -201,6 +201,8 @@
             item.dataset.mfsIdx = String(index);
             item.tabIndex = -1;
             if (option.disabled) item.setAttribute('aria-disabled', 'true');
+            // <option data-sep>：这一项上面画一道细分隔线（和前面那组不是一类，比如视图菜单里的「旧版界面」）
+            if (option.dataset.sep !== undefined) item.classList.add('mfs-sep');
             const span = doc.createElement('span');
             span.textContent = option.textContent.trim();
             item.append(span);

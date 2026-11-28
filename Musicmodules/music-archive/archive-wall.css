@@ -336,6 +336,15 @@ body.music-reduce-motion .aw-tile .aw-in, body.music-reduce-motion .aw-panel > *
 #music-archive-view .archive-layouts > button.mfs-trigger:not(#mfs-0):hover, #music-archive-view .archive-layouts > button.mfs-trigger.mfs-open:not(#mfs-0) { background: color-mix(in srgb, var(--ar-ink) 8%, transparent); border-color: color-mix(in srgb, var(--ar-ink) 12%, transparent); }
 #music-archive-view .archive-layouts > button.mfs-trigger .mfs-chev { opacity: .6; }
 .archive-hud.narrow .archive-layouts .archive-glyph-layout { display: none; }
+/* 视图菜单挪进了窗口最顶上的标题栏（窗口按钮左边），和舞台里的舞台下拉同一个位置、同一个规格（30 高、圆角 8）。
+ * 标题栏是拖动区，菜单设成 no-drag；舞台打开时让给舞台下拉。标题栏里不放那个小图标，字和标题栏按钮一个颜色。 */
+#custom-title-bar .archive-layouts { display: flex; align-items: center; margin-right: 4px; -webkit-app-region: no-drag; }
+body.music-stage-active #custom-title-bar .archive-layouts { display: none; }
+#custom-title-bar .archive-layouts .archive-glyph-layout { display: none; }
+#custom-title-bar .archive-layouts > button.mfs-trigger:not(#mfs-0) { height: 30px; min-height: 30px; box-sizing: border-box; padding: 1px 9px 0 12px; gap: 6px; border: 1px solid transparent; background: transparent; border-radius: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .06em; line-height: 1; color: var(--music-text-secondary); transition: background-color .15s ease, color .15s ease; }
+#custom-title-bar .archive-layouts > button.mfs-trigger:not(#mfs-0):hover,
+#custom-title-bar .archive-layouts > button.mfs-trigger.mfs-open:not(#mfs-0) { background: var(--hover-bg); color: var(--music-text); }
+#custom-title-bar .archive-layouts > button.mfs-trigger .mfs-chev { opacity: .6; }
 
 /* ---------- 分节网格（archive-grid.js） ---------- */
 .archive-grid { position: absolute; z-index: 3; contain: strict; }

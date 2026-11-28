@@ -942,6 +942,8 @@ button.mfs-trigger:not(#mfs-0):disabled { opacity: .45; cursor: not-allowed; }
 .mfs-check { flex: none; visibility: hidden; color: var(--mf-tint); }
 .mfs-item.mfs-on .mfs-check { visibility: visible; }
 .mfs-item.mfs-on { font-weight: 600; }
+.mfs-item.mfs-sep { position: relative; margin-top: 9px; }
+.mfs-item.mfs-sep::before { content: ""; position: absolute; left: 8px; right: 8px; top: -5px; height: 1px; background: color-mix(in srgb, var(--mf-ink) 12%, transparent); pointer-events: none; }
 
 /* ───────── 抽屉里的开关：圆角玻璃胶囊 ─────────
  * 首页（档案页）那套细线方框开关是结构的一部分，不动；底栏抽屉里的控件都是圆角玻璃，开关跟着换成胶囊，

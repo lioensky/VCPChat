@@ -248,7 +248,7 @@ test('经典视图隐藏档案页并记住；返回按钮回来', () => {
     const before = sel.value;
     sel.value = 'classic';
     sel.dispatchEvent(new f.w.Event('change', { bubbles: true }));
-    assert.equal(sel.value, before, '视图菜单仍然记着首页布局');
+    assert.equal(sel.value, 'classic', '经典列表里视图菜单显示「经典列表」');
     assert.equal(f.view.mode, 'classic');
     assert.ok(f.w.document.body.classList.contains('music-archive-off'));
     assert.equal(f.w.localStorage.getItem('musicArchiveView'), 'classic');
@@ -256,6 +256,62 @@ test('经典视图隐藏档案页并记住；返回按钮回来', () => {
     assert.equal(f.selTitle(), 'Song 0'); // 经典视图里方向键不归档案页
     f.w.document.getElementById('music-archive-return').click();
     assert.equal(f.view.mode, 'archive');
+    assert.equal(sel.value, before, '回到首页，菜单回到原来的首页布局');
+    f.close();
+});
+
+test('经典列表里在视图菜单选一个首页布局：直接回首页并换成那个布局', () => {
+    const f = fixture();
+    const sel = f.w.document.querySelector('.archive-layout-select');
+    sel.value = 'classic';
+    sel.dispatchEvent(new f.w.Event('change', { bubbles: true }));
+    assert.equal(f.view.mode, 'classic');
+    // 这里没加载封面墙/网格脚本，只有阵列可选
+    sel.value = 'array';
+    sel.dispatchEvent(new f.w.Event('change', { bubbles: true }));
+    assert.equal(f.view.mode, 'archive');
+    assert.equal(f.view.layout, 'array');
+    assert.equal(sel.value, 'array');
+    assert.ok(f.w.document.body.classList.contains('music-archive-on'));
+    f.close();
+});
+
+test('视图菜单挪进标题栏右边；最后一项「旧版界面」切到原版，菜单值不变；拆掉时一起拿走', () => {
+    const switched = [];
+    const f = fixture({
+        setup: (w) => {
+            const bar = w.document.createElement('div');
+            bar.id = 'custom-title-bar';
+            bar.innerHTML = '<div class="titlebar-actions"><button id="music-theme-toggle-btn"></button></div>';
+            w.document.body.prepend(bar);
+            w.electronAPI = { setMusicLegacyUI: async () => ({}) };
+            w.MusicLegacySwitch = { switchToLegacy: () => switched.push(true) };
+        }
+    });
+    const actions = f.w.document.querySelector('#custom-title-bar .titlebar-actions');
+    const layouts = actions.firstElementChild;
+    assert.ok(layouts.classList.contains('archive-layouts'), '视图菜单在标题栏按钮的最左边');
+    assert.equal(f.w.document.querySelector('.archive-nav .archive-layouts'), null, '首页顶栏里不再有视图菜单');
+    const sel = layouts.querySelector('.archive-layout-select');
+    const last = sel.options[sel.options.length - 1];
+    assert.equal(last.value, 'legacy');
+    assert.equal(last.textContent, '旧版界面');
+    assert.ok('sep' in last.dataset, '旧版界面上面有分隔线');
+    const before = sel.value;
+    sel.value = 'legacy';
+    sel.dispatchEvent(new f.w.Event('change', { bubbles: true }));
+    assert.deepEqual(switched, [true]);
+    assert.equal(sel.value, before);
+    assert.equal(f.view.mode, 'archive');
+    f.view.destroy();
+    assert.equal(actions.querySelector('.archive-layouts'), null);
+    f.close();
+});
+
+test('不支持切换旧版时视图菜单里没有「旧版界面」', () => {
+    const f = fixture();
+    const sel = f.w.document.querySelector('.archive-layout-select');
+    assert.ok(![...sel.options].some((o) => o.value === 'legacy'));
     f.close();
 });
 
