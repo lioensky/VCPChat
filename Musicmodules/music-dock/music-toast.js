@@ -20,16 +20,18 @@
     const ICON_FOR = { info: 'info', success: 'check', error: 'circle-alert', progress: 'loader-circle' };
     const ICONS = global.MusicDockIcons || {};
 
-    const iconCache = new Map();
-    const icon = (name, size = 16) => {
+    const iconProtoCache = new Map();
+    const createIconNode = (name, size = 16) => {
         const k = `${name}:${size}`;
-        let hit = iconCache.get(k);
-        if (hit === undefined) {
-            hit = `<svg class="mtst-i" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"`
+        let proto = iconProtoCache.get(k);
+        if (proto === undefined) {
+            const box = document.createElement('span');
+            box.innerHTML = `<svg class="mtst-i" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"`
                 + ` stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
-            iconCache.set(k, hit);
+            proto = box.firstElementChild;
+            iconProtoCache.set(k, proto);
         }
-        return hit;
+        return proto ? proto.cloneNode(true) : null;
     };
 
     let layer = null;
@@ -108,21 +110,47 @@
             const count = action?.countdown && entry.countdown != null ? ` ${entry.countdown}` : '';
             const clampedProgress = k === 'progress' && Number.isFinite(entry.opts.progress)
                 ? Math.max(0, Math.min(1, entry.opts.progress)) : null;
-            const progress = clampedProgress !== null
-                ? `<span class="mtst-bar"><span style="transform:scaleX(${clampedProgress})"></span></span>` : '';
-            el.innerHTML = `<span class="mtst-ic">${icon(entry.opts.icon || ICON_FOR[k], 16)}</span>`
-                + `<span class="mtst-msg"></span>`
-                + (action ? `<button class="mtst-act" type="button"></button>` : '')
-                + (entry.opts.closable === false ? '' : `<button class="mtst-x" type="button" aria-label="关闭提示">${icon('x', 14)}</button>`)
-                + progress;
-            entry.msgEl = el.querySelector('.mtst-msg');
-            entry.actEl = action ? el.querySelector('.mtst-act') : null;
-            entry.barEl = progress ? el.querySelector('.mtst-bar > span') : null;
-            entry.lastProgress = clampedProgress;
             const msgText = entry.opts.message || '';
+            const icSpan = document.createElement('span');
+            icSpan.className = 'mtst-ic';
+            const icSvg = createIconNode(entry.opts.icon || ICON_FOR[k], 16);
+            if (icSvg) icSpan.appendChild(icSvg);
+            const msgEl = document.createElement('span');
+            msgEl.className = 'mtst-msg';
+            msgEl.textContent = msgText;
+            const kids = [icSpan, msgEl];
+            let actEl = null;
+            if (action) {
+                actEl = document.createElement('button');
+                actEl.className = 'mtst-act';
+                actEl.type = 'button';
+                actEl.textContent = `${action.label || '好'}${count}`;
+                kids.push(actEl);
+            }
+            if (entry.opts.closable !== false) {
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'mtst-x';
+                closeBtn.type = 'button';
+                closeBtn.setAttribute('aria-label', '关闭提示');
+                const xSvg = createIconNode('x', 14);
+                if (xSvg) closeBtn.appendChild(xSvg);
+                kids.push(closeBtn);
+            }
+            let barEl = null;
+            if (clampedProgress !== null) {
+                const barWrap = document.createElement('span');
+                barWrap.className = 'mtst-bar';
+                barEl = document.createElement('span');
+                barEl.style.transform = `scaleX(${clampedProgress})`;
+                barWrap.appendChild(barEl);
+                kids.push(barWrap);
+            }
+            el.replaceChildren(...kids);
+            entry.msgEl = msgEl;
+            entry.actEl = actEl;
+            entry.barEl = barEl;
+            entry.lastProgress = clampedProgress;
             entry.lastMessage = msgText;
-            if (entry.msgEl) entry.msgEl.textContent = msgText;
-            if (entry.actEl) entry.actEl.textContent = `${action.label || '好'}${count}`;
         };
 
         const clearTimers = () => {

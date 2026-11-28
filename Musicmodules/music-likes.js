@@ -87,22 +87,27 @@
             }
             if (!tracks.length) return null;
             const pl = ensure();
-            const existing = new Set(pl.tracks);
+            const existing = likedSetOf();
             let target;
             if (typeof like === 'boolean') {
                 target = like;
             } else {
                 target = false;
                 for (let i = 0; i < tracks.length; i += 1) {
-                    if (!existing.has(tracks[i].path)) { target = true; break; }
+                    if (!existing || !existing.has(tracks[i].path)) { target = true; break; }
                 }
             }
             const changed = [];
             if (target) {
                 const added = [];
+                const seenAdd = tracks.length > 1 ? new Set() : null;
                 for (let i = 0; i < tracks.length; i += 1) {
                     const t = tracks[i];
-                    if (!existing.has(t.path)) { existing.add(t.path); added.push(t.path); changed.push(t); } // 最近喜欢的在最前
+                    if ((!existing || !existing.has(t.path)) && (!seenAdd || !seenAdd.has(t.path))) {
+                        if (seenAdd) seenAdd.add(t.path);
+                        added.push(t.path);
+                        changed.push(t);
+                    } // 最近喜欢的在最前
                 }
                 if (added.length === 1) {
                     pl.tracks.unshift(added[0]);
@@ -110,7 +115,7 @@
                     added.reverse();
                     pl.tracks = added.concat(pl.tracks);
                 }
-            } else {
+            } else if (existing) {
                 const toRemove = new Set();
                 for (let i = 0; i < tracks.length; i += 1) {
                     const t = tracks[i];

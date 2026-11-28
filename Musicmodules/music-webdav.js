@@ -30,6 +30,7 @@ function setupWebDav(app) {
     const AUDIO_EXTS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.opus', '.wv', '.ape', '.wma', '.aiff', '.aif', '.alac', '.dsf', '.dff']);
     const AUDIO_EXT_RE = /\.(mp3|flac|wav|ogg|m4a|aac|opus|wv|ape|wma|aiff?|alac|dsf|dff)$/i;
     const ORIGIN_RE = /^https?:\/\/[^/]+/;
+    const NAME_COLLATOR = typeof Intl !== 'undefined' && Intl.Collator ? new Intl.Collator() : null;
     const REMOVE_ICON_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
     const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
     let browseReqId = 0;
@@ -133,7 +134,7 @@ function setupWebDav(app) {
                 const base = String(app.activeWebDavServer.url || '').replace(TRAIL_SLASH_RE, '');
                 const originMatch = ORIGIN_RE.exec(base);
                 const origin = originMatch ? originMatch[0] : base;
-                let newPath = href.replace(origin, '');
+                let newPath = href.startsWith(origin) ? href.slice(origin.length) : href;
                 if (!newPath.startsWith('/')) newPath = '/' + newPath;
                 app.browseWebDav(newPath);
             } else if (row.classList.contains('is-audio')) {
@@ -191,7 +192,7 @@ function setupWebDav(app) {
             const server = servers[i];
             const idEsc = esc(server.id);
             const activeCls = activeId === server.id ? ' active' : '';
-            parts[i] = `<div class="webdav-server-item${activeCls}" data-server-id="${idEsc}"><span class="webdav-server-name">${esc(server.name)}</span><button class="webdav-server-remove" data-id="${idEsc}" title="删除这个服务器" aria-label="删除这个服务器">${REMOVE_ICON_SVG}</button></div>`;
+            parts[i] = `<div class="webdav-server-item${activeCls}" data-server-id="${idEsc}"><span class="webdav-server-name">${esc(server.name)}</span><button type="button" class="webdav-server-remove" data-id="${idEsc}" title="删除这个服务器" aria-label="删除这个服务器">${REMOVE_ICON_SVG}</button></div>`;
         }
         app.webdavServerList.innerHTML = parts.join('');
     };
@@ -245,7 +246,7 @@ function setupWebDav(app) {
             app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">此目录为空</div>';
             return;
         }
-        entries.sort((a, b) => (b.isDir - a.isDir) || String(a.name || '').localeCompare(String(b.name || '')));
+        entries.sort((a, b) => (b.isDir - a.isDir) || (NAME_COLLATOR ? NAME_COLLATOR.compare(String(a.name || ''), String(b.name || '')) : String(a.name || '').localeCompare(String(b.name || ''))));
         currentEntries = entries;
         const parts = new Array(entries.length);
         for (let i = 0; i < entries.length; i += 1) {

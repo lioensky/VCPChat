@@ -25,8 +25,7 @@
 
     // 多数弹窗用 visible 开关，WebDAV 两个弹窗用的是 active：两种都算开着，不然开着的弹窗会被设成 inert，点什么都没反应
     const isOpen = (o) => o.classList.contains('visible') || o.classList.contains('active');
-    const shown = (el) => !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-    const isVisibleFocusable = (el) => !el.hidden && !el.closest('[inert]') && shown(el);
+    const isVisibleFocusable = (el) => !el.hidden && !el.closest('[inert], [hidden]') && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const focusables = (o) => {
         const nodes = o.querySelectorAll(FOCUSABLE);
         const out = [];

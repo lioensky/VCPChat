@@ -103,7 +103,9 @@
         // SVG 只盖住小滴所在的那一段（加上模糊的余量），不再撑成整块内容那么大：
         // 目录有一万首时内容有几十万像素高，整张 SVG 会变成一张同样高的合成层，每次重画都很贵。
         const PAD = Math.ceil(thickness * 3 + 8);
-        let lastBox = '';
+        let lastOrigin = -1;
+        let lastLen = -1;
+        let lastCs = -1;
         const draw = (remeasure = false) => {
             if (remeasure || !cachedCs) measureContainer();
             const cs = cachedCs;
@@ -112,11 +114,18 @@
             const extent = cachedExtent;
             origin = Math.max(0, Math.floor(Math.min(s.hs, s.ts) - PAD));
             const len = Math.max(1, Math.min(extent - origin, Math.ceil(Math.max(s.he, s.te) + PAD - origin)));
-            const box = `${origin}|${len}|${cs}`;
-            if (box !== lastBox) {
-                lastBox = box;
-                if (axis === 'x') { svg.style.left = `${origin}px`; svg.setAttribute('width', String(len)); svg.setAttribute('height', String(cs)); }
-                else { svg.style.top = `${origin}px`; svg.setAttribute('height', String(len)); svg.setAttribute('width', String(cs)); }
+            if (origin !== lastOrigin) {
+                lastOrigin = origin;
+                if (axis === 'x') svg.style.left = `${origin}px`;
+                else svg.style.top = `${origin}px`;
+            }
+            if (len !== lastLen) {
+                lastLen = len;
+                svg.setAttribute(axis === 'x' ? 'width' : 'height', String(len));
+            }
+            if (cs !== lastCs) {
+                lastCs = cs;
+                svg.setAttribute(axis === 'x' ? 'height' : 'width', String(cs));
             }
             pill(head, headCache, s.hs, s.he, c, thickness);
             pill(tail, tailCache, s.ts, s.te, c, thickness * 0.9);

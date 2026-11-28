@@ -12,7 +12,11 @@
     const POLL_MS = 250;
     const RESYNC_MS = 3000;
 
-    const textOf = (line) => String((line && (line.text || line.original || line.fullText)) || '').trim();
+    const textOf = (line) => {
+        const raw = line && (line.text || line.original || line.fullText);
+        if (!raw) return '';
+        return typeof raw === 'string' ? raw.trim() : String(raw).trim();
+    };
     const lineAt = (lines, t) => {
         let lo = 0, hi = lines.length - 1, at = -1;
         while (lo <= hi) {
@@ -43,7 +47,15 @@
         wordsCache.set(line, { check, raw, len, packed });
         return packed;
     };
-    const pack = (line, showTr = true) => (line ? { text: textOf(line), tr: showTr ? String(line.translation || '').trim() : '', time: Number(line.time) || 0 } : null);
+    const pack = (line, showTr = true) => {
+        if (!line) return null;
+        let tr = '';
+        if (showTr && line.translation) {
+            const rawTr = line.translation;
+            tr = typeof rawTr === 'string' ? rawTr.trim() : String(rawTr).trim();
+        }
+        return { text: textOf(line), tr, time: Number(line.time) || 0 };
+    };
     const position = (app) => {
         const base = Number(app.lastKnownCurrentTime) || 0;
         if (!app.isPlaying || !app.lastStateUpdateTime) return base;
@@ -103,22 +115,34 @@
         const key = (s) => `${s.path ?? ''}\u0001${s.index}\u0001${s.playing ? 1 : 0}\u0001${s.hasLyrics ? 1 : 0}\u0001${(s.line && s.line.text) || ''}\u0001${(s.line && s.line.tr) || ''}\u0001${(s.next && s.next.text) || ''}\u0001${(s.next && s.next.tr) || ''}`;
         const publish = (force = false, fromEvent = false) => {
             if (!state.on || !api?.publishDesktopLyrics) return;
-            // 暂停且歌曲/歌词/译文开关/进度均无变化时，定时轮询直接短路，避免每秒 4 次构造 snapshot 与逐字数组
-            if (!force && !fromEvent && !app.isPlaying && state.sent && !state.sent.playing) {
-                const track = Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] : null;
-                const path = track ? track.path : null;
-                const all = Array.isArray(app.currentLyrics) ? app.currentLyrics : null;
-                const lyricsLen = all ? all.length : 0;
-                const showTr = app.lyricsTranslation !== false;
-                const pos = Number(app.lastKnownCurrentTime) || 0;
-                if (
-                    path === state.sent.path
-                    && all === state.sentLyrics
-                    && lyricsLen === state.sentLyricsLen
-                    && showTr === state.sentShowTr
-                    && Math.abs(pos - state.sent.position) < 0.05
-                ) {
-                    return;
+            // 定时轮询快速短路：曲目/歌词引用/译文开关不变时，暂停零分配返回，播放中在同一行且未到对时间隔/未漂移时同样跳过快照分配
+            if (!force && !fromEvent && state.sent) {
+                const playing = Boolean(app.isPlaying);
+                if (playing === state.sent.playing) {
+                    const track = Array.isArray(app.playlist) ? app.playlist[app.currentTrackIndex] : null;
+                    const path = track ? track.path : null;
+                    const all = Array.isArray(app.currentLyrics) ? app.currentLyrics : null;
+                    const lyricsLen = all ? all.length : 0;
+                    const showTr = app.lyricsTranslation !== false;
+                    if (path === state.sent.path && all === state.sentLyrics && lyricsLen === state.sentLyricsLen && showTr === state.sentShowTr) {
+                        if (!playing) {
+                            const pos = Number(app.lastKnownCurrentTime) || 0;
+                            if (Math.abs(pos - state.sent.position) < 0.05) return;
+                        } else {
+                            const nowFast = Date.now();
+                            const tFast = position(app);
+                            const driftFast = Math.abs(tFast - (state.sent.position + (nowFast - state.sent.at) / 1000));
+                            if (nowFast - state.sentAt < RESYNC_MS && driftFast < 1) {
+                                const lines = filteredLines(all || []);
+                                const k = lineAt(lines, tFast);
+                                const line = k >= 0 ? lines[k] : null;
+                                const nextLine = lines[k + 1] || null;
+                                const end = line && line.words && line.words.length ? Number(line.words[line.words.length - 1].endTime) : null;
+                                const resting = Boolean(line && nextLine && Number.isFinite(end) && tFast > end + 2 && (Number(nextLine.time) || 0) - tFast > 4);
+                                if ((resting ? -1 : k) === state.sent.index) return;
+                            }
+                        }
+                    }
                 }
             }
             const snap = snapshot(app);

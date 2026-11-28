@@ -194,7 +194,8 @@
                 const full = !clash && presets.length >= MAX;
                 ok.disabled = !name || full;
                 // 存满了就在框里直接说，别等点了「存」才弹错
-                note.textContent = full ? `已经存了 ${MAX} 个，只能覆盖同名的；或者先在预设下拉里删掉一个。` : clash ? '已经有同名的预设，存了会覆盖它。' : '存的是现在的十段增益。';
+                const msg = full ? `已经存了 ${MAX} 个，只能覆盖同名的；或者先在预设下拉里删掉一个。` : clash ? '已经有同名的预设，存了会覆盖它。' : '存的是现在的十段增益。';
+                if (note.textContent !== msg) note.textContent = msg;
             };
             input.addEventListener('input', refresh);
             refresh();

@@ -3,12 +3,14 @@
 
 function setupOutput(app) {
     let populateSeq = 0;
+    let lastDeviceSig = null;
     app.populateDeviceList = async (forceRefresh = false) => {
         if (!app.api?.getMusicDevices || !app.deviceSelect) return;
         const seq = ++populateSeq;
         // 引擎没起来、列设备失败时，下拉框原来是空的（一个选项都没有，看着像坏了）：至少留一个「默认设备」
         const keepDefault = () => {
             if (app.deviceSelect.options?.length) return;
+            lastDeviceSig = null;
             const opt = document.createElement('option');
             opt.value = 'default';
             opt.textContent = '默认设备';
@@ -19,44 +21,52 @@ function setupOutput(app) {
             const result = await app.api.getMusicDevices({ refresh: forceRefresh });
             if (seq !== populateSeq) return;
             if (result?.status === 'success' && result.devices) {
-                const useFrag = typeof document.createDocumentFragment === 'function';
-                const canReplace = useFrag && typeof app.deviceSelect.replaceChildren === 'function';
-                if (!canReplace) app.deviceSelect.innerHTML = '';
-                const target = useFrag ? document.createDocumentFragment() : app.deviceSelect;
-                const defaultOption = document.createElement('option');
-                defaultOption.value = 'default';
-                defaultOption.textContent = '默认设备';
-                target.appendChild(defaultOption);
-
                 const preferred = result.devices.preferred || [];
-                if (preferred.length > 0) {
-                    const group = document.createElement('optgroup');
-                    group.label = result.devices.preferred_name || '推荐设备';
-                    for (let i = 0; i < preferred.length; i += 1) {
-                        const d = preferred[i];
-                        const opt = document.createElement('option');
-                        opt.value = d.id;
-                        opt.textContent = d.name;
-                        group.appendChild(opt);
-                    }
-                    target.appendChild(group);
-                }
-
                 const other = result.devices.other || [];
-                if (other.length > 0) {
-                    const group = document.createElement('optgroup');
-                    group.label = '其他设备';
-                    for (let i = 0; i < other.length; i += 1) {
-                        const d = other[i];
-                        const opt = document.createElement('option');
-                        opt.value = d.id;
-                        opt.textContent = d.name;
-                        group.appendChild(opt);
+                const prefName = result.devices.preferred_name || '推荐设备';
+                let sig = prefName;
+                for (let i = 0; i < preferred.length; i += 1) sig += '\x1e' + String(preferred[i].id) + '\x1f' + String(preferred[i].name);
+                sig += '\x1d';
+                for (let i = 0; i < other.length; i += 1) sig += '\x1e' + String(other[i].id) + '\x1f' + String(other[i].name);
+                if (sig !== lastDeviceSig || !(app.deviceSelect.options?.length > 0)) {
+                    lastDeviceSig = sig;
+                    const useFrag = typeof document.createDocumentFragment === 'function';
+                    const canReplace = useFrag && typeof app.deviceSelect.replaceChildren === 'function';
+                    if (!canReplace) app.deviceSelect.innerHTML = '';
+                    const target = useFrag ? document.createDocumentFragment() : app.deviceSelect;
+                    const defaultOption = document.createElement('option');
+                    defaultOption.value = 'default';
+                    defaultOption.textContent = '默认设备';
+                    target.appendChild(defaultOption);
+
+                    if (preferred.length > 0) {
+                        const group = document.createElement('optgroup');
+                        group.label = prefName;
+                        for (let i = 0; i < preferred.length; i += 1) {
+                            const d = preferred[i];
+                            const opt = document.createElement('option');
+                            opt.value = d.id;
+                            opt.textContent = d.name;
+                            group.appendChild(opt);
+                        }
+                        target.appendChild(group);
                     }
-                    target.appendChild(group);
+
+                    if (other.length > 0) {
+                        const group = document.createElement('optgroup');
+                        group.label = '其他设备';
+                        for (let i = 0; i < other.length; i += 1) {
+                            const d = other[i];
+                            const opt = document.createElement('option');
+                            opt.value = d.id;
+                            opt.textContent = d.name;
+                            group.appendChild(opt);
+                        }
+                        target.appendChild(group);
+                    }
+                    if (canReplace) app.deviceSelect.replaceChildren(target);
+                    else if (useFrag) app.deviceSelect.appendChild(target);
                 }
-                if (canReplace) app.deviceSelect.replaceChildren(target);
-                else if (useFrag) app.deviceSelect.appendChild(target);
                 // 重建选项会把选中项清回第一个：放回引擎正在用的那个，不然打开窗口总显示「默认设备」。
                 const current = app.currentDeviceId === null || app.currentDeviceId === undefined ? 'default' : String(app.currentDeviceId);
                 let known = false;
@@ -64,7 +74,8 @@ function setupOutput(app) {
                 for (let i = 0; i < opts.length; i += 1) {
                     if (String(opts[i].value) === current) { known = true; break; }
                 }
-                app.deviceSelect.value = known ? current : 'default';
+                const nextVal = known ? current : 'default';
+                if (app.deviceSelect.value !== nextVal) app.deviceSelect.value = nextVal;
             } else keepDefault();
         } catch (e) {
             if (seq !== populateSeq) return;
@@ -101,12 +112,16 @@ function setupOutput(app) {
     };
     // 输出是在开始播放时才真正打开的，所以开播后和改设置后过一会儿再问一次。
     let fallbackCheckTimer = null;
+    let fallbackCheckSeq = 0;
     app.checkOutputFallbackSoon = (delay = 900) => {
         if (!app.api?.getMusicState) return;
         clearTimeout(fallbackCheckTimer);
+        const seq = ++fallbackCheckSeq;
         fallbackCheckTimer = setTimeout(async () => {
+            fallbackCheckTimer = null;
             try {
                 const result = await app.api.getMusicState();
+                if (seq !== fallbackCheckSeq) return;
                 if (result?.status === 'success') app.syncOutputFallback(result.state);
             } catch (e) { /* 只是提示 */ }
         }, delay);
@@ -199,6 +214,7 @@ function setupOutput(app) {
 
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('beforeunload', () => {
+            fallbackCheckSeq += 1;
             if (fallbackCheckTimer) { clearTimeout(fallbackCheckTimer); fallbackCheckTimer = null; }
         }, { once: true });
     }
