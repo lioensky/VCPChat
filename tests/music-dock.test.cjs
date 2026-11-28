@@ -936,6 +936,32 @@ test('keyboard: focus enters and leaves the drawer, tabs rove with arrow keys, t
     } finally { dock.destroy(); }
 });
 
+test('a narrow bar (window or panes squeeze it under 480px) folds play order and stage into the "more" row', async () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        const host = doc.getElementById('music-dock-root');
+        assert.ok(!host.classList.contains('md-narrow'));
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 420 });
+        window.dispatchEvent(new window.Event('resize'));
+        await new Promise((r) => setTimeout(r, 60));
+        assert.ok(host.classList.contains('md-narrow'), '420px window gives a narrow bar');
+        const before = app.currentPlayMode;
+        const toggles = [];
+        app.stageHost = { ...(app.stageHost || {}), toggle: () => toggles.push(1) };
+        doc.querySelector('[data-md="more"]').click();
+        doc.querySelector('.md-quick [data-q="mode"]').click();
+        assert.equal(app.currentPlayMode, (before + 1) % 3, 'mode button in the row cycles the play order');
+        assert.equal(doc.querySelector('.md-quick [data-q="mode"]').getAttribute('aria-label'), doc.querySelector('[data-md="mode"]').getAttribute('aria-label'));
+        doc.querySelector('[data-md="more"]').click();
+        doc.querySelector('.md-quick [data-q="stage"]').click();
+        assert.equal(toggles.length, 1, 'stage button in the row toggles the stage');
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
+        window.dispatchEvent(new window.Event('resize'));
+        await new Promise((r) => setTimeout(r, 60));
+        assert.ok(!host.classList.contains('md-narrow'));
+    } finally { dock.destroy(); }
+});
+
 test('the bar keeps play order, stage, more and panel on the right; the quick row above "more" holds queue, effects and volume', () => {
     const { window, doc, dock } = setup();
     try {
@@ -944,7 +970,9 @@ test('the bar keeps play order, stage, more and panel on the right; the quick ro
         const quick = doc.querySelector('.md-quick');
         // 播放顺序、舞台、更多、面板常驻条上；喜欢的接口不在时心形不出现
         assert.deepEqual([...bar.querySelectorAll('.md-slots button')].filter((b) => !b.hidden).map((b) => b.dataset.md), ['mode', 'stage', 'more', 'panel']);
-        assert.deepEqual([...quick.querySelectorAll('button')].filter((b) => !b.hidden).map((b) => b.dataset.md || b.dataset.q), ['queue', 'fx', 'vol']);
+        assert.deepEqual([...quick.querySelectorAll('button:not(.md-q-narrow)')].filter((b) => !b.hidden).map((b) => b.dataset.md || b.dataset.q), ['queue', 'fx', 'vol']);
+        // 窄的时候才露出来的两颗：播放模式和舞台（CSS 在 #music-dock-root.md-narrow 下显示）
+        assert.deepEqual([...quick.querySelectorAll('.md-q-narrow')].map((b) => b.dataset.q), ['mode', 'stage']);
         assert.equal(more.getAttribute('aria-expanded'), 'false');
 
         more.click();

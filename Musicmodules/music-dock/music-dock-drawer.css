@@ -765,3 +765,10 @@ body.music-fl-low .mtst::before { display: none; }
   .mtst.mtst-evap::after { animation: none; }
   #music-dock-root .md-dock, .md-fluid, .md-mist, #music-dock-root.md-fl-on .md-hdl { transition: none; }
 }
+
+/* 播放条窄（目录、歌词、抽屉都开着，或窗口很窄）：播放模式、舞台两颗收进「⋯」，歌手名先让，先保歌名和进度条够长 */
+#music-dock-root .md-q-narrow { display: none; }
+#music-dock-root.md-narrow .md-q-narrow { display: grid; }
+#music-dock-root.md-narrow .md-slots > :is([data-md="mode"], [data-md="stage"]) { display: none; }
+#music-dock-root.md-narrow .md-sub [data-md="artist"] { display: none; }
+#music-dock-root.md-narrow .md-sub .md-tms::before { content: none; }

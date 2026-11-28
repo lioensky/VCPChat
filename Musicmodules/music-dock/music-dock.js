@@ -82,6 +82,8 @@
         host.innerHTML = `
 <div class="md-dock"><div class="md-dock-in">
   <div class="md-quick" id="music-dock-quick"><div class="md-quick-in"><div class="md-quick-g" role="toolbar" aria-label="快捷操作">
+    <button class="md-slot md-qb md-q-narrow" type="button" data-q="mode" aria-label="播放模式" title="播放模式"></button>
+    <button class="md-slot md-qb md-q-narrow" type="button" data-q="stage" aria-label="歌词舞台" title="进入歌词舞台">${icon('sparkle', 17)}</button>
     <button class="md-slot md-qb" type="button" data-q="queue" aria-label="播放列表" title="播放列表">${icon('list-music', 17)}</button>
     <button class="md-slot md-qb md-like" type="button" data-md="like" aria-label="喜欢" aria-pressed="false" title="喜欢（L）" hidden>${icon('heart', 17)}</button>
     <button class="md-slot md-qb" type="button" data-q="fx" aria-label="音效设置" title="音效设置">${icon('sliders-horizontal', 17)}</button>
@@ -869,7 +871,8 @@
         });
         // 点播放条空白处不再进舞台（不直观，容易误触）；进舞台走右边的舞台按钮。
 
-        const quickActions = { queue: () => openPanel('播放列表'), fx: () => openSheet() };
+        // 播放条窄（目录、歌词、抽屉都开着）时，播放模式和舞台两颗按钮收进「⋯」，让出位置给歌名和进度条
+        const quickActions = { queue: () => openPanel('播放列表'), fx: () => openSheet(), mode: () => cycleMode(), stage: () => toggleStage() };
         const renderQuick = () => {};
         listen(el.quickGroup, 'click', (event) => {
             const button = event.target.closest('[data-q]');
@@ -930,6 +933,13 @@
             b.classList.toggle('md-on', m !== 'repeat');
             b.setAttribute('aria-label', MODE_LABELS[m] || '播放模式');
             b.title = MODE_LABELS[m] || '播放模式';
+            const q = el.quickGroup.querySelector('[data-q="mode"]');
+            if (q) {
+                q.innerHTML = icon(MODE_ICONS[m] || 'repeat', 17);
+                q.classList.toggle('md-on', m !== 'repeat');
+                q.setAttribute('aria-label', MODE_LABELS[m] || '播放模式');
+                q.title = MODE_LABELS[m] || '播放模式';
+            }
         };
         listen(el.modeSlot, 'click', (event) => { event.stopPropagation(); cycleMode(); });
 
@@ -1505,6 +1515,8 @@
         const DRAWER_W = 400;
         const LIST_BAR_MAX = 600;   // 目录开着时播放条最长到这里，比平时短一截
         const LIST_GAP = 24;        // 和目录右缘之间留的空
+        const BETWEEN_MIN = 480;    // 目录和歌词中间放得下这么宽才夹在中间，否则从歌词栏下面过
+        const NARROW_BAR = 480;     // 播放条比这窄：播放模式、舞台按钮收进「⋯」
         const DRAWER_LYRICS_GAP = 12;   // 抽屉顶开歌词时，文字左侧本身还有内边距。
         const archiveEdges = (vw) => {
             if (vw < COMPACT_BELOW || stageActive() || app.archiveView?.mode !== 'archive') return null;
@@ -1606,7 +1618,12 @@
             const span = room - lo;
             let barW = natural;
             let left = vw / 2 - natural / 2;
-            if (betweenPanes) {
+            // 目录和歌词中间太窄（三块都开着）：不再硬塞在中间，改成从目录右边一直伸到抽屉前，
+            // 从歌词栏下面过（歌词栏底边让开，见 music-dock-beside-lyrics）。播放条至少要能看清歌名、拖得动进度。
+            if (betweenPanes && lyricsLeft - listRight - 2 * LIST_GAP < BETWEEN_MIN) {
+                barW = Math.max(280, Math.min(natural, LIST_BAR_MAX, drawerEdge - lo));
+                left = drawerEdge - lo >= barW ? lo + (drawerEdge - lo - barW) / 2 : lo;
+            } else if (betweenPanes) {
                 const center = (listRight + lyricsLeft) / 2;
                 barW = Math.max(280, Math.min(natural, LIST_BAR_MAX, lyricsLeft - listRight - 2 * LIST_GAP));
                 left = Math.max(12, Math.min(center - barW / 2, room - barW));
@@ -1626,6 +1643,7 @@
             const was = barTarget.style.getPropertyValue('--md-bar-w');
             const now = resized ? `${Math.round(barW)}px` : '';
             host.classList.toggle('md-squeeze', squeezed);
+            host.classList.toggle('md-narrow', (resized ? barW : natural) < NARROW_BAR);
             if (was !== now) {
                 if (resized) barTarget.style.setProperty('--md-bar-w', now); else barTarget.style.removeProperty('--md-bar-w');
                 cachedRange = null;
@@ -1634,7 +1652,7 @@
             document.body.classList.toggle('music-dock-beside-list', betweenPanes ? left >= listRight : Boolean(edge));
             const lyricsGap = lyricsLeft - left - barW;
             document.body.classList.toggle('music-dock-beside-lyrics', lyricsGap >= lyricsClearance - 0.5);
-            const mistRoom = betweenPanes ? Math.min(left - listRight, lyricsGap) : left - edge;
+            const mistRoom = betweenPanes ? Math.min(left - listRight, lyricsGap >= 0 ? lyricsGap : drawerEdge - left - barW) : left - edge;
             const mistPad = betweenPanes || edge ? `${Math.round(Math.max(0, mistRoom))}px` : '';
             const mistChanged = lastMistPad !== mistPad;
             if (mistChanged) {

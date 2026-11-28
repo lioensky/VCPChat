@@ -237,7 +237,7 @@
             if (!(rect.width > 0 && rect.height > 0)) return false;
             const padVar = parseFloat(mistPadRaw !== null ? mistPadRaw : host.style.getPropertyValue('--md-mist-pad'));
             const pad = Number.isFinite(padVar) ? Math.max(0, Math.min(180, padVar)) : 180;
-            const barSig = `${rect.left.toFixed(1)}|${rect.top.toFixed(1)}|${rect.width.toFixed(1)}|${rect.height.toFixed(1)}|${vh}|${pad.toFixed(1)}|${host.classList.contains('md-squeeze') ? 1 : 0}`;
+            const barSig = `${rect.left.toFixed(1)}|${rect.top.toFixed(1)}|${rect.width.toFixed(1)}|${rect.height.toFixed(1)}|${vh}|${pad.toFixed(1)}|${host.classList.contains('md-squeeze') ? 1 : 0}${host.classList.contains('md-narrow') ? 1 : 0}`;
             if (s.ring.placed && barSig === lastBarSig) return true;
             const layerW = Math.round(rect.width + PAD_X * 2);
             const left = Math.round(rect.left - PAD_X);
