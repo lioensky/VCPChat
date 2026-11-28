@@ -454,3 +454,84 @@ test('diorama-lyrics uses per-vertex glyphSpan without 64-step fragment loop and
     assert.match(tunnelSrc, /glyphScrim\.geometry/);
     assert.match(tunnelSrc, /glyphScrim\.material/);
 });
+
+test('Batch 131: releaseWebGLContext defers loseContext until GPU fence signals and flushes on beforeunload', () => {
+    const dom = createDom();
+    const win = loadStage(dom);
+    const timers = [];
+    win.setTimeout = (fn) => { timers.push({ fn, cleared: false }); return timers.length; };
+    win.clearTimeout = (id) => { if (timers[id - 1]) timers[id - 1].cleared = true; };
+
+    let signaled = false;
+    let flushed = 0;
+    let deletedSync = 0;
+    let lost = 0;
+    const canvas = { width: 1440, height: 900, isConnected: false };
+    const syncToken = { id: 1 };
+    const gl = {
+        SYNC_GPU_COMMANDS_COMPLETE: 0x9117,
+        SYNC_STATUS: 0x9114,
+        SIGNALED: 0x9119,
+        UNSIGNALED: 0x9118,
+        canvas,
+        isContextLost: () => lost > 0,
+        fenceSync: () => syncToken,
+        flush: () => { flushed += 1; },
+        getSyncParameter: () => (signaled ? 0x9119 : 0x9118),
+        deleteSync: (s) => { if (s === syncToken) deletedSync += 1; },
+        getExtension: (name) => (name === 'WEBGL_lose_context' ? { loseContext: () => { lost += 1; } } : null)
+    };
+    const renderer = { getContext: () => gl, forceContextLoss: () => { lost += 100; } };
+
+    assert.equal(win.MusicStageRuntime.releaseWebGLContext(renderer), true);
+    assert.equal(flushed, 1, 'fenceSync immediately flushes GPU command queue');
+    assert.equal(lost, 0, 'loseContext is deferred while GPU fence is unsignaled');
+    assert.equal(timers.length, 1);
+
+    // First poll: still unsignaled -> reschedules without stalling
+    timers[0].fn();
+    assert.equal(lost, 0);
+    assert.equal(timers.length, 2);
+
+    // Second poll: fence signaled -> deletes sync, shrinks detached canvas, loses context
+    signaled = true;
+    timers[1].fn();
+    assert.equal(deletedSync, 1);
+    assert.equal(canvas.width, 1);
+    assert.equal(canvas.height, 1);
+    assert.equal(lost, 1);
+
+    // Pending release flushes synchronously on beforeunload
+    signaled = false;
+    let unloadLost = 0;
+    const gl2 = {
+        ...gl,
+        isContextLost: () => unloadLost > 0,
+        getExtension: (name) => (name === 'WEBGL_lose_context' ? { loseContext: () => { unloadLost += 1; } } : null)
+    };
+    win.MusicStageRuntime.releaseWebGLContext({ getContext: () => gl2 });
+    assert.equal(unloadLost, 0);
+    win.dispatchEvent(new win.Event('beforeunload'));
+    assert.equal(unloadLost, 1, 'beforeunload flushes pending WebGL context release');
+
+    // Immediate flag falls back to synchronous forceContextLoss
+    let syncForced = 0;
+    win.MusicStageRuntime.releaseWebGLContext({ forceContextLoss: () => { syncForced += 1; } }, { immediate: true });
+    assert.equal(syncForced, 1);
+
+    // Verify 3D stages wire releaseWebGLContext and Kowloon prepares haze before precompile
+    const kowloonSrc = read('Musicmodules/music-stage/modes/kowloon-manager.js');
+    const prepareIdx = kowloonSrc.indexOf('alley?.prepareHaze?.()');
+    const precompileIdx = kowloonSrc.indexOf('await U.precompile(');
+    assert.ok(prepareIdx > 0 && precompileIdx > prepareIdx, 'kowloon patches layered haze before shader precompile');
+    assert.match(kowloonSrc, /R\.releaseWebGLContext/);
+    assert.match(read('Musicmodules/music-stage/modes/diorama-manager.js'), /R\.releaseWebGLContext/);
+    const tunnelSrc = read('Musicmodules/music-stage/modes/tunnel-manager.js');
+    assert.match(tunnelSrc, /R\.releaseWebGLContext/);
+    assert.match(tunnelSrc, /await U\.settlePrograms\(renderer/);
+    const signsSrc = read('Musicmodules/music-stage/modes/kowloon-signs.js');
+    assert.match(signsSrc, /willReadFrequently:\s*true/);
+    assert.doesNotMatch(signsSrc, /shadowBlur/);
+
+    dom.window.close();
+});
