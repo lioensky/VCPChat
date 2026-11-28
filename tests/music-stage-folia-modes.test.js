@@ -288,3 +288,117 @@ test('createStillGate invalidates cached frame when MusicMotion.reduced() flips 
         else window.MusicMotion = prevMotion;
     }
 });
+
+test('MusicStageRuntime parallel shader compiler avoids sync blocking and cleans up on cancel', () => {
+    const R = window.MusicStageRuntime;
+    const KHR = 0x91B1;
+    let complete = false;
+    let syncLinkChecks = 0;
+    let deletedShaders = 0;
+    let createdShaders = 0;
+    const rafQueue = [];
+    const prevRaf = window.requestAnimationFrame;
+    const prevCancelRaf = window.cancelAnimationFrame;
+    window.requestAnimationFrame = (fn) => { rafQueue.push(fn); return rafQueue.length; };
+    window.cancelAnimationFrame = () => {};
+
+    const makeMockGl = (withKhr) => ({
+        VERTEX_SHADER: 0x8B31,
+        FRAGMENT_SHADER: 0x8B30,
+        COMPILE_STATUS: 0x8B81,
+        LINK_STATUS: 0x8B82,
+        ACTIVE_UNIFORMS: 0x8B86,
+        isContextLost: () => false,
+        getExtension: (name) => (withKhr && name === 'KHR_parallel_shader_compile' ? { COMPLETION_STATUS_KHR: KHR } : null),
+        createShader: (type) => ({ id: ++createdShaders, type }),
+        shaderSource: () => {},
+        compileShader: () => {},
+        createProgram: () => ({ id: Math.random() }),
+        attachShader: () => {},
+        linkProgram: () => {},
+        deleteShader: () => { deletedShaders += 1; },
+        deleteProgram: () => {},
+        getShaderParameter: () => true,
+        getShaderInfoLog: () => '',
+        getProgramInfoLog: () => '',
+        getProgramParameter: (_p, pname) => {
+            if (pname === KHR) return complete;
+            if (pname === 0x8B82) { syncLinkChecks += 1; return true; }
+            if (pname === 0x8B86) return 1;
+            return 0;
+        },
+        getActiveUniform: () => ({ name: 'uTime[0]' }),
+        getUniformLocation: (_p, name) => `loc:${name}`
+    });
+
+    try {
+        // 1. With KHR_parallel_shader_compile: compileProgram returns immediately without blocking LINK_STATUS
+        const gl = makeMockGl(true);
+        const entry = R.compileProgram(gl, 'vs', 'fs', 'test');
+        assert.equal(syncLinkChecks, 0, 'compileProgram must not query LINK_STATUS synchronously when KHR is present');
+        assert.equal(deletedShaders, 0);
+
+        let readyCalls = 0;
+        assert.equal(R.programsReady(gl, () => { readyCalls += 1; }), false);
+        assert.equal(syncLinkChecks, 0, 'programsReady must not block while COMPLETION_STATUS_KHR is false');
+        assert.equal(rafQueue.length, 1, 'schedules non-blocking poll');
+
+        complete = true;
+        rafQueue.shift()();
+        assert.equal(readyCalls, 1, 'invokes onReady once shaders finish compiling');
+        assert.equal(entry.uniforms.uTime, 'loc:uTime[0]', 'populates uniforms in-place on the returned entry');
+        assert.equal(deletedShaders, createdShaders, 'deletes vertex and fragment shaders after linking');
+        assert.equal(R.programsReady(gl), true, 'subsequent checks return true immediately');
+
+        // 2. cancelPrograms cleans up pending shaders if destroyed mid-compile
+        complete = false;
+        const gl2 = makeMockGl(true);
+        R.compileProgram(gl2, 'vs', 'fs', 'cancel-test');
+        const beforeCancelDel = deletedShaders;
+        R.cancelPrograms(gl2);
+        assert.equal(deletedShaders, beforeCancelDel + 2, 'cancelPrograms deletes un-finalized shaders');
+
+        // 3. Without KHR_parallel_shader_compile: synchronous fallback still populates uniforms
+        const glSync = makeMockGl(false);
+        const syncEntry = R.compileProgram(glSync, 'vs', 'fs', 'sync-test');
+        assert.equal(syncEntry.uniforms.uTime, 'loc:uTime[0]');
+        assert.equal(R.programsReady(glSync), true);
+    } finally {
+        if (prevRaf === undefined) delete window.requestAnimationFrame; else window.requestAnimationFrame = prevRaf;
+        if (prevCancelRaf === undefined) delete window.cancelAnimationFrame; else window.cancelAnimationFrame = prevCancelRaf;
+    }
+});
+
+test('MusicStageModeUtils.noiseTexture avoids per-frame gl.isTexture IPC and rebuilds after context loss', () => {
+    const U = window.MusicStageModeUtils;
+    let isTextureCalls = 0;
+    let createCalls = 0;
+    let lost = false;
+    const listeners = {};
+    const gl = {
+        TEXTURE_2D: 0x0DE1, UNPACK_ALIGNMENT: 0x0CF5, R16F: 0x822D, RED: 0x1903, FLOAT: 0x1406,
+        TEXTURE_MIN_FILTER: 0x2801, TEXTURE_MAG_FILTER: 0x2800, LINEAR: 0x2601,
+        TEXTURE_WRAP_S: 0x2802, TEXTURE_WRAP_T: 0x2803, REPEAT: 0x2901,
+        canvas: { addEventListener: (ev, fn) => { listeners[ev] = fn; } },
+        isContextLost: () => lost,
+        isTexture: () => { isTextureCalls += 1; return true; },
+        createTexture: () => ({ id: ++createCalls }),
+        bindTexture: () => {},
+        pixelStorei: () => {},
+        texImage2D: () => {},
+        texParameteri: () => {}
+    };
+    const t1 = U.noiseTexture(gl);
+    const t2 = U.noiseTexture(gl);
+    assert.strictEqual(t1, t2, 'reuses cached noise texture');
+    assert.equal(isTextureCalls, 0, 'never calls synchronous gl.isTexture IPC');
+    assert.equal(createCalls, 1);
+
+    // Context lost invalidates cached texture; restored context creates a fresh texture
+    lost = true;
+    listeners.webglcontextlost?.();
+    lost = false;
+    const t3 = U.noiseTexture(gl);
+    assert.notStrictEqual(t3, t1, 'rebuilds noise texture after webglcontextlost');
+    assert.equal(createCalls, 2);
+});
