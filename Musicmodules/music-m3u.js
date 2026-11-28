@@ -14,26 +14,52 @@
     const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
     const M3U_EXT_RE = /^m3u8?$/;
     const M3U_NAME_RE = /\.m3u8?$/i;
-    const norm = (p) => String(p || '').replace(SLASH_RE, '\\').toLowerCase();
+    const norm = (p) => {
+        const s = typeof p === 'string' ? p : String(p || '');
+        return (s.indexOf('/') !== -1 ? s.replace(SLASH_RE, '\\') : s).toLowerCase();
+    };
     // 和主进程扫描器（musicLibraryScanner SUPPORTED_FORMATS）一致
     const SUPPORTED = new Set(['mp3', 'wav', 'ogg', 'flac', 'm4a']);
     const extOf = (name) => { const m = EXT_RE.exec(String(name || '')); return m ? m[1].toLowerCase() : ''; };
 
     // entries: [{ path, exists }]，library: [{ path }] → { paths, toAdd, missing }
     const matchEntries = (entries, library) => {
-        const byPath = new Map();
-        for (const t of library || []) if (t && t.path) byPath.set(norm(t.path), t.path);
+        const list = entries || [];
+        const lib = library || [];
+        const entryKeys = new Array(list.length);
+        const wanted = new Map();
+        for (let i = 0; i < list.length; i += 1) {
+            const e = list[i];
+            if (!e || !e.path) continue;
+            const k = norm(e.path);
+            entryKeys[i] = k;
+            if (!wanted.has(k)) wanted.set(k, null);
+        }
+        let remaining = wanted.size;
+        if (remaining > 0 && lib.length > 0) {
+            // 倒序遍历保持与原全量 Map 同名后项覆盖语义一致，匹配齐即提前退出
+            for (let i = lib.length - 1; i >= 0; i -= 1) {
+                const t = lib[i];
+                if (!t || !t.path) continue;
+                const k = norm(t.path);
+                if (wanted.get(k) === null) {
+                    wanted.set(k, t.path);
+                    if (--remaining === 0) break;
+                }
+            }
+        }
         const paths = [];
         const toAdd = [];
         const seen = new Set();
         let missing = 0;
-        for (const e of entries || []) {
+        for (let i = 0; i < list.length; i += 1) {
+            const e = list[i];
             if (!e || !e.path) continue;
-            const key = norm(e.path);
-            if (seen.has(key)) continue;
-            const hit = byPath.get(key);
-            if (hit) { seen.add(key); paths.push(hit); }
-            else if (e.exists) { seen.add(key); paths.push(e.path); toAdd.push(e.path); }
+            const k = entryKeys[i];
+            if (seen.has(k)) continue;
+            const hit = wanted.get(k);
+            if (hit) { seen.add(k); paths.push(hit); }
+            else if (e.exists) { seen.add(k); paths.push(e.path); toAdd.push(e.path); }
             else missing++;
         }
         return { paths, toAdd, missing };
@@ -96,19 +122,33 @@
 
         const exportPlaylist = async (pl) => {
             if (!pl) return null;
-            const byNorm = new Map();
-            for (const t of app.playlist || []) {
-                if (!t || !t.path) continue;
-                const key = norm(t.path);
-                if (!byNorm.has(key)) byNorm.set(key, t);
-            }
             const rawTracks = pl.tracks || [];
+            const lib = app.playlist || [];
+            const normKeys = new Array(rawTracks.length);
+            const matched = new Map();
+            for (let i = 0; i < rawTracks.length; i += 1) {
+                const k = norm(rawTracks[i]);
+                normKeys[i] = k;
+                if (!matched.has(k)) matched.set(k, null);
+            }
+            let remaining = matched.size;
+            if (remaining > 0 && lib.length > 0) {
+                for (let i = 0; i < lib.length; i += 1) {
+                    const t = lib[i];
+                    if (!t || !t.path) continue;
+                    const k = norm(t.path);
+                    if (matched.get(k) === null) {
+                        matched.set(k, t);
+                        if (--remaining === 0) break;
+                    }
+                }
+            }
             const tracks = [];
             for (let i = 0; i < rawTracks.length; i += 1) {
                 const p = rawTracks[i];
-                const t = byNorm.get(norm(p));
+                const t = matched.get(normKeys[i]);
                 const path = t ? t.path : p;
-                if (typeof path !== 'string' || SCHEME_RE.test(path)) continue; // 云端（WebDAV）的歌别的播放器打不开
+                if (typeof path !== 'string' || (path.indexOf('://') !== -1 && SCHEME_RE.test(path))) continue; // 云端（WebDAV）的歌别的播放器打不开
                 tracks.push(t ? { path, title: t.title || '', artist: t.artist || '', duration: Number(t.duration) || 0 } : { path });
             }
             if (!tracks.length) { toast(`「${pl.name}」里没有本机的歌，没什么可导出的`, { kind: 'error' }); return null; }

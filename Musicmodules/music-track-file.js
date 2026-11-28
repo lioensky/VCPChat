@@ -10,9 +10,9 @@
     const EXT_RE = /\.([a-z0-9]{1,5})$/i;
     const QUERY_HASH_RE = /[?#]/;
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
-    const isLocal = (p) => typeof p === 'string' && p !== '' && !SCHEME_RE.test(p);
+    const isLocal = (p) => typeof p === 'string' && p !== '' && (p.indexOf('://') === -1 || !SCHEME_RE.test(p));
 
-    const pad2 = (n) => String(n).padStart(2, '0');
+    const pad2 = (n) => (n < 10 ? '0' : '') + n;
     const clock = (sec) => {
         const s = Math.round(Number(sec) || 0);
         if (s <= 0) return '';
@@ -235,14 +235,21 @@
             menu.classList.remove('visible');
             app.showTrackInFolder(app.contextMenuTrackIndex);
         });
-        // 菜单每次打开时看一眼：云端的歌没有这一项
+        // 菜单每次打开前看一眼：云端的歌没有这一项（优先挂在 showContextMenu 之前，避免弹出后再藏项抖动）
         const sync = () => {
-            if (!menu.classList.contains('visible')) return;
             const hide = !isLocal(app.playlist?.[app.contextMenuTrackIndex]?.path);
             if (item.hidden !== hide) item.hidden = hide;
         };
-        if (typeof global.MutationObserver === 'function') {
-            const menuObs = new global.MutationObserver(sync);
+        let hooks = global.MusicAppHooks;
+        if (!hooks && typeof require === 'function') {
+            try { hooks = require('./music-app-hooks.js'); } catch (e) { hooks = null; }
+        }
+        if (typeof app.showContextMenu === 'function' && typeof hooks?.before === 'function') {
+            hooks.before(app, 'showContextMenu', 'track-file', sync);
+        } else if (typeof global.MutationObserver === 'function') {
+            const menuObs = new global.MutationObserver(() => {
+                if (menu.classList.contains('visible')) sync();
+            });
             menuObs.observe(menu, { attributes: true, attributeFilter: ['class'] });
             global.addEventListener?.('beforeunload', () => menuObs.disconnect(), { once: true });
         }

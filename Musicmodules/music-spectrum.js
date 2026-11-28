@@ -53,7 +53,15 @@
                 t = im[i]; im[i] = im[j]; im[j] = t;
             }
         }
-        for (let len = 2; len <= n; len <<= 1) {
+        // 首级（len = 2）旋转因子恒为 (1, 0)，省去整级复乘
+        for (let i = 0; i < n; i += 2) {
+            const b = i + 1;
+            const xr = re[b];
+            const xi = im[b];
+            re[b] = re[i] - xr; im[b] = im[i] - xi;
+            re[i] += xr; im[i] += xi;
+        }
+        for (let len = 4; len <= n; len <<= 1) {
             const half = len >> 1;
             for (let i = 0; i < n; i += len) {
                 for (let k = 0; k < half; k++) {
@@ -100,6 +108,8 @@
         const ch0 = channels[0];
         const ch1 = channels[1];
         const invCh = chCount > 0 ? 1 / chCount : 0;
+        const loudThresh = size * 1e-5; // 大约 -50 dBFS 以上才算有声音
+        const invN2 = 1 / (size * size);
         for (let c = 0; c < count; c++) {
             const start = Math.floor(c * step);
             let energy = 0;
@@ -129,13 +139,19 @@
             }
             fft(re, im);
             const col = new Float32Array(bins);
-            const isLoud = energy / size > 1e-5; // 大约 -50 dBFS 以上才算有声音
-            const invN2 = 1 / (size * size);
-            if (isLoud) loud++;
-            for (let k = 0; k < bins; k++) {
-                const p = (re[k] * re[k] + im[k] * im[k]) * invN2;
-                col[k] = LOG10_SCALE * Math.log(p + 1e-20);
-                if (isLoud) power[k] += p + 1e-20;
+            if (energy > loudThresh) {
+                loud++;
+                for (let k = 0; k < bins; k++) {
+                    const rk = re[k], ik = im[k];
+                    const p = (rk * rk + ik * ik) * invN2 + 1e-20;
+                    col[k] = LOG10_SCALE * Math.log(p);
+                    power[k] += p;
+                }
+            } else {
+                for (let k = 0; k < bins; k++) {
+                    const rk = re[k], ik = im[k];
+                    col[k] = LOG10_SCALE * Math.log((rk * rk + ik * ik) * invN2 + 1e-20);
+                }
             }
             out.push(col);
         }
@@ -354,15 +370,19 @@
             const invRange = 255 / (top - floor);
             const data = img.data;
             const { k0Lut, k1Lut } = getRowLuts(bins);
+            const rowStride = w * 4;
             for (let x = 0; x < w; x++) {
                 const col = columns[x];
-                for (let y = 0; y < ROWS; y++) {
+                let o = x * 4;
+                for (let y = 0; y < ROWS; y++, o += rowStride) {
                     const k0 = k0Lut[y];
                     const k1 = k1Lut[y];
                     let m = -200;
                     for (let k = k0; k < k1; k++) if (col[k] > m) m = col[k];
-                    const idx = Math.max(0, Math.min(255, Math.round((m - floor) * invRange))) * 3;
-                    const o = (y * w + x) * 4;
+                    let ci = ((m - floor) * invRange + 0.5) | 0;
+                    if (ci < 0) ci = 0;
+                    else if (ci > 255) ci = 255;
+                    const idx = ci * 3;
                     data[o] = COLOR_LUT[idx]; data[o + 1] = COLOR_LUT[idx + 1]; data[o + 2] = COLOR_LUT[idx + 2]; data[o + 3] = 255;
                 }
             }

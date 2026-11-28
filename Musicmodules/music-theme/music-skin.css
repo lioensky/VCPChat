@@ -292,7 +292,7 @@ body.music-stage-active #custom-title-bar {
 .sidebar-playlist {
     counter-reset: track;
     padding: 4px 0 16px;
-    contain: strict;
+    contain: layout paint style;
 }
 
 .playlist li,

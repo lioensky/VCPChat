@@ -10,31 +10,41 @@
 
     const KEY = 'musicLyricsAiTranslate';
     const NOTICE_KEY = 'musicLyricsAiNoticeShown';
-    const KANA_HANGUL_RE = /[぀-ヿ가-힯ᄀ-ᇿ]/;
-    const HAN_RE = /[一-鿿]/;
 
-    const textOf = (line) => String((line && (line.original ?? line.text ?? line.fullText)) || '').trim();
+    const textOf = (line) => {
+        const raw = line && (line.original ?? line.text ?? line.fullText);
+        if (!raw) return '';
+        return typeof raw === 'string' ? raw.trim() : String(raw).trim();
+    };
 
     // 这份歌词要不要翻：已有翻译的（三成以上行有译文）不翻；有正文的行里一半以上是外语才翻。
     // 外语 = 有假名或谚文，或者有拉丁字母而没有汉字。纯中文、纯音乐（没词）都不翻。
     function needsTranslation(lines) {
         if (!Array.isArray(lines) || lines.length < 2) return false;
         let withText = 0, foreign = 0, translated = 0;
-        for (const line of lines) {
+        for (let li = 0; li < lines.length; li += 1) {
+            const line = lines[li];
             const t = textOf(line);
             if (!t) continue;
-            withText++;
-            if (String(line.translation || '').trim()) translated++;
-            const kanaOrHangul = KANA_HANGUL_RE.test(t);
+            withText += 1;
+            const tr = line.translation;
+            if (tr && (typeof tr === 'string' ? tr.trim() : String(tr).trim())) translated += 1;
+            let isForeign = false;
+            let hasHan = false;
             let latin = 0;
-            if (!kanaOrHangul) {
-                for (let i = 0; i < t.length && latin < 3; i++) {
-                    const c = t.charCodeAt(i);
-                    if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 0xC0 && c <= 0x24F)) latin++;
+            for (let i = 0; i < t.length; i += 1) {
+                const c = t.charCodeAt(i);
+                if ((c >= 0x3040 && c <= 0x30FF) || (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0x1100 && c <= 0x11FF)) {
+                    isForeign = true;
+                    break;
+                }
+                if (c >= 0x4E00 && c <= 0x9FFF) {
+                    hasHan = true;
+                } else if (!hasHan && latin < 3 && ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 0xC0 && c <= 0x24F))) {
+                    latin += 1;
                 }
             }
-            const han = !kanaOrHangul && latin >= 3 && HAN_RE.test(t);
-            if (kanaOrHangul || (latin >= 3 && !han)) foreign++;
+            if (isForeign || (!hasHan && latin >= 3)) foreign += 1;
         }
         if (withText < 2) return false;
         if (translated >= withText * 0.3) return false;

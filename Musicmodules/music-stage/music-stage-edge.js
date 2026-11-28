@@ -107,7 +107,7 @@
                 }
             });
             observer.observe(root);
-            scope.add(() => observer.disconnect());
+            scope?.add?.(() => observer.disconnect());
         }
         const stageSize = () => {
             if (!rootSize || !global.ResizeObserver) rootSize = { width: root.clientWidth, height: root.clientHeight };
@@ -257,7 +257,6 @@
         };
 
         const fillFlatEndpoints = (points, side, inset, width, height) => {
-            points._fixedRev = 0;
             const last = points.length - 2;
             const isTop = side === 'top';
             const isBottom = side === 'bottom';
@@ -307,21 +306,26 @@
                 points._fixedRev = layoutRev;
             }
             const dynOffset = horizontal ? 1 : 0;
+            if (specLen <= 0) {
+                for (let index = 0, ptr = dynOffset; index < count; index += 1, ptr += 2) points[ptr] = baseAxis;
+                return false;
+            }
+            const signedScale = sign * idleScale;
+            const motionMin = 0.05 / idleScale;
             let hasMotion = false;
-            for (let index = 0; index < count; index += 1) {
-                let disp = 0;
-                if (specLen > 0) {
-                    const value = (specPrefix[hiArr[index] + 1] - specPrefix[loArr[index]]) * invSpan[index];
-                    if (value > 0.025) {
-                        const lutIdx = value >= 1 ? POW_LUT_SIZE : (value * POW_LUT_SIZE) | 0;
-                        const sample = POW_LUT[lutIdx];
-                        if (sample > 0) {
-                            disp = sample * scaledFades[index] * idleScale;
-                            if (disp > 0.05) hasMotion = true;
-                        }
+            for (let index = 0, ptr = dynOffset; index < count; index += 1, ptr += 2) {
+                const value = (specPrefix[hiArr[index] + 1] - specPrefix[loArr[index]]) * invSpan[index];
+                if (value > 0.025) {
+                    const lutIdx = value >= 1 ? POW_LUT_SIZE : (value * POW_LUT_SIZE) | 0;
+                    const sample = POW_LUT[lutIdx];
+                    if (sample > 0) {
+                        const rawDisp = sample * scaledFades[index];
+                        if (rawDisp > motionMin) hasMotion = true;
+                        points[ptr] = baseAxis + rawDisp * signedScale;
+                        continue;
                     }
                 }
-                points[(index << 1) + dynOffset] = baseAxis + sign * disp;
+                points[ptr] = baseAxis;
             }
             return hasMotion;
         };
@@ -497,7 +501,7 @@
                 if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
             }
             const prevMono = edgeCanvasState.mono;
-            if (!resizeEdgeCanvas(frame)) return;
+            if ((needsResize || !global.ResizeObserver) && !resizeEdgeCanvas(frame)) return;
             const monoChanged = edgeCanvasState.mono !== prevMono;
             const { width, height, inset, horizontalAmplitude, verticalAmplitude, horizontalCount, verticalCount } = edgeCanvasState;
             edgeCanvasState.lastTrack = track;

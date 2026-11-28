@@ -9,13 +9,32 @@
     'use strict';
 
     const SLASH_RE = /\//g;
-    const TRAIL_BSLASH_RE = /\\+$/;
-    const TRAIL_SEP_RE = /[\\/]+$/;
     const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
-    const key = (p) => String(p || '').replace(SLASH_RE, '\\').replace(TRAIL_BSLASH_RE, '').toLowerCase();
+    const key = (p) => {
+        let s = typeof p === 'string' ? p : String(p || '');
+        if (!s) return '';
+        if (s.indexOf('/') !== -1) s = s.replace(SLASH_RE, '\\');
+        let end = s.length;
+        while (end > 0 && s.charCodeAt(end - 1) === 92) end -= 1;
+        if (end !== s.length) s = s.slice(0, end);
+        return s.toLowerCase();
+    };
     const underDir = (file, dir) => { const f = key(file); const d = key(dir); return f === d || f.startsWith(d + '\\'); };
-    const parentOf = (dir) => { const s = String(dir).replace(TRAIL_SEP_RE, ''); const at = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/')); return at > 0 ? s.slice(0, at) : ''; };
+    const parentOf = (dir) => {
+        const s = typeof dir === 'string' ? dir : String(dir);
+        let end = s.length;
+        while (end > 0) {
+            const c = s.charCodeAt(end - 1);
+            if (c !== 92 && c !== 47) break;
+            end -= 1;
+        }
+        for (let i = end - 1; i > 0; i -= 1) {
+            const c = s.charCodeAt(i);
+            if (c === 92 || c === 47) return s.slice(0, i);
+        }
+        return '';
+    };
     // 盘符根（D:）或只有一层的路径不再往上并：「D:\」整个盘当一处没意义
     const depth = (dir) => {
         const s = String(dir);
@@ -28,7 +47,7 @@
         }
         return count;
     };
-    const isLocal = (p) => typeof p === 'string' && p !== '' && !SCHEME_RE.test(p);
+    const isLocal = (p) => typeof p === 'string' && p !== '' && (p.indexOf('://') === -1 || !SCHEME_RE.test(p));
 
     // → [{ path, count, remembered, exists }]：加过的在前（按原顺序），其他位置按歌数从多到少
     // 几万首、几千个散落文件夹也要快：路径的比较键都先算好，包含关系按「往上找祖先」查表，不两两比较。
