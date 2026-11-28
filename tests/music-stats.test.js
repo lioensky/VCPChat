@@ -890,3 +890,64 @@ test('Batch 108: parent-disc fast gate, cross-hour stats cache, detached cover f
         dom.window.close();
     }
 });
+
+test('Batch 109: stats ignores idle paused music-queue-change ticks, musicTagText single-pass matches GBK/UTF8/Latin1, and parserCore handles YRC/QRC/KRC/TTML/LRC', () => {
+    // 1. Idle paused music-queue-change skips tick/playedSeconds
+    let playedCalls = 0;
+    const listeners = new Map();
+    const prevDoc = globalThis.document;
+    const prevMO = globalThis.MutationObserver;
+    try {
+        globalThis.document = {
+            body: { classList: { contains: () => false } },
+            addEventListener: (ev, fn) => { listeners.set(ev, fn); },
+            removeEventListener: (ev) => { listeners.delete(ev); },
+            dispatchEvent: () => {}
+        };
+        globalThis.MutationObserver = class { observe() {} disconnect() {} };
+        const storage = new Map();
+        const app = {
+            playlist: [{ path: '/idle.flac', duration: 200 }],
+            currentTrackIndex: -1,
+            isPlaying: false,
+            isTrackLoading: false,
+            playedSeconds: () => { playedCalls += 1; return 0; }
+        };
+        setupMusicStats(app, { storage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, observe: true });
+        playedCalls = 0;
+        const handler = listeners.get('music-queue-change');
+        assert.equal(typeof handler, 'function');
+        // No active session and paused: 20 queue edits skip tick completely
+        for (let i = 0; i < 20; i += 1) handler();
+        assert.equal(playedCalls, 0, 'paused idle queue edits do not trigger stats tick');
+        // Switching to a paused track with no session still skips tick while !isPlaying
+        app.currentTrackIndex = 0;
+        for (let i = 0; i < 10; i += 1) handler();
+        assert.equal(playedCalls, 0, 'paused queue edits with unplayed track still skip tick');
+    } finally {
+        globalThis.document = prevDoc;
+        globalThis.MutationObserver = prevMO;
+    }
+
+    // 2. musicTagText single-pass looksLikeGbkAsLatin1 edge cases
+    const { looksLikeGbkAsLatin1, repairTagText } = require(path.join(__dirname, '../modules/musicTagText.js'));
+    assert.equal(looksLikeGbkAsLatin1('Plain ASCII 123'), false);
+    assert.equal(looksLikeGbkAsLatin1('已经正常中文'), false);
+    assert.equal(looksLikeGbkAsLatin1('Beyoncé'), false);
+    assert.equal(looksLikeGbkAsLatin1('\x81'), false, 'truncated trailing byte rejected');
+    assert.equal(looksLikeGbkAsLatin1('\x81\u0100'), false, 'non-Latin1 trail rejected');
+    assert.equal(repairTagText(Buffer.from('晴天', 'utf8').toString('latin1')), '晴天');
+
+    // 3. parserCore TTML zero-split time parser + YRC/LRC timed supplements
+    const parser = require(path.join(__dirname, '../modules/lyrics/parserCore.js'));
+    const ttml = parser.parseTTML('<tt><body><p begin="00:01:02.500" end="00:01:06.000"><span begin="62.5s" end="64s">Hello</span> <span begin="64000ms" end="66000ms">World</span></p></body></tt>');
+    assert.equal(ttml.lines.length, 1);
+    assert.equal(ttml.lines[0].startTime, 62.5);
+    assert.equal(ttml.lines[0].endTime, 66);
+    assert.equal(ttml.lines[0].fullText, 'Hello World');
+    assert.equal(ttml.lines[0].words.length, 2);
+    const badTtml = parser.parseTTML('<tt><body><p begin="01:" end="02:00">Bad</p></body></tt>');
+    assert.equal(badTtml.lines.length, 0, 'malformed trailing-colon TTML time rejected');
+    const yrc = parser.parseYRC('[1000,2000](1000,1000,0)Hi(2000,1000,0)!', '[00:01.00]你好');
+    assert.equal(yrc.lines[0].translation, '你好');
+});

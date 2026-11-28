@@ -600,3 +600,16 @@ test('Batch 107: archive-index direct-entry & run-cache grouping matches patched
     assert.equal(refCols.find((c) => c.id === 'album:Hello_World 2026').ref, 'HELLO_WORLD 2026');
     assert.equal(refCols.find((c) => c.id === 'album:Café Éclair').ref, 'CAFE ECLAIR');
 });
+
+test('Batch 109: single non-letter ASCII term skips pinyin/initials safely while matching literal digits and prefix fast-path', () => {
+    const tracks = [
+        { path: '/1.flac', title: '曲目 1', artist: 'Artist 1', album: 'Album 0' },
+        { path: '/2.flac', title: '曲目 2', artist: 'Artist 2', album: 'Album 1' },
+        { path: '/3.flac', title: 'Artist 1 Intro', artist: 'Artist 1', album: 'Album 3' }
+    ];
+    const idx = Index.createIndex(tracks, { pinyin: (c) => (c === '曲' ? 'qu' : c === '目' ? 'mu' : '') });
+    const hits = idx.query('Artist 1');
+    assert.deepEqual(hits, [2, 0, 1], 'title prefix 300 > artist prefix 200 and digit 1 matches title/artist/album literally');
+    assert.deepEqual(idx.query('1'), [0, 2, 1], 'single digit term matches literal digits without false pinyin hits');
+    assert.deepEqual(idx.query('9'), [], 'unmatched digit returns empty immediately');
+});

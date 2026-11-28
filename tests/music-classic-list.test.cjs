@@ -250,6 +250,7 @@ test('Batch 53: classic-list caches like button & skips redundant attrs; skin ca
 
 test('Batch 57: classic-list caches sorted output for >32 tracks and music-skin syncs segmented buttons on programmatic select.value write', () => {
     const t = setup({ count: 50 });
+    t.app.playlist.forEach((tr) => { tr.title += '.flac'; });
     let stripCalls = 0;
     t.app.stripAudioExtension = (s) => { stripCalls += 1; return String(s || ''); };
     t.doc.querySelector('.music-list-sort.is-title').click();
@@ -1359,5 +1360,60 @@ test('Batch 103: music-ui reuses same-tick scrollTop snapshot & builds positionO
         window.dispatchEvent(new window.Event('beforeunload'));
     } finally {
         dom.window.close();
+    }
+});
+
+test('Batch 109: classic-list dotless titleOf fast-path, O(N) counting rank sort, definitelyDistinct ties, and virtualized content-visibility override', () => {
+    const skinCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-theme/music-skin.css'), 'utf8');
+    assert.match(skinCss, /#playlist\.sidebar-playlist li\s*\{[^}]*content-visibility:\s*visible;/, 'virtualized classic list opts out of content-visibility: auto');
+
+    // 1. Dotless titles skip stripAudioExtension completely while .flac titles still invoke it
+    const t = setup({ count: 40 });
+    try {
+        let stripCalls = 0;
+        t.app.stripAudioExtension = (s) => { stripCalls += 1; return String(s || '').replace(/\.flac$/i, ''); };
+        t.doc.querySelector('.music-list-sort.is-title').click();
+        assert.equal(stripCalls, 0, 'dotless track titles bypass stripAudioExtension during title sort');
+
+        // 2. Dense counting sort on low-cardinality artist column preserves stable tie order & exact reverse
+        const artists = ['陈奕迅', '周杰伦', 'Adele', 'adele', '', '周杰伦', '陈奕迅', 'Adele'];
+        const tracks = Array.from({ length: 48 }, (_, i) => ({
+            title: i % 3 === 0 ? `曲目 ${i + 1}` : (i % 3 === 1 ? `Track 0${(i % 9) + 1}` : `Track ${(i % 9) + 1}`),
+            artist: artists[i % artists.length],
+            duration: 100 + i
+        }));
+        t.app.playlist.splice(0, t.app.playlist.length, ...tracks);
+        t.doc.querySelector('.music-list-sort.is-artist').click();
+        const ascIndices = [...t.list.children].map((li) => Number(li.dataset.index));
+        const coll = new Intl.Collator(['zh-Hans-CN', 'ja', 'en'], { numeric: true, sensitivity: 'base' });
+        const expectedAsc = tracks.map((_, i) => i).sort((a, b) => {
+            const va = tracks[a].artist || '', vb = tracks[b].artist || '';
+            if (!va && !vb) return a - b;
+            if (!va) return 1;
+            if (!vb) return -1;
+            return coll.compare(va, vb) || (a - b);
+        });
+        assert.deepEqual(ascIndices, expectedAsc, 'O(N) counting sort matches Collator + stable index tie-break');
+
+        // Reverse artist sort keeps empty artists last & preserves tie order within identical/case-folded artist groups
+        t.doc.querySelector('.music-list-sort.is-artist').click();
+        const descIndices = [...t.list.children].map((li) => Number(li.dataset.index));
+        const expectedDesc = tracks.map((_, i) => i).sort((a, b) => {
+            const va = tracks[a].artist || '', vb = tracks[b].artist || '';
+            if (!va && !vb) return a - b;
+            if (!va) return 1;
+            if (!vb) return -1;
+            return -coll.compare(va, vb) || (a - b);
+        });
+        assert.deepEqual(descIndices, expectedDesc, 'reversed artist sort preserves tie stability and empty-last order');
+
+        // 3. Title desc with leading-zero ties ('Track 01' vs 'Track 1') keeps exact Collator tie groups
+        t.doc.querySelector('.music-list-sort.is-title').click();
+        t.doc.querySelector('.music-list-sort.is-title').click();
+        const titleDesc = [...t.list.children].map((li) => Number(li.dataset.index));
+        const expectedTitleDesc = tracks.map((_, i) => i).sort((a, b) => -coll.compare(tracks[a].title, tracks[b].title) || (a - b));
+        assert.deepEqual(titleDesc, expectedTitleDesc, 'definitelyDistinct never splits numeric/case-equivalent tie groups on title reversal');
+    } finally {
+        t.close();
     }
 });

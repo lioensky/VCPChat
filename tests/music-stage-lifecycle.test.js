@@ -2783,6 +2783,47 @@ test('Batch 108: stage-edge strips cloned canvas id & caches default accent, and
         assert.equal(glyphs[2].startTime, 12, 'punctuation between words aligns to next word startTime');
         assert.equal(glyphs[glyphs.length - 1].text, '!');
         assert.equal(glyphs[glyphs.length - 1].startTime, 13.5, 'trailing punctuation aligns to last glyph endTime');
+
+        // Batch 109: Starborn director precomputed candidate IDs, single-pass chooseMode, and clean Set teardown
+        const stubMode = (id) => ({
+            create(container) {
+                let destroyed = false;
+                return {
+                    updateFrame() {},
+                    updateConfig() {},
+                    resize() {},
+                    updateTheme() {},
+                    suspend() {},
+                    resume() {},
+                    getDebugSnapshot() { return { id, destroyed }; },
+                    destroy() { destroyed = true; container.dataset.destroyed = '1'; }
+                };
+            }
+        });
+        dom.window.MusicStageLuminousManager = stubMode('luminous');
+        dom.window.MusicStagePartitaManager = stubMode('partita');
+        dom.window.MusicStageCadenzaManager = stubMode('cadenza');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-modes.js');
+        const starHost = dom.window.document.createElement('div');
+        dom.window.document.body.appendChild(starHost);
+        const star = dom.window.MusicStageModes.create('starborn', starHost, { config: { quality: 'standard', modes: { starborn: { transitionLock: 1, avoidRepeat: true } } } });
+        const mkLine = (t, text) => ({ time: t, startTime: t, endTime: t + 2, vocalEndTime: t + 2, fullText: text, words: [{ text, startTime: t, endTime: t + 2, syllables: [] }], isChorus: true });
+        const l1 = mkLine(1, 'First line!');
+        const l2 = mkLine(5, 'Second line? Yes!');
+        const starLines = [l1, l2];
+        star.updateFrame({ playbackTime: 1.02, isPlaying: true, track: { path: '/s.flac' }, lines: starLines, activeLine: l1, nextLines: [l2], audio: { vocal: 0.7, bass: 0.6, power: 0.5 } });
+        const snap1 = star.getDebugSnapshot();
+        assert.equal(snap1.children, 1);
+        assert.ok(['luminous', 'partita', 'cadenza'].includes(snap1.directedMode));
+        for (let pt = 1.4; pt < 5.0; pt += 0.4) {
+            star.updateFrame({ playbackTime: pt, isPlaying: true, track: { path: '/s.flac' }, lines: starLines, activeLine: pt < 3 ? l1 : null, nextLines: [l2], audio: { vocal: 0.3, bass: 0.2, power: 0.2 } });
+        }
+        star.updateFrame({ playbackTime: 5.02, isPlaying: true, track: { path: '/s.flac' }, lines: starLines, activeLine: l2, nextLines: [], audio: { vocal: 0.3, bass: 0.2, power: 0.2 } });
+        const snap2 = star.getDebugSnapshot();
+        assert.notEqual(snap2.directedMode, snap1.directedMode, 'avoidRepeat picks a different mode on fresh line cut');
+        assert.equal(snap2.transitionCount, 2);
+        star.destroy();
+        assert.equal(star.getDebugSnapshot().children, 0, 'destroy releases all active and retiring Starborn children');
     } finally {
         dom.window.close();
     }

@@ -2428,3 +2428,70 @@ test('Batch 103: palette CSS applies content-visibility to .md-cmd-row, pre-pool
         window.close();
     }
 });
+
+test('Batch 109: drawer reuses tab buttons in-place, scrolls queue before body.music-drawer-open, and palette executes bindless song items', () => {
+    const { window, doc, app, dock } = setup();
+    try {
+        const extra = Array.from({ length: 20 }, (_, i) => ({ path: `C:/b109_${i}.flac`, title: `Song ${i}.flac`, artist: 'Artist X', album: 'Alb' }));
+        app.playlist.push(...extra);
+        app.getHistory = () => extra.slice(0, 5);
+        app.getUpNext = () => ({ manual: [], context: extra.slice(5) });
+
+        // Track order of scrollTop vs body.music-drawer-open during openPanel('播放列表')
+        let bodyDirtyAtScroll = null;
+        const origScrollDesc = Object.getOwnPropertyDescriptor(window.HTMLDivElement.prototype, 'scrollTop')
+            || Object.getOwnPropertyDescriptor(window.Element.prototype, 'scrollTop');
+        Object.defineProperty(window.Element.prototype, 'scrollTop', {
+            configurable: true,
+            get() { return origScrollDesc ? origScrollDesc.get.call(this) : (this._st || 0); },
+            set(v) {
+                if (this.classList?.contains('md-ql') && v > 0) {
+                    bodyDirtyAtScroll = doc.body.classList.contains('music-drawer-open');
+                }
+                if (origScrollDesc) origScrollDesc.set.call(this, v); else this._st = v;
+            }
+        });
+        try {
+            dock.openPanel('播放列表');
+        } finally {
+            if (origScrollDesc) Object.defineProperty(window.Element.prototype, 'scrollTop', origScrollDesc);
+        }
+        assert.equal(bodyDirtyAtScroll, false, 'queue scrollTop runs before body.music-drawer-open dirties document layout');
+        assert.equal(doc.body.classList.contains('music-drawer-open'), true, 'body.music-drawer-open is set by end of openPanel');
+
+        // Tab buttons are reused in-place across tab switches and close/reopen
+        const firstTabButtons = [...doc.querySelectorAll('.md-dockrow .md-seg button[data-i]')];
+        assert.equal(firstTabButtons.length, 5);
+        dock.openPanel('控制');
+        dock.closePanel();
+        dock.openPanel('歌词');
+        const laterTabButtons = [...doc.querySelectorAll('.md-dockrow .md-seg button[data-i]')];
+        for (let i = 0; i < firstTabButtons.length; i += 1) {
+            assert.equal(laterTabButtons[i], firstTabButtons[i], `tab button ${i} reused without innerHTML teardown`);
+        }
+
+        // Palette bindless song items still play, playNext, and queueAdd cleanly
+        const loaded = [];
+        const queued = [];
+        const nexted = [];
+        app.loadTrack = (idx) => loaded.push(idx);
+        app.queueAdd = (tr) => queued.push(tr);
+        app.queuePlayNext = (tr) => nexted.push(tr);
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        input.value = 'Song 3';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+        assert.equal(nexted.length, 1);
+        assert.equal(nexted[0].title, 'Song 3.flac');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+        assert.equal(queued.length, 1);
+        assert.equal(queued[0].title, 'Song 3.flac');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        assert.equal(loaded.length, 1);
+        assert.equal(app.playlist[loaded[0]].title, 'Song 3.flac');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
