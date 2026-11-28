@@ -515,10 +515,12 @@
             }
             city = signs = alley = optics = sandbox = null;
             moduleList.length = 0;
-            renderer?.dispose();
-            renderer?.forceContextLoss();
-            renderer?.domElement.remove();
+            const oldRenderer = renderer;
             renderer = camera = scene = null;
+            oldRenderer?.dispose();
+            if (R.releaseWebGLContext) R.releaseWebGLContext(oldRenderer);
+            else oldRenderer?.forceContextLoss();
+            oldRenderer?.domElement?.remove?.();
             initialized = false;
             lastDrawnQuality = null;
             dirty = true;
@@ -679,10 +681,16 @@
                 lastDrawnQuality = initQuality;
                 const tier = { name: initQuality || 'standard', ...U.tier(initQuality) };
                 const ctx = { scene, renderer, camera, layout, palette: palette(), tier, options: options(), lightUniforms: shared, rand: s => global.MusicStageKowloonLayout.rng(s) };
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
                 // 巷道先建：它定雾、天空和湿度。
                 if (global.MusicStageKowloonAlley?.create) alley = global.MusicStageKowloonAlley.create(T, ctx);
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
                 city = global.MusicStageKowloonCity.create(T, ctx);
                 ctx.city = city; ctx.alley = alley;
+                await U.breathe();
+                if (mode.destroyed || !renderer) return;
                 if (global.MusicStageKowloonSigns?.create) signs = global.MusicStageKowloonSigns.create(T, ctx);
                 syncModules();
                 if (!alley) {
@@ -701,6 +709,8 @@
                         intensity: 1.6, radius: 9
                     }));
                 if (global.MusicStageKowloonSandbox?.create) {
+                    await U.breathe();
+                    if (mode.destroyed || !renderer) return;
                     sandbox = global.MusicStageKowloonSandbox.create(T, ctx);
                     sandbox.setPalette(palette());
                     sandbox.scan();
@@ -710,6 +720,8 @@
                 modules().forEach(m => m.setTier?.(tier));
                 optics = global.MusicStageDioramaOptics?.create(T);
                 resize();
+                // 分层雾补丁必须在着色器预热前挂到所有材质上，否则首帧 hazeScan 会让预热结果全部作废并同步重编译。
+                alley?.prepareHaze?.();
                 await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: true, report: false });
                 if (mode.destroyed || !renderer) return;
                 if (!canvasSmoothing) await optics?.precompile?.(renderer);

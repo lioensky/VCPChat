@@ -2131,6 +2131,7 @@
         }));
         const api = {
             update,
+            prepareHaze: () => hazeScan(true),
             setPalette(p) { palette = p || {}; applyAtmosphere(); },
             setTier,
             setOptions(o) { options = { ...options, ...(o || {}) }; setTier(tierName); },

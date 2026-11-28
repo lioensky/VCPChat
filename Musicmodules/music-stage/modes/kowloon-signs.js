@@ -249,19 +249,30 @@
             s.addColorStop(1, 'rgba(60,30,10,0)');
             g.fillStyle = s; g.fillRect(x, r.y, w, len);
         }
-        const dots = Math.floor(r.w * r.h / 220 * strength);
-        for (let i = 0; i < dots; i += 1) {
-            g.fillStyle = `rgba(${random() < 0.5 ? '0,0,0' : '120,90,60'},${0.08 + random() * 0.18})`;
-            g.fillRect(r.x + random() * r.w, r.y + random() * r.h, 1 + random() * 2, 1 + random() * 2);
+        const dots = Math.floor(r.w * r.h / 660 * strength);
+        for (let pass = 0; pass < 2; pass += 1) {
+            g.fillStyle = pass === 0 ? 'rgba(0,0,0,0.17)' : 'rgba(120,90,60,0.17)';
+            const count = dots >> 1;
+            for (let i = 0; i < count; i += 1) {
+                g.fillRect(r.x + random() * r.w, r.y + random() * r.h, 1.5 + random() * 2.5, 1.5 + random() * 2.5);
+            }
         }
         g.restore();
     };
     const bolts = (g, r, s) => {
         const d = Math.max(2, s * 0.035);
-        [[0.04, 0.06], [0.96, 0.06], [0.04, 0.94], [0.96, 0.94]].forEach(([u, v]) => {
-            g.fillStyle = '#4a4744'; g.beginPath(); g.arc(r.x + r.w * u, r.y + r.h * v, d, 0, Math.PI * 2); g.fill();
-            g.fillStyle = 'rgba(110,60,25,0.5)'; g.fillRect(r.x + r.w * u - d * 0.4, r.y + r.h * v, d * 0.8, d * 6);
-        });
+        g.fillStyle = '#4a4744';
+        g.beginPath();
+        const pts = [[0.04, 0.06], [0.96, 0.06], [0.04, 0.94], [0.96, 0.94]];
+        for (let i = 0; i < 4; i += 1) {
+            const x = r.x + r.w * pts[i][0], y = r.y + r.h * pts[i][1];
+            g.moveTo(x + d, y); g.arc(x, y, d, 0, Math.PI * 2);
+        }
+        g.fill();
+        g.fillStyle = 'rgba(110,60,25,0.5)';
+        for (let i = 0; i < 4; i += 1) {
+            g.fillRect(r.x + r.w * pts[i][0] - d * 0.4, r.y + r.h * pts[i][1], d * 0.8, d * 6);
+        }
     };
 
     // Lay out glyph cells for a sign's main text inside the area (vertical or not).
@@ -280,22 +291,44 @@
         return out;
     };
 
-    const fitFont = (g, ch, family, w, h, weight = 800) => {
+    const fitFontPx = (g, ch, family, w, h, weight = 700) => {
+        // CJK full-width glyphs are ~1em square; skipping measureText avoids hundreds of
+        // DirectWrite font lookups, and 8px quantization lets signs share rasterized glyph caches.
+        if (ch.length === 1 && isWide(ch)) {
+            const raw = Math.floor(Math.min(w * 0.92, h * 0.86));
+            return Math.max(8, (raw + 4) & ~7);
+        }
         let px = Math.floor(Math.min(w, h) * 0.86);
+        px = Math.max(8, (px + 4) & ~7);
         g.font = `${weight} ${px}px ${family}`;
         const mw = g.measureText(ch).width || px;
-        if (mw > w * 0.92) px = Math.floor(px * w * 0.92 / mw);
-        return `${weight} ${px}px ${family}`;
+        if (mw > w * 0.92) px = Math.max(8, (Math.floor(px * w * 0.92 / mw) + 4) & ~7);
+        return px;
     };
+    const fitFont = (g, ch, family, w, h, weight = 800) => `${weight} ${fitFontPx(g, ch, family, w, h, weight)}px ${family}`;
 
-    const paintTube = (g, cell, family, color, width, core) => {
-        g.font = fitFont(g, cell.ch, family, cell.w, cell.h);
+    // Uses DirectWrite/Skia glyph atlas via fillText (strokeText on CJK tessellates Bezier outlines
+    // and stalls texSubImage2D for 2+ seconds on 256 signs).
+    const paintTube = (g, cell, family, color, width, core, px, halo) => {
+        const size = px || fitFontPx(g, cell.ch, family, cell.w, cell.h, 700);
         g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.lineJoin = 'round'; g.lineCap = 'round';
-        g.strokeStyle = color; g.lineWidth = width;
         const cx = cell.x + cell.w / 2, cy = cell.y + cell.h / 2 + cell.h * 0.02;
-        g.strokeText(cell.ch, cx, cy);
-        if (core) { g.strokeStyle = core; g.lineWidth = width * 0.38; g.strokeText(cell.ch, cx, cy); }
+        g.font = `700 ${size}px ${family}`;
+        if (halo) {
+            const d = Math.max(1.5, width * 0.68);
+            g.fillStyle = halo;
+            g.fillText(cell.ch, cx - d, cy);
+            g.fillText(cell.ch, cx + d, cy);
+            g.fillText(cell.ch, cx, cy - d);
+            g.fillText(cell.ch, cx, cy + d);
+        }
+        g.fillStyle = color;
+        g.fillText(cell.ch, cx, cy);
+        if (core) {
+            g.font = `300 ${size}px ${family}`;
+            g.fillStyle = core;
+            g.fillText(cell.ch, cx, cy);
+        }
     };
 
     const paintNeonSign = (L, spec, r, random) => {
@@ -316,13 +349,14 @@
         const list = cells(spec.text, area, spec.vertical);
         const tubeW = Math.max(2, Math.min(area.w, area.h) * (spec.vertical ? 0.07 : 0.06) * (spec.vertical ? 1 : list.length > 4 ? 0.8 : 1));
         const family = FONTS[spec.font] || FONTS.heavy;
+        const sizes = new Array(list.length);
+        for (let i = 0; i < list.length; i += 1) sizes[i] = fitFontPx(emit, list[i].ch, family, list[i].w, list[i].h, 600);
         // Unlit glass and its shadow on the board.
-        list.forEach(cell => {
-            base.save(); base.translate(tubeW * 0.5, tubeW * 0.6);
-            paintTube(base, cell, family, 'rgba(0,0,0,0.55)', tubeW * 1.1);
-            base.restore();
-            paintTube(base, cell, family, rgbCss(mixRgb([0.42, 0.42, 0.44], color, 0.35)), tubeW);
-        });
+        const unlitGlass = rgbCss(mixRgb([0.42, 0.42, 0.44], color, 0.35));
+        base.save(); base.translate(tubeW * 0.5, tubeW * 0.6);
+        for (let i = 0; i < list.length; i += 1) paintTube(base, list[i], family, 'rgba(0,0,0,0.55)', tubeW * 1.1, null, sizes[i]);
+        base.restore();
+        for (let i = 0; i < list.length; i += 1) paintTube(base, list[i], family, unlitGlass, tubeW, null, sizes[i]);
         // Border tube (double for some).
         const border = (ctx, style, w) => {
             ctx.strokeStyle = style; ctx.lineWidth = w; ctx.lineJoin = 'round';
@@ -335,19 +369,16 @@
         border(base, rgbCss(mixRgb([0.4, 0.4, 0.42], borderColor, 0.3)), tubeW * 0.7);
         grime(base, r, random, 0.8);
         if (dead) return;
-        // Light: glow halo, then tube, then near-white core.
-        const glowPx = Math.max(3, tubeW * 2.2);
-        list.forEach((cell, i) => {
-            if (spec.dead.includes(i)) return;
-            emit.save();
-            emit.shadowColor = rgbCss(color, 1); emit.shadowBlur = glowPx;
-            paintTube(emit, cell, family, rgbCss(color, 0.7), tubeW * 1.05);
-            emit.restore();
-            paintTube(emit, cell, family, rgbCss(color, 1), tubeW, rgbCss(mixRgb(color, [1, 1, 1], 0.72)));
-        });
-        emit.save(); emit.shadowColor = rgbCss(borderColor); emit.shadowBlur = glowPx;
+        // Light: concentric translucent halo + crisp tube + near-white core.
+        const rgbaCss = (c, a) => `rgba(${Math.round(clamp(c[0]) * 255)},${Math.round(clamp(c[1]) * 255)},${Math.round(clamp(c[2]) * 255)},${a})`;
+        const col1 = rgbCss(color, 1), haloCol = rgbaCss(color, 0.24), coreCol = rgbCss(mixRgb(color, [1, 1, 1], 0.72));
+        for (let i = 0; i < list.length; i += 1) {
+            if (spec.dead.includes(i)) continue;
+            paintTube(emit, list[i], family, col1, tubeW, coreCol, sizes[i], haloCol);
+        }
+        border(emit, rgbaCss(borderColor, 0.22), tubeW * 1.9);
+        border(emit, rgbaCss(borderColor, 0.42), tubeW * 1.25);
         border(emit, rgbCss(borderColor, 0.95), tubeW * 0.7);
-        emit.restore();
         border(emit, rgbCss(mixRgb(borderColor, [1, 1, 1], 0.6)), tubeW * 0.26);
         // A wash of the tube's colour over the board: neon lights its own sign.
         const wash = emit.createRadialGradient(r.x + r.w / 2, r.y + r.h / 2, 0, r.x + r.w / 2, r.y + r.h / 2, Math.max(r.w, r.h) * 0.7);
@@ -366,25 +397,34 @@
     const paintCaption = (L, spec, r, capH, pad, color, neon) => {
         const { base, emit } = L;
         const vertical = spec.vertical;
+        const room = vertical ? capH * 0.95 : r.w - pad * 2;
+        let px = vertical ? r.w * 0.36 : capH * 0.78;
+        emit.font = `700 ${px}px ${FONTS.latin}`;
+        const mw = emit.measureText(spec.caption).width;
+        if (mw > room) px *= room / mw;
+        const font = `700 ${px}px ${FONTS.latin}`;
         const draw = (ctx, fill, glow) => {
             ctx.save();
             if (vertical) {
                 ctx.translate(r.x + r.w / 2, r.y + r.h - pad - capH / 2);
                 ctx.rotate(-Math.PI / 2);
             } else ctx.translate(r.x + r.w / 2, r.y + r.h - pad * 0.8 - capH / 2);
-            const room = vertical ? capH * 0.95 : r.w - pad * 2;
-            let px = vertical ? r.w * 0.36 : capH * 0.78;
-            ctx.font = `700 ${px}px ${FONTS.latin}`;
-            const mw = ctx.measureText(spec.caption).width;
-            if (mw > room) { px *= room / mw; ctx.font = `700 ${px}px ${FONTS.latin}`; }
+            ctx.font = font;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = px * 0.5; }
+            if (glow) {
+                const d = Math.max(1, px * 0.09);
+                ctx.fillStyle = glow;
+                ctx.fillText(spec.caption, -d, 0);
+                ctx.fillText(spec.caption, d, 0);
+                ctx.fillText(spec.caption, 0, -d);
+                ctx.fillText(spec.caption, 0, d);
+            }
             ctx.fillStyle = fill; ctx.fillText(spec.caption, 0, 0);
             ctx.restore();
         };
         if (neon) {
             draw(base, rgbCss(mixRgb([0.35, 0.35, 0.36], color, 0.3)));
-            draw(emit, rgbCss(mixRgb(color, [1, 1, 1], 0.4)), rgbCss(color));
+            draw(emit, rgbCss(mixRgb(color, [1, 1, 1], 0.4)), `rgba(${Math.round(clamp(color[0]) * 255)},${Math.round(clamp(color[1]) * 255)},${Math.round(clamp(color[2]) * 255)},0.38)`);
         } else {
             draw(base, rgbCss(color));
             draw(emit, rgbCss(color, 0.9));
@@ -406,11 +446,16 @@
         const area = { x: r.x + pad, y: r.y + pad, w: r.w - pad * 2, h: r.h - pad * 2 - capH - phoneH };
         const list = cells(spec.text, area, spec.vertical);
         const family = FONTS[spec.font] || FONTS.heavy;
-        const write = (ctx, style) => list.forEach(cell => {
-            ctx.font = fitFont(ctx, cell.ch, family, cell.w, cell.h, 900);
+        const fonts = new Array(list.length);
+        for (let i = 0; i < list.length; i += 1) fonts[i] = fitFont(emit, list[i].ch, family, list[i].w, list[i].h, 900);
+        const write = (ctx, style) => {
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = style;
-            ctx.fillText(cell.ch, cell.x + cell.w / 2, cell.y + cell.h / 2 + cell.h * 0.03);
-        });
+            for (let i = 0; i < list.length; i += 1) {
+                const cell = list[i];
+                ctx.font = fonts[i];
+                ctx.fillText(cell.ch, cell.x + cell.w / 2, cell.y + cell.h / 2 + cell.h * 0.03);
+            }
+        };
         write(base, rgbCss(inkc, 0.85));
         if (spec.phone) {
             base.font = `700 ${phoneH * 0.6}px ${FONTS.latin}`; base.textAlign = 'center'; base.fillStyle = rgbCss(inkc, 0.8);
@@ -438,13 +483,30 @@
             for (let x = r.x + r.w - step / 2; x > r.x; x -= step) { perimeter.push([x, r.y + r.h - frame / 2]); }
             for (let y = r.y + r.h - step / 2; y > r.y; y -= step) { perimeter.push([r.x + frame / 2, y]); }
             const rad = Math.max(1.5, step * 0.18);
-            perimeter.forEach(([x, y], i) => {
-                base.fillStyle = '#cfc8b8'; base.beginPath(); base.arc(x, y, rad, 0, Math.PI * 2); base.fill();
-                emit.save(); emit.shadowColor = '#ffb347'; emit.shadowBlur = rad * 3;
-                emit.fillStyle = '#fff1c4'; emit.beginPath(); emit.arc(x, y, rad, 0, Math.PI * 2); emit.fill(); emit.restore();
-                mask.fillStyle = `rgb(250,${(i % 3) * 85},0)`;
-                mask.fillRect(Math.floor((x - rad * 2) / 2), Math.floor((y - rad * 2) / 2), Math.ceil(rad * 2) + 1, Math.ceil(rad * 2) + 1);
-            });
+            const drawBulbs = (ctx, radius) => {
+                ctx.beginPath();
+                for (let i = 0; i < perimeter.length; i += 1) {
+                    const [x, y] = perimeter[i];
+                    ctx.moveTo(x + radius, y);
+                    ctx.arc(x, y, radius, 0, Math.PI * 2);
+                }
+                ctx.fill();
+            };
+            base.fillStyle = '#cfc8b8';
+            drawBulbs(base, rad);
+            emit.fillStyle = 'rgba(255,179,71,0.22)';
+            drawBulbs(emit, rad * 2.3);
+            emit.fillStyle = 'rgba(255,179,71,0.45)';
+            drawBulbs(emit, rad * 1.55);
+            emit.fillStyle = '#fff1c4';
+            drawBulbs(emit, rad);
+            for (let phase = 0; phase < 3; phase += 1) {
+                mask.fillStyle = `rgb(250,${phase * 85},0)`;
+                for (let i = phase; i < perimeter.length; i += 3) {
+                    const [x, y] = perimeter[i];
+                    mask.fillRect(Math.floor((x - rad * 2) / 2), Math.floor((y - rad * 2) / 2), Math.ceil(rad * 2) + 1, Math.ceil(rad * 2) + 1);
+                }
+            }
         }
     };
 
@@ -1136,8 +1198,14 @@
             if (tryPack.height <= ATLAS_H) { lo = mid; packed = tryPack; } else hi = mid;
         }
         let density = lo;
-        const base = makeCanvas(ATLAS, ATLAS_H), emit = makeCanvas(ATLAS, ATLAS_H), maskC = makeCanvas(ATLAS / 2, ATLAS_H / 2);
-        const L = { base: base.getContext('2d'), emit: emit.getContext('2d'), mask: maskC.getContext('2d') };
+        // Only the light layer needs full resolution; paint the unlit surface
+        // and the tube-channel mask straight at a quarter instead of full size + shrink.
+        // Software 2D backing avoids flushing thousands of Skia GPU clip/gradient/text ops inside texSubImage2D.
+        const sw = { willReadFrequently: true };
+        const baseSmall = makeCanvas(ATLAS / 4, ATLAS_H / 4), emit = makeCanvas(ATLAS, ATLAS_H), maskSmall = makeCanvas(ATLAS / 4, ATLAS_H / 4);
+        const L = { base: baseSmall.getContext('2d', sw), emit: emit.getContext('2d', sw), mask: maskSmall.getContext('2d', sw) };
+        L.base.setTransform(0.25, 0, 0, 0.25, 0, 0);
+        L.mask.setTransform(0.5, 0, 0, 0.5, 0, 0);
         L.base.fillStyle = '#101010'; L.base.fillRect(0, 0, ATLAS, ATLAS_H);
         L.emit.fillStyle = '#000'; L.emit.fillRect(0, 0, ATLAS, ATLAS_H);
         L.mask.fillStyle = '#000'; L.mask.fillRect(0, 0, ATLAS / 2, ATLAS_H / 2);
@@ -1168,15 +1236,6 @@
             disposables.push(t);
             return t;
         };
-        // Only the light layer needs full resolution; the unlit surface and the
-        // tube channels are kept at a quarter.
-        const shrink = (src, w, h, smooth) => {
-            const c = makeCanvas(w, h), g = c.getContext('2d');
-            g.imageSmoothingEnabled = smooth; if (smooth) g.imageSmoothingQuality = 'high';
-            g.drawImage(src, 0, 0, w, h);
-            return c;
-        };
-        const baseSmall = shrink(base, ATLAS / 4, ATLAS_H / 4, true), maskSmall = shrink(maskC, ATLAS / 4, ATLAS_H / 4, false);
         const baseTex = texture(baseSmall), emitTex = texture(emit), maskTex = texture(maskSmall, true);
         baseTex.generateMipmaps = false; baseTex.minFilter = T.LinearFilter;
 
@@ -1540,7 +1599,7 @@
         const HA_W = energy ? 512 : 1024, HA_H = HA_W * 2, HC = HA_W / 4, HR = HA_H / 2;
         const haCanvas = makeCanvas(HA_W, HA_H);
         const paintHoloAds = () => {
-            const g = haCanvas.getContext('2d');
+            const g = haCanvas.getContext('2d', { willReadFrequently: true });
             const k = HC / 256;
             g.fillStyle = '#000'; g.fillRect(0, 0, HA_W, HA_H);
             g.globalCompositeOperation = 'lighter';

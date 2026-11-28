@@ -957,6 +957,85 @@
         return pixiLoadPromise;
     };
 
+    const pendingWebGLReleases = new Set();
+    let webglReleaseUnloadBound = false;
+    const flushPendingWebGLReleases = () => {
+        for (const finish of Array.from(pendingWebGLReleases)) finish();
+    };
+    const releaseWebGLContext = (target, { immediate = false } = {}) => {
+        if (!target) return false;
+        const gl = typeof target.getContext === 'function' ? target.getContext() : target;
+        const forceSync = () => {
+            try {
+                if (typeof target.forceContextLoss === 'function') target.forceContextLoss();
+                else gl?.getExtension?.('WEBGL_lose_context')?.loseContext?.();
+            } catch (_) {}
+        };
+        if (!gl || typeof gl.getExtension !== 'function') {
+            forceSync();
+            return true;
+        }
+        try { if (gl.isContextLost?.()) return true; } catch (_) { return false; }
+        const ext = gl.getExtension('WEBGL_lose_context');
+        if (!ext || typeof ext.loseContext !== 'function') {
+            forceSync();
+            return true;
+        }
+        const doc = global.document;
+        if (immediate || doc?.hidden || typeof gl.fenceSync !== 'function' || typeof global.setTimeout !== 'function') {
+            forceSync();
+            return true;
+        }
+        if (!webglReleaseUnloadBound && typeof global.addEventListener === 'function') {
+            webglReleaseUnloadBound = true;
+            global.addEventListener('beforeunload', flushPendingWebGLReleases, { once: true });
+        }
+        let sync = null;
+        try {
+            sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            gl.flush?.();
+        } catch (_) {
+            sync = null;
+        }
+        if (!sync) {
+            forceSync();
+            return true;
+        }
+        let timer = 0;
+        let done = false;
+        let tries = 0;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            if (timer) { global.clearTimeout(timer); timer = 0; }
+            pendingWebGLReleases.delete(finish);
+            try { if (!gl.isContextLost?.()) gl.deleteSync?.(sync); } catch (_) {}
+            try {
+                const canvas = gl.canvas;
+                if (canvas && !canvas.isConnected) { canvas.width = 1; canvas.height = 1; }
+            } catch (_) {}
+            try { if (!gl.isContextLost?.()) ext.loseContext(); } catch (_) {}
+        };
+        pendingWebGLReleases.add(finish);
+        const poll = () => {
+            timer = 0;
+            if (done) return;
+            try {
+                if (gl.isContextLost?.()) { finish(); return; }
+                if (gl.getSyncParameter(sync, gl.SYNC_STATUS) === gl.SIGNALED || ++tries >= 40) {
+                    finish();
+                    return;
+                }
+            } catch (_) {
+                finish();
+                return;
+            }
+            timer = global.setTimeout(poll, 80);
+        };
+        timer = global.setTimeout(poll, 80);
+        return true;
+    };
+
     // Call after intentional in-place lyric edits; normal source replacement is
     // already tracked by array identity without hashing the whole song per frame.
     const invalidateLines = (lines) => {
@@ -965,6 +1044,7 @@
 
     global.MusicStageRuntime = Object.freeze({
         ensurePixi,
+        releaseWebGLContext,
         invalidateLines,
         isReducedMotion,
         finiteNumber,

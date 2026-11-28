@@ -4479,10 +4479,12 @@
             optics?.destroy();
             optics = null;
             if (renderer) {
-                renderer.dispose?.();
-                renderer.forceContextLoss?.();
-                renderer.domElement?.remove?.();
+                const oldRenderer = renderer;
                 renderer = null;
+                oldRenderer.dispose?.();
+                if (R.releaseWebGLContext) R.releaseWebGLContext(oldRenderer);
+                else oldRenderer.forceContextLoss?.();
+                oldRenderer.domElement?.remove?.();
             }
             camera = null;
             scene = null;
@@ -4649,9 +4651,11 @@
                 applyQuality();
                 resize();
                 world.setPalette(services?.app?.stagePalette || {});
-                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: !canvasSmoothing });
+                await U.precompile(T, renderer, scene, camera, { canvas: canvasSmoothing, offscreen: !canvasSmoothing, report: false });
                 if (mode.destroyed || !renderer) return;
                 if (!canvasSmoothing) await optics?.precompile?.(renderer);
+                if (mode.destroyed || !renderer) return;
+                await U.settlePrograms(renderer, () => !mode.destroyed && !!renderer);
                 if (mode.destroyed || !renderer) return;
                 await U.breathe();
                 if (mode.destroyed || !renderer) return;

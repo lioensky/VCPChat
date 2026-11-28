@@ -80,10 +80,12 @@
             optics?.destroy();
             events?.destroy();
             lyrics = world = optics = events = null;
-            renderer?.dispose();
-            renderer?.forceContextLoss();
-            renderer?.domElement.remove();
+            const oldRenderer = renderer;
             renderer = camera = scene = null;
+            oldRenderer?.dispose();
+            if (R.releaseWebGLContext) R.releaseWebGLContext(oldRenderer);
+            else oldRenderer?.forceContextLoss();
+            oldRenderer?.domElement?.remove?.();
             lenslessWarm = false;
             initialized = false;
             dirty = true;
