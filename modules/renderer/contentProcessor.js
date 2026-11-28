@@ -3,6 +3,11 @@ import * as cssTree from '../../node_modules/css-tree/dist/csstree.esm.js';
 import { replaceMarkdownCodeDomains } from './markdownCodeDomainScanner.js';
 import { createMathRenderer } from './mathRenderer.js';
 import { linkProseUrls } from './proseLinks.js';
+import {
+    scopeRootAwareSelector,
+    hasExplicitThemeSelectors,
+    buildLightThemeOverrides,
+} from './htmlThemeAdapter.js';
 
 /** Creates one rendered-content interaction owner for one MessageRenderer instance. */
 export function createContentProcessor() {
@@ -1278,17 +1283,21 @@ function escapeCssIdentifier(value) {
 
 function scopeSelector(selector, scopeId) {
     const scopeSelectorText = `#${escapeCssIdentifier(scopeId)}`;
-    const normalized = selector.trim();
-    if (!normalized) throw new SyntaxError('Empty selector is not allowed');
+    return scopeRootAwareSelector(selector, scopeSelectorText);
+}
 
-    // assistant HTML 中的 document 根选择器应映射到消息根，而不是成为其后代。
-    // 根标记后可能直接跟组合符、class、id、属性或伪类，不能只处理空白边界。
-    const rootSelectorRegex = /^(?::root|html|body)(?=$|[\s>+~.#[:])/i;
-    if (rootSelectorRegex.test(normalized)) {
-        return normalized.replace(rootSelectorRegex, scopeSelectorText);
-    }
-    if (/^::?[\w-]+$/.test(normalized)) return `${scopeSelectorText}${normalized}`;
-    return `${scopeSelectorText} ${normalized}`;
+function collectRuleDeclarations(ruleNode) {
+    const declarations = [];
+    if (!ruleNode?.block?.children) return declarations;
+    ruleNode.block.children.forEach((child) => {
+        if (child?.type !== 'Declaration') return;
+        declarations.push({
+            property: child.property,
+            value: cssTree.generate(child.value),
+            important: Boolean(child.important),
+        });
+    });
+    return declarations;
 }
 
 function scopeCss(cssString, scopeId) {
@@ -1314,11 +1323,14 @@ function scopeCss(cssString, scopeId) {
         });
         if (forbiddenReason) throw new SyntaxError(forbiddenReason);
 
+        const explicitTheme = hasExplicitThemeSelectors(ast, cssTree);
+        const ruleSnapshots = [];
+
         // css-tree 会递归访问 @media/@supports/@container/@layer 内的 Rule。
         // keyframes 内的 from/to/百分比步骤不是 DOM 选择器，必须保持原样。
         cssTree.walk(ast, {
             visit: 'Rule',
-            enter(node) {
+            enter(node, _item, list) {
                 const ownerAtRule = this.atrule;
                 if (ownerAtRule && /(?:^|-)keyframes$/i.test(ownerAtRule.name || '')) return;
                 if (!node.prelude || node.prelude.type !== 'SelectorList') {
@@ -1333,8 +1345,28 @@ function scopeCss(cssString, scopeId) {
                     context: 'selectorList',
                     positions: false
                 });
+
+                if (!explicitTheme && list) {
+                    ruleSnapshots.push({
+                        parentList: list,
+                        scopedSelectors,
+                        declarations: collectRuleDeclarations(node),
+                    });
+                }
             }
         });
+
+        if (!explicitTheme && ruleSnapshots.length > 0) {
+            const overrides = buildLightThemeOverrides(ruleSnapshots);
+            for (const override of overrides) {
+                const ruleAst = cssTree.parse(override.cssText, {
+                    context: 'rule',
+                    positions: false,
+                    parseCustomProperty: true,
+                });
+                override.parentList.appendData(ruleAst);
+            }
+        }
 
         const generated = cssTree.generate(ast);
         // 二次解析保证生成结果完整，避免不完整流式 CSS 被部分注入。

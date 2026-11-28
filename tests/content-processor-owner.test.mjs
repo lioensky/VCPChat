@@ -177,3 +177,34 @@ test('preview cleanup never enumerates every syntax-highlighted descendant', () 
     createContentProcessor().cleanupPreviewsInContent(root);
     dom.window.close();
 });
+
+test('scopeCss preserves body.light-theme qualifiers outside scopeId and skips auto-adaptation when explicit', () => {
+    const processor = createContentProcessor();
+    const scoped = processor.scopeCss(
+        '.card { background: rgba(10, 20, 35, 0.45); color: #7dd3fc; } body.light-theme .card, body[data-vcp-theme="light"] > .panel { background: #ffffff; color: #1b211f; }',
+        'message-scope'
+    );
+
+    assert.match(scoped, /body\.light-theme #message-scope \.card/);
+    assert.match(scoped, /body\[data-vcp-theme="?light"?\] #message-scope>\.panel|body\[data-vcp-theme="?light"?\] #message-scope > \.panel/);
+    assert.doesNotMatch(scoped, /#message-scope\.light-theme/);
+    assert.equal(scoped.match(/body\.light-theme/g)?.length, 1);
+});
+
+test('scopeCss generates light-theme overrides for dark glass cards while keeping vivid button text white', () => {
+    const processor = createContentProcessor();
+    const scoped = processor.scopeCss(`
+        .wrap { background: rgba(10, 20, 35, 0.45); color: var(--primary-text, #e2e8f0); border: 1px solid rgba(56, 189, 248, 0.28); }
+        .card { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.09); }
+        .title { color: #7dd3fc; }
+        .code { background: rgba(0, 0, 0, 0.3); color: #a5f3fc; }
+        .cta { background: #0284c7; color: #ffffff; }
+    `, 'msg-1');
+
+    assert.match(scoped, /body\.light-theme #msg-1 \.wrap/);
+    assert.match(scoped, /body\[data-vcp-theme="?light"?\] #msg-1 \.wrap/);
+    assert.match(scoped, /body\.light-theme #msg-1 \.card[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.72\)/);
+    assert.match(scoped, /body\.light-theme #msg-1 \.code[^}]*background:\s*rgba\(27,\s*33,\s*31,\s*0\.06\)/);
+    assert.doesNotMatch(scoped, /body\.light-theme #msg-1 \.title[^}]*#7dd3fc/i);
+    assert.doesNotMatch(scoped, /body\.light-theme #msg-1 \.cta/);
+});
