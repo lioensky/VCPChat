@@ -349,3 +349,20 @@ test('Batch 98: MusicToast caches lastMessage to skip DOM textContent getter rea
         window.close();
     }
 });
+
+test('Batch 110: MusicToast caches SVG icon markup across repeated toasts without altering rendered icons', () => {
+    const { window, doc, toast } = setup();
+    try {
+        toast.show({ id: 't1', kind: 'success', message: '第一条' });
+        toast.show({ id: 't2', kind: 'success', message: '第二条' });
+        toast.show({ id: 't3', kind: 'error', message: '出错了' });
+        const ic1 = doc.querySelector('[data-key="t1"] .mtst-ic').innerHTML;
+        const ic2 = doc.querySelector('[data-key="t2"] .mtst-ic').innerHTML;
+        const ic3 = doc.querySelector('[data-key="t3"] .mtst-ic').innerHTML;
+        assert.equal(ic1, ic2, 'same kind/size toast renders identical cached SVG');
+        assert.notEqual(ic1, ic3, 'distinct kind renders distinct SVG');
+        assert.ok(ic1.includes('width="16"') && ic3.includes('width="16"'));
+    } finally {
+        window.close();
+    }
+});

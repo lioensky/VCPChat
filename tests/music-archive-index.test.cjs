@@ -613,3 +613,43 @@ test('Batch 109: single non-letter ASCII term skips pinyin/initials safely while
     assert.deepEqual(idx.query('1'), [0, 2, 1], 'single digit term matches literal digits without false pinyin hits');
     assert.deepEqual(idx.query('9'), [], 'unmatched digit returns empty immediately');
 });
+
+test('Batch 110: alnumMask bitmask pruning matches exact scoring across 0-hit, multi-term, digit, pinyin, kana, symbol, and >4-term queries', () => {
+    const pyMap = { '星': 'xing', '光': 'guang', '夜': 'ye', '曲': 'qu', '周': 'zhou', '杰': 'jie', '伦': 'lun', '晴': 'qing', '天': 'tian' };
+    const pinyin = (c) => pyMap[c] || '';
+    const tracks = [
+        { path: '/0', title: '星光夜曲 2026', artist: '周杰伦', album: '晴天 Vol.9' },
+        { path: '/1', title: 'Midnight Express', artist: 'Alpha Band', album: 'Album 05' },
+        { path: '/2', title: 'カタカナの歌', artist: 'アーティスト', album: '!!!' },
+        { path: '/3', title: 'Track A B C D E F', artist: 'Singer Z', album: 'Mix 789' },
+        ...Array.from({ length: 80 }, (_, i) => ({
+            path: `/bulk/${i}`,
+            title: `Bulk Song ${i}`,
+            artist: `Maker ${i % 10}`,
+            album: `Set ${i % 7}`
+        }))
+    ];
+    const idx = Index.createIndex(tracks, { pinyin });
+    // Pinyin full & initials still match with zero false negatives
+    assert.deepEqual(idx.query('xgyq'), [0], 'initials across hanzi match through alnumMask');
+    assert.deepEqual(idx.query('zhoujielun 2026'), [0], 'cross-field pinyin + digit match');
+    assert.deepEqual(idx.query('qingtian 9', { kind: 'album' }), [0], 'album kind matches pinyin + digit');
+    assert.deepEqual(idx.query('zjl', { kind: 'artist' }), [0], 'artist kind matches pinyin initials');
+    // Non-ASCII and punctuation queries have mask=0 and still match
+    assert.deepEqual(idx.query('かたかな'), [2], 'hiragana/katakana query bypasses alnumMask');
+    assert.deepEqual(idx.query('!!!', { kind: 'album' }), [2], 'symbol-only query bypasses alnumMask');
+    assert.deepEqual(idx.query('星光'), [0], 'pure hanzi query matches');
+    assert.deepEqual(idx.query('2026 星光'), [0], 'mixed digit + hanzi query matches');
+    // 0-hit fast skip across all kinds
+    assert.deepEqual(idx.query('qxzw'), [], '0-hit query returns empty');
+    assert.deepEqual(idx.query('qxzw', { kind: 'artist' }), [], '0-hit artist query returns empty');
+    assert.deepEqual(idx.query('qxzw', { kind: 'album' }), [], '0-hit album query returns empty');
+    // >4-term path with bitmask gate
+    assert.deepEqual(idx.query('track a b c d e'), [3], '>4-term match passes bitmask gate');
+    assert.deepEqual(idx.query('track a b c d q'), [], '>4-term mismatch rejected cleanly');
+    // Digit folding (0..9 -> bits 26..30) never drops any real digit match
+    for (let d = 0; d <= 9; d += 1) {
+        const res = idx.query(String(d));
+        assert.ok(res.length > 0, `digit ${d} finds matching tracks`);
+    }
+});

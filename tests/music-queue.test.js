@@ -610,3 +610,37 @@ test('Batch 71: app.queueBatch coalesces nested queue mutations into one notific
     app.queueAdd(playlist[7]);
     assert.equal(events.filter((e) => e === 'music-queue-change').length, eventsBefore + 3, 'subsequent standalone edits still notify immediately');
 });
+
+test('Batch 110: shiftLine shifts nested word/syllable/renderHints timings without array alloc and saveSession pathsOf filters cleanly', () => {
+    const { app, context, playlist } = setup({ count: 5 });
+    app.currentTrackIndex = 0;
+    app.currentLyrics = [{
+        time: 10,
+        startTime: 10,
+        endTime: 14,
+        renderHints: { renderEndTime: 14.5 },
+        words: [{
+            startTime: 10,
+            endTime: 12,
+            syllables: [{ startTime: 10, endTime: 11 }, { startTime: 11, endTime: 12 }]
+        }]
+    }];
+    app.setLyricOffset(1.5);
+    const l = app.currentLyrics[0];
+    assert.equal(l.time, 11.5);
+    assert.equal(l.startTime, 11.5);
+    assert.equal(l.endTime, 15.5);
+    assert.equal(l.renderHints.renderEndTime, 16);
+    assert.equal(l.words[0].startTime, 11.5);
+    assert.equal(l.words[0].endTime, 13.5);
+    assert.equal(l.words[0].syllables[0].startTime, 11.5);
+    assert.equal(l.words[0].syllables[1].endTime, 13.5);
+
+    // saveSession pathsOf single-pass loop omits null/empty-path entries
+    app.currentFilteredTracks = [playlist[0], null, { title: 'no-path' }, playlist[2]];
+    app.manualQueue = [playlist[1], undefined, playlist[3]];
+    app.saveSession();
+    const saved = JSON.parse(context.localStorage.getItem('musicSession'));
+    assert.deepEqual(saved.context, [playlist[0].path, playlist[2].path]);
+    assert.deepEqual(saved.manual, [playlist[1].path, playlist[3].path]);
+});

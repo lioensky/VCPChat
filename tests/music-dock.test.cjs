@@ -2495,3 +2495,113 @@ test('Batch 109: drawer reuses tab buttons in-place, scrolls queue before body.m
         window.close();
     }
 });
+
+test('Batch 110: palette pre-bakes rowProto defaults & bindless cached playlists, fluid-select snapshots before trigger writes, and dock-fluid retargets in-place', async () => {
+    const { window, doc, app, dock } = setup((a) => {
+        a.customPlaylists = [
+            { id: 'pl-1', name: '夜间通勤', tracks: [a.playlist[0].path, a.playlist[1].path] },
+            { id: 'pl-empty', name: '空单测试', tracks: [] }
+        ];
+    });
+    try {
+        // 1. Palette bindless playlist item: play / playNext / queueAdd + cache invalidation on reopen
+        const loaded = [];
+        const queued = [];
+        const nexted = [];
+        app.loadTrack = (idx) => loaded.push(idx);
+        app.queueAdd = (tr) => queued.push(tr);
+        app.queuePlayNext = (tr) => nexted.push(tr);
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        input.value = '夜间通勤';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const plRow = doc.querySelector('.md-cmd-row');
+        assert.ok(plRow, 'playlist row rendered');
+        assert.equal(plRow.querySelector('.md-cmd-title').textContent, '夜间通勤');
+        assert.equal(plRow.querySelector('.md-cmd-desc').textContent, '2 首');
+        assert.equal(plRow.getAttribute('aria-selected'), 'true');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+        assert.equal(nexted.length, 2, 'Shift+Enter queues playlist next');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+        assert.equal(queued.length, 2, 'Ctrl+Enter appends playlist to queue');
+        input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        assert.equal(loaded.length, 1, 'Enter plays playlist from first track');
+        assert.equal(app.filteredPlaylistSource?.id, 'pl-1');
+
+        // Reopen invalidates playlist cache so updated tracks reflect immediately
+        app.customPlaylists[0].tracks.pop();
+        dock.openPalette();
+        input.value = '夜间通勤';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(doc.querySelector('.md-cmd-row .md-cmd-desc').textContent, '1 首', 'reopening palette refreshes cached playlist track count');
+        dock.closePalette();
+
+        // 2. music-fluid-select: open paints aria-selected/mfs-on directly, close snapshots BEFORE mutating trigger, bodyObs skips .md-qi/.md-cmd-row
+        window.CSS = window.CSS || { escape: (s) => String(s) };
+        const sel = doc.createElement('select');
+        sel.innerHTML = '<option value="a">A</option><option value="b" selected>B</option>';
+        doc.body.appendChild(sel);
+        const snapOrder = [];
+        window.MusicFluid = {
+            enabled: () => true,
+            bud() {},
+            snapshot: (menu) => {
+                snapOrder.push(`snap:open=${trigger.classList.contains('mfs-open')}:exp=${trigger.getAttribute('aria-expanded')}`);
+                return { menu };
+            },
+            melt: () => { snapOrder.push('melt'); }
+        };
+        window.eval(read('Musicmodules/music-dock/music-fluid-select.js'));
+        await new Promise((r) => setTimeout(r, 0));
+        const trigger = sel.nextElementSibling;
+        assert.ok(trigger && trigger.classList.contains('mfs-trigger'), 'select dressed with fluid trigger');
+        // bodyObs fast-skips .md-qi / .md-cmd-row insertions without calling closest() on target
+        let closestCalls = 0;
+        const wrap = doc.createElement('div');
+        doc.body.appendChild(wrap);
+        await new Promise((r) => setTimeout(r, 0));
+        const origClosest = wrap.closest.bind(wrap);
+        wrap.closest = (...args) => { closestCalls += 1; return origClosest(...args); };
+        const qi = doc.createElement('div');
+        qi.className = 'md-qi';
+        qi.innerHTML = '<span>row</span>';
+        const crow = doc.createElement('button');
+        crow.className = 'md-cmd-row';
+        crow.innerHTML = '<span>cmd</span>';
+        wrap.append(qi, crow);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(closestCalls, 0, 'bodyObs O(1) class fast-skip avoids tgt.closest() for .md-qi and .md-cmd-row');
+        trigger.click();
+        const opts = [...doc.querySelectorAll('.mfs-menu .mfs-item')];
+        assert.equal(opts.length, 2);
+        assert.equal(opts[0].classList.contains('mfs-on'), false);
+        assert.equal(opts[0].getAttribute('aria-selected'), 'false');
+        assert.equal(opts[1].classList.contains('mfs-on'), true);
+        assert.equal(opts[1].getAttribute('aria-selected'), 'true');
+        trigger.click(); // close
+        assert.equal(snapOrder[0], 'snap:open=true:exp=true', 'fluid-select captures snapshot BEFORE removing mfs-open / aria-expanded');
+        assert.equal(snapOrder[1], 'melt');
+        assert.equal(trigger.classList.contains('mfs-open'), false);
+        assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+
+        // 3. music-dock-fluid: retargetRing updates tx/ty in-place for playhead, drop, fixed, and corner modes
+        const fHost = doc.createElement('div');
+        const fBar = doc.createElement('div');
+        fBar.getBoundingClientRect = () => ({ left: 100, right: 500, top: 600, bottom: 656, width: 400, height: 56 });
+        fHost.appendChild(fBar);
+        doc.body.appendChild(fHost);
+        const fl = window.createMusicDockFluid({ host: fHost, bar: fBar, reduced: () => true });
+        assert.ok(fl.layout());
+        fl.setRingMode('playhead');
+        fl.setProgress(0.5);
+        const dbg1 = fl.debug();
+        assert.ok(Number.isFinite(dbg1.ring.tx) && Number.isFinite(dbg1.ring.ty));
+        fl.setRingDocked(false);
+        const dbg2 = fl.debug();
+        assert.notEqual(dbg2.ring.tx, dbg1.ring.tx, 'undocking ring retargets to corner coordinates');
+        fl.destroy();
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

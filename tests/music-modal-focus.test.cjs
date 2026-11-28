@@ -1111,3 +1111,48 @@ test('Batch 105: modal-focus, channels, and eq-presets restore focus before mark
         dom.window.close();
     }
 });
+
+test('Batch 110: focusInside stops scanning after first visible input and still prioritizes visible [autofocus]', async () => {
+    const extraBtns = Array.from({ length: 60 }, (_, i) => `<button id="b${i}" type="button">Row ${i}</button>`).join('');
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="m-early" class="music-modal-overlay">
+            <button id="m-close" type="button">Close</button>
+            <input id="m-hidden" type="text" hidden>
+            <input id="m-in" type="text">
+            ${extraBtns}
+        </div>
+        <div id="m-auto" class="music-modal-overlay">
+            <input id="m-first" type="text">
+            <button id="m-af" type="button" autofocus>Confirm</button>
+        </div>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        let tailRectCalls = 0;
+        for (const el of doc.querySelectorAll('#m-early button, #m-early input, #m-auto button, #m-auto input')) {
+            const isTail = el.id.startsWith('b');
+            el.getClientRects = () => {
+                if (isTail) tailRectCalls += 1;
+                return el.hidden ? [] : [{ width: 40, height: 20 }];
+            };
+        }
+        window.eval(fs.readFileSync('Musicmodules/music-modal-focus.js', 'utf8'));
+
+        const mEarly = doc.getElementById('m-early');
+        mEarly.classList.add('visible');
+        await tick(window);
+        assert.equal(doc.activeElement, doc.getElementById('m-in'), 'focusInside focuses first visible input and skips hidden input');
+        assert.equal(tailRectCalls, 0, 'focusInside exits immediately at first visible input without querying 60 trailing buttons');
+        mEarly.classList.remove('visible');
+        await tick(window);
+
+        const mAuto = doc.getElementById('m-auto');
+        mAuto.classList.add('visible');
+        await tick(window);
+        assert.equal(doc.activeElement, doc.getElementById('m-af'), 'visible [autofocus] still takes priority over earlier inputs');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});
