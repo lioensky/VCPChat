@@ -2899,3 +2899,26 @@ test('Batch 126: dock filters non-empty archive-view and non-edge HUD class muta
         window.close();
     }
 });
+
+test('Batch 128: initMusicDock defers initial capsule getBoundingClientRect measurement to boot rAF', () => {
+    let capRectReads = 0;
+    const rafs = [];
+    const { window, doc, dock } = setup((a, w) => {
+        w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+        w.cancelAnimationFrame = () => {};
+        const origRect = w.HTMLElement.prototype.getBoundingClientRect;
+        w.HTMLElement.prototype.getBoundingClientRect = function () {
+            if (this.classList?.contains('md-cap')) capRectReads += 1;
+            return origRect.call(this);
+        };
+    });
+    try {
+        assert.equal(capRectReads, 0, 'initMusicDock avoids synchronous .md-cap getBoundingClientRect during DOMContentLoaded');
+        while (rafs.length) rafs.shift()(16);
+        assert.ok(capRectReads >= 1, 'boot rAF performs capsule measurement once layout is ready');
+        assert.ok(doc.querySelector('.md-trk').style.getPropertyValue('--md-a'), 'progress range custom properties are set');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

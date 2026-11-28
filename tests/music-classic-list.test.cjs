@@ -1556,3 +1556,61 @@ test('Batch 124: music-skin segmented keydown ignores Alt/Ctrl/Meta/IME keys and
         dom.window.close();
     }
 });
+
+test('Batch 128: classic playlist virtual scroll hysteresis skips DOM re-windowing inside buffer and skin CSS contains row layout', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const skinCss = fs.readFileSync(path.join(repoRoot, 'Musicmodules/music-theme/music-skin.css'), 'utf8');
+    assert.match(skinCss, /\.sidebar-playlist li\[data-cols="1"\]\s*\{[^}]*contain:\s*layout style;/, 'classic playlist rows apply contain: layout style');
+
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist" class="playlist sidebar-playlist"></ul></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true,
+        url: 'http://localhost/'
+    });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const rafs = [];
+        window.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+        window.cancelAnimationFrame = () => {};
+        window.eval(fs.readFileSync(path.join(repoRoot, 'Musicmodules/music-app-hooks.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(repoRoot, 'Musicmodules/music-utils.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(repoRoot, 'Musicmodules/music-ui.js'), 'utf8'));
+
+        const list = doc.getElementById('playlist');
+        const ROW = 40;
+        let curScroll = 0;
+        Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => 10 * ROW });
+        Object.defineProperty(list, 'scrollTop', { configurable: true, get: () => curScroll, set(v) { curScroll = v; } });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetTop', {
+            configurable: true,
+            get() { return this.parentNode === list ? Array.prototype.indexOf.call(list.children, this) * ROW : 0; }
+        });
+
+        const tracks = Array.from({ length: 300 }, (_, i) => ({ path: `/m/${i}.flac`, title: `Song ${i}`, artist: 'A', duration: 180 }));
+        const app = { playlist: tracks, currentTrackIndex: 0, playlistEl: list, updateAllCount() {} };
+        window.setupUtils(app);
+        window.setupUI(app);
+        app.renderPlaylist(tracks);
+        assert.equal(list.children.length, 50, 'initial window renders 10 visible + 40 buffer rows');
+
+        let domMutations = 0;
+        const origInsert = list.insertBefore.bind(list);
+        list.insertBefore = (...args) => { domMutations += 1; return origInsert(...args); };
+
+        // Scrolling 20 rows stays >= 12 rows inside the 50-row window -> 0 DOM mutations
+        curScroll = 20 * ROW;
+        list.dispatchEvent(new window.Event('scroll'));
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(domMutations, 0, 'scrolling within hysteresis margin skips DOM re-windowing');
+
+        // Scrolling past the 12-row margin (visTo = 45 > 50 - 12 = 38) triggers re-windowing cleanly
+        curScroll = 35 * ROW;
+        list.dispatchEvent(new window.Event('scroll'));
+        while (rafs.length) rafs.shift()(16);
+        assert.ok(domMutations > 0, 'scrolling past hysteresis margin shifts virtual window');
+        assert.ok([...list.children].some((li) => li._idx === 40), 'newly scrolled track is rendered in window');
+    } finally {
+        dom.window.close();
+    }
+});

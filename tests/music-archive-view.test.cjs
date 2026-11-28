@@ -2411,3 +2411,80 @@ test('Batch 126 / 127: flat views pre-size before show, scope layout-holding/rev
         f.close();
     }
 });
+
+test('Batch 128: archive-list skips empty captureViewport, reuses track rows in-place on scroll, and archive-view resize prefers innerWidth/innerHeight', () => {
+    // 1. Empty initial boot + resize() must not force root.clientWidth/clientHeight or viewport.clientHeight
+    let rootClientReads = 0;
+    const f0 = fixture({
+        tracks: [],
+        setup: (w) => {
+            Object.defineProperty(w, 'innerWidth', { configurable: true, value: 1440 });
+            Object.defineProperty(w, 'innerHeight', { configurable: true, value: 900 });
+            const root = w.document.getElementById('music-archive-view');
+            Object.defineProperty(root, 'clientWidth', { configurable: true, get() { rootClientReads += 1; return 1440; } });
+            Object.defineProperty(root, 'clientHeight', { configurable: true, get() { rootClientReads += 1; return 900; } });
+        }
+    });
+    try {
+        const vp0 = f0.w.document.querySelector('.archive-list-viewport');
+        let vpReads = 0;
+        Object.defineProperty(vp0, 'clientHeight', { configurable: true, get() { vpReads += 1; return 500; } });
+        f0.view.list.captureViewport();
+        assert.equal(vpReads, 0, 'captureViewport skips clientHeight when archive-list has no rows');
+        assert.equal(rootClientReads, 0, 'archive-view resize prefers global.innerWidth/innerHeight over root.clientWidth/clientHeight');
+    } finally {
+        f0.close();
+    }
+
+    // 2. Virtual scrolling reuses off-screen .archive-list-row nodes in-place without remove() or appendChild()
+    const rafs = [];
+    const f = fixture({
+        n: 200,
+        playlists: [],
+        setup: (w) => {
+            Object.defineProperty(w, 'innerWidth', { configurable: true, value: 1440 });
+            Object.defineProperty(w, 'innerHeight', { configurable: true, value: 900 });
+            w.requestAnimationFrame = (cb) => { rafs.push(cb); return rafs.length; };
+            w.cancelAnimationFrame = () => {};
+        }
+    });
+    try {
+        f.view.setListOpen(true);
+        const vp = f.w.document.querySelector('.archive-list-viewport');
+        const spacer = vp.querySelector('.archive-list-spacer');
+        Object.defineProperty(vp, 'clientHeight', { configurable: true, value: 400 });
+        // Prime top overscan at scrollTop = 480, then scroll further to 960 -> steady-state reuse has 0 removes & 0 appends
+        vp.scrollTop = 480;
+        vp.dispatchEvent(new f.w.Event('scroll'));
+        while (rafs.length) rafs.shift()(16);
+        const initialRows = [...spacer.querySelectorAll('.archive-list-row')];
+        assert.ok(initialRows.length >= 16, `initial virtual scroll renders track rows (${initialRows.length})`);
+
+        let trackRemoves = 0;
+        let trackAppends = 0;
+        for (const row of initialRows) {
+            const origRemove = row.remove.bind(row);
+            row.remove = () => { trackRemoves += 1; return origRemove(); };
+        }
+        const origAppend = spacer.appendChild.bind(spacer);
+        spacer.appendChild = (node) => {
+            if (node.nodeType === 11) {
+                for (const c of node.children) if (c.classList?.contains('archive-list-row')) trackAppends += 1;
+            } else if (node.classList?.contains('archive-list-row')) {
+                trackAppends += 1;
+            }
+            return origAppend(node);
+        };
+
+        // Scroll down by another 480px so top track rows leave and bottom track rows enter
+        vp.scrollTop = 960;
+        vp.dispatchEvent(new f.w.Event('scroll'));
+        while (rafs.length) rafs.shift()(16);
+        assert.equal(trackRemoves, 0, 'scrolling reuses off-screen track rows in-place without node.remove()');
+        assert.equal(trackAppends, 0, 'steady-state scrolling reuses all track rows without DOM re-insertion');
+        const afterKs = new Set([...spacer.querySelectorAll('.archive-list-row')].map((n) => Number(n.dataset.k)));
+        assert.ok([...afterKs].some((k) => k >= 20), 'reused track rows now display newly scrolled rows');
+    } finally {
+        f.close();
+    }
+});
