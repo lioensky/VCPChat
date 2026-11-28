@@ -1156,3 +1156,94 @@ test('Batch 110: focusInside stops scanning after first visible input and still 
         dom.window.close();
     }
 });
+
+test('Batch 122: eq-presets direct DOM promptSave with preventScroll, dupes/track-file/folders skip inert/hidden focus restore, and folders guards concurrent rescan', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="wrap"><button id="opener" type="button">open</button></div>
+        <select id="eq-preset-select"><option value="flat">平坦</option></select>
+    </body>`, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        const doc = window.document;
+        const wrap = doc.getElementById('wrap');
+        const opener = doc.getElementById('opener');
+
+        let rescanCalls = 0;
+        let finishRescan = null;
+        const t1 = { path: 'D:\\Music\\a.flac', title: 'Alpha.flac', artist: 'A', duration: 180 };
+        const t2 = { path: 'D:\\Music\\a.mp3', title: 'Alpha.mp3', artist: 'A', duration: 180 };
+        const app = {
+            playlist: [t1, t2],
+            currentTrackIndex: 0,
+            eqBands: { 32: 0 },
+            eqPresets: { flat: { 32: 0 } },
+            eqPresetSelect: doc.getElementById('eq-preset-select'),
+            populateEqPresets() {}, applyEqPreset() {}, syncEqPresetSelect() {}, updateUIWithState() {},
+            api: {
+                musicLibraryFolders: (req) => {
+                    if (req.op === 'rescan') {
+                        rescanCalls += 1;
+                        return new Promise((r) => { finishRescan = () => r({ ok: true }); });
+                    }
+                    return Promise.resolve({ ok: true, folders: [] });
+                },
+                showMusicInFolder: async () => ({ ok: true })
+            }
+        };
+        for (const f of ['music-app-hooks.js', 'music-radio.js', 'music-eq-presets.js', 'music-dupes.js', 'music-track-file.js', 'music-folders.js']) {
+            window.eval(fs.readFileSync(`Musicmodules/${f}`, 'utf8'));
+        }
+        window.MusicEqPresets.setupMusicEqPresets(app, { storage: { getItem: () => '[]', setItem() {} } });
+        window.MusicDupes.setupMusicDupes(app);
+        window.MusicTrackFile.setupMusicTrackFile(app);
+        window.MusicFolders.setupMusicFolders(app);
+
+        // 1. eq-presets cleanName fast-path + direct DOM promptSave + focus({ preventScroll: true })
+        assert.equal(window.MusicEqPresets.cleanName('  耳机  '), '耳机');
+        assert.equal(window.MusicEqPresets.cleanName('a\t\nb\rc'), 'a b c');
+        app.eqUserPresets.promptSave();
+        const eqInput = doc.querySelector('.music-eq-name input');
+        assert.ok(eqInput && eqInput.getAttribute('maxlength') === '24', 'eq promptSave builds input directly');
+        let eqPreventScroll = null;
+        const origEqFocus = eqInput.focus.bind(eqInput);
+        eqInput.focus = (opts) => { eqPreventScroll = Boolean(opts && opts.preventScroll); return origEqFocus(opts); };
+        await new Promise((r) => setTimeout(r, 45));
+        assert.equal(eqPreventScroll, true, 'eq promptSave focuses input with preventScroll: true');
+        doc.querySelector('.music-eq-name .cancel').click();
+
+        // 2. dupes / track-file / folders skip focus restore when opener ancestor becomes [hidden]
+        let openerFocused = 0;
+        const origOpenerFocus = opener.focus.bind(opener);
+        opener.focus = (...args) => { openerFocused += 1; return origOpenerFocus(...args); };
+        for (const [label, openFn, closeSel] of [
+            ['dupes', () => app.openDupesView(), '.mdupes .mstats-close'],
+            ['track-file', () => app.openTrackInfo(0), '.minfo:not(.mfold) .mstats-close'],
+            ['folders', () => app.openLibraryFolders(), '.mfold .mstats-close']
+        ]) {
+            wrap.hidden = false;
+            origOpenerFocus();
+            openerFocused = 0;
+            openFn();
+            wrap.hidden = true;
+            doc.querySelector(closeSel).click();
+            assert.equal(openerFocused, 0, `${label} skips focus restore when opener is inside [hidden] ancestor`);
+        }
+        wrap.hidden = false;
+
+        // 3. folders rescan button disables during in-flight IPC to prevent duplicate calls
+        app.openLibraryFolders();
+        const rescanBtn = [...doc.querySelectorAll('.mfold .minfo-btn')].find((b) => b.textContent === '立即重新扫描');
+        assert.ok(rescanBtn, 'rescan button present');
+        rescanBtn.click();
+        assert.equal(rescanBtn.disabled, true, 'rescan button disabled while IPC is in flight');
+        rescanBtn.click();
+        assert.equal(rescanCalls, 1, 'second click during in-flight rescan is ignored');
+        finishRescan();
+        await tick(window);
+        assert.equal(rescanBtn.disabled, false, 'rescan button re-enabled after IPC resolves');
+
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

@@ -564,3 +564,96 @@ test('Batch 116: toast DOM build, desktop-lyrics playing poll skip, webdav colla
         }
     }
 });
+
+test('Batch 122: fluid-select cancels bud & guards non-Node scroll/pointerdown, toast tolerates missing rAF & non-Element click, intro quantizes opacity strings', () => {
+    // 1. music-fluid-select: cancel bud before snapshot, non-Node scroll target, pointermove activeElement fast-path
+    {
+        const dom = new JSDOM('<!doctype html><body><select id="s" aria-label="Mode"><option value="a">Alpha</option><option value="b">Beta</option></select></body>', {
+            runScripts: 'outside-only',
+            url: 'http://localhost/'
+        });
+        const { window } = dom;
+        const doc = window.document;
+        try {
+            const events = [];
+            window.MusicFluid = {
+                enabled: () => true,
+                bud: () => {},
+                cancel: (el) => { events.push(`cancel:${el?.className || ''}`); },
+                snapshot: (el) => { events.push(`snapshot:${el?.className || ''}`); return { rect: {} }; },
+                melt: () => { events.push('melt'); }
+            };
+            window.eval(read('Musicmodules/music-dock/music-fluid-select.js'));
+            window.MusicFluidSelect.dress(doc.getElementById('s'));
+            const trigger = doc.querySelector('.mfs-trigger');
+            assert.ok(trigger, 'fluid-select dressed trigger');
+            trigger.click();
+            const menu = doc.querySelector('.mfs-menu');
+            assert.ok(menu, 'menu opened');
+
+            // pointermove on already-focused option skips getAttribute('aria-disabled')
+            const activeItem = doc.activeElement;
+            assert.ok(activeItem && activeItem.classList.contains('mfs-item'));
+            let disabledReads = 0;
+            const origGetAttr = activeItem.getAttribute.bind(activeItem);
+            activeItem.getAttribute = (k) => { if (k === 'aria-disabled') disabledReads += 1; return origGetAttr(k); };
+            activeItem.dispatchEvent(new window.Event('pointermove', { bubbles: true }));
+            assert.equal(disabledReads, 0, 'pointermove on active item short-circuits before getAttribute');
+
+            // scroll event with non-Node target (window) does not throw and cancels bud before snapshot
+            const ev = new window.Event('scroll');
+            Object.defineProperty(ev, 'target', { value: window });
+            doc.dispatchEvent(ev);
+            assert.equal(doc.querySelector('.mfs-menu'), null, 'non-Node scroll closes menu without throwing');
+            assert.ok(events[0]?.startsWith('cancel:mfs-menu'), 'close cancels running bud on menu first');
+            assert.ok(events[1]?.startsWith('snapshot:mfs-menu'), 'snapshot runs after cancel');
+            window.dispatchEvent(new window.Event('beforeunload'));
+        } finally {
+            window.close();
+        }
+    }
+
+    // 2. music-toast: missing rAF fallback + Text node click safety + beforeunload cache clear
+    {
+        const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/' });
+        const { window } = dom;
+        const doc = window.document;
+        try {
+            window.requestAnimationFrame = undefined;
+            window.eval(read('Musicmodules/music-dock/music-toast.js'));
+            const handle = window.MusicToast.show({ id: 't-noraf', message: 'Hello', duration: 0 });
+            const el = doc.querySelector('.mtst');
+            assert.ok(el && el.classList.contains('mtst-in'), 'missing rAF fallback still adds mtst-in');
+            const textNode = doc.createTextNode('plain');
+            el.appendChild(textNode);
+            textNode.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+            assert.equal(handle.closed, false, 'clicking a Text node inside toast does not throw or close');
+            window.dispatchEvent(new window.Event('beforeunload'));
+            assert.equal(doc.querySelector('.mtst'), null, 'beforeunload removes active toasts');
+        } finally {
+            window.close();
+        }
+    }
+
+    // 3. music-intro: quantized opacity strings (<= 3 decimals) on transit frame
+    {
+        const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', url: 'http://localhost/?intro=off' });
+        const { window } = dom;
+        const doc = window.document;
+        try {
+            window.requestAnimationFrame = () => 1;
+            window.cancelAnimationFrame = () => {};
+            window.eval(read('Musicmodules/music-intro/music-intro.js'));
+            const app = { playlist: [{ title: 'Track.flac' }], currentTrackIndex: 0 };
+            const api = window.MusicIntroLib.init(app);
+            api.freeze('enter', 0.491234567, { file: 'Track' });
+            const flash = doc.querySelector('.music-intro .mi-flash');
+            assert.ok(flash, 'intro flash mounted');
+            const op = flash.style.opacity;
+            assert.match(op, /^(?:0|1|0\.\d{1,3})$/, `opacity "${op}" is quantized to at most 3 decimal places`);
+            window.dispatchEvent(new window.Event('beforeunload'));
+        } finally {
+            window.close();
+        }
+    }
+});
