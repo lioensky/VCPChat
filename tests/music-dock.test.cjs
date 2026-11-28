@@ -2708,3 +2708,68 @@ test('Batch 112: containment CSS, pre-baked queue .md-qdur hidden toggle & cache
         window.close();
     }
 });
+
+test('Batch 118: segmented arrow keys do not trigger dock seek, palette --Artist hides hints, queue remove skips playlist.indexOf, and virtual scrollers disable scroll anchoring', () => {
+    const skinCss = read('Musicmodules/music-theme/music-skin.css');
+    const panelCss = read('Musicmodules/music-dock/music-dock-panel.css');
+    assert.match(skinCss, /\.sidebar-playlist\s*\{[^}]*overflow-anchor:\s*none;/, 'classic virtual playlist sets overflow-anchor: none');
+    assert.match(panelCss, /\.md-ql\s*\{[^}]*overflow-anchor:\s*none;/, 'queue virtual scroller sets overflow-anchor: none');
+
+    const { window, doc, app, dock } = setup((a) => {
+        a.isStageActive = true;
+        a.lastKnownDuration = 200;
+        a.lastKnownCurrentTime = 50;
+        a.seekCalls = [];
+        a.seekTo = (t) => a.seekCalls.push(t);
+        a.playlist.splice(0, a.playlist.length,
+            { path: 'C:/s0.flac', title: 'Now', artist: 'A', duration: 200 },
+            { path: 'C:/s1.flac', title: 'Manual 1', artist: 'B', duration: 180 }
+        );
+        a.manualQueue = [a.playlist[1]];
+        a.getUpNext = () => ({ manual: a.manualQueue.slice(), context: [] });
+        a.getHistory = () => [];
+        a.queueRemove = (idx) => { a.removedIdx = idx; a.manualQueue.splice(idx, 1); };
+    });
+    try {
+        // 1. Segmented control inside stage settings: ArrowRight switches option without invoking dock seekTo
+        const seg = doc.createElement('div');
+        seg.className = 'music-skin-segmented';
+        const b1 = doc.createElement('button');
+        b1.type = 'button';
+        const b2 = doc.createElement('button');
+        b2.type = 'button';
+        seg.append(b1, b2);
+        doc.body.appendChild(seg);
+        b1.focus();
+        const ev = new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+        b1.dispatchEvent(ev);
+        assert.equal(app.seekCalls.length, 0, 'ArrowRight inside .music-skin-segmented does not seek playback');
+        assert.equal(ev.defaultPrevented, false, 'dock capture handler leaves ArrowRight un-prevented for segmented control');
+
+        // 2. Palette uppercase --Artist flag closes hint list cleanly
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        const hints = doc.querySelector('.md-cmd-hints');
+        input.value = '--Art';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(hints.hidden, false, 'partial --Art shows filter hints');
+        input.value = '--Artist';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        assert.equal(hints.hidden, true, 'completed case-insensitive --Artist hides filter hints');
+        dock.closePalette();
+
+        // 3. Queue remove button does not scan app.playlist.indexOf
+        dock.openPanel('播放列表');
+        const origIndexOf = app.playlist.indexOf.bind(app.playlist);
+        let indexOfCalls = 0;
+        app.playlist.indexOf = (...args) => { indexOfCalls += 1; return origIndexOf(...args); };
+        const removeBtn = doc.querySelector('.md-man [data-qact="remove"]');
+        assert.ok(removeBtn, 'manual queue row exposes remove button');
+        removeBtn.click();
+        assert.equal(app.removedIdx, 0, 'remove button invokes queueRemove(0)');
+        assert.equal(indexOfCalls, 0, 'remove action does not scan app.playlist.indexOf');
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});

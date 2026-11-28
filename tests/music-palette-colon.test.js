@@ -15,4 +15,9 @@ test('冒号写法（中英文冒号、冒号后空一格）', () => {
     assert.strictEqual(parseQuery('Re:Zero').text, 'Re:Zero');
     // 旧写法照旧
     assert.strictEqual(parseQuery('--歌手 远舟').artist, '远舟');
+    // 大小写混合的 --Artist / --Album / --Title 不应误判为未完成过滤符
+    assert.strictEqual(parseQuery('--Artist').pendingFlag, null);
+    assert.strictEqual(parseQuery('--Album').pendingFlag, null);
+    assert.strictEqual(parseQuery('--Title').pendingFlag, null);
+    assert.strictEqual(parseQuery('--Art').pendingFlag, 'Art');
 });
