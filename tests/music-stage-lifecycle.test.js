@@ -3008,6 +3008,8 @@ test('Batch 119: stage runtime splitGraphemes ASCII/emoji, clamp01 Infinity/NaN,
         }];
         lApp.renderLyrics();
         const w0 = ul.querySelector('.lyric-word');
+        // Keep isPlaying=false with seek=true so elapsed wall-clock ms never drifts 50.0% under parallel test load
+        lApp.isPlaying = false;
         lApp.lastKnownCurrentTime = 1.0; lApp.lastStateUpdateTime = Date.now(); lApp.animateLyrics(true);
         assert.equal(w0.style.getPropertyValue('--word-progress'), '50.0%');
         lApp.lastKnownCurrentTime = 2.5; lApp.lastStateUpdateTime = Date.now(); lApp.animateLyrics(true);
