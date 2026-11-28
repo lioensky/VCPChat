@@ -108,6 +108,7 @@ body.music-dock-on .music-player .controls {
   display: flex;
   justify-content: center;
   pointer-events: none;
+  contain: layout style;
 }
 .md-dock-in {
   pointer-events: auto;

@@ -56,35 +56,57 @@
             const up = typeof app.getUpNext === 'function'
                 ? app.getUpNext(2000)
                 : { manual: [], context: activeList().filter((t) => t !== current) };
-            const rows = [];
-            let y = 0;
-            const push = (row, h) => { row.top = y; row.h = h; y += h; rows.push(row); };
             // 播放过的（Apple Music 的「历史」、Spotify 的「最近播放」）：在正在放的上面，打开时先看到正在放的，往上翻才看到
             const history = typeof app.getHistory === 'function' ? app.getHistory(30) : [];
-            if (history.length && current) {
-                push({ type: 'head', label: '播放过的', count: history.length }, QUEUE_HEAD_H);
-                for (let i = 0; i < history.length; i += 1) push({ type: 'hist', track: history[i] }, QUEUE_ROW_H);
+            const histLen = history.length && current ? history.length : 0;
+            const manList = up.manual;
+            const manLen = manList.length;
+            const ctxList = up.context;
+            const ctxLen = ctxList.length;
+            const totalRows = (histLen ? histLen + 1 : 0) + (current ? 1 : 0)
+                + (manLen ? manLen + 1 : 0) + (ctxLen ? ctxLen + 1 : 0);
+            const rows = new Array(totalRows);
+            let outIdx = 0;
+            let y = 0;
+            if (histLen) {
+                rows[outIdx++] = { type: 'head', label: '播放过的', count: histLen, top: y, h: QUEUE_HEAD_H };
+                y += QUEUE_HEAD_H;
+                for (let i = 0; i < histLen; i += 1) {
+                    rows[outIdx++] = { type: 'hist', track: history[i], top: y, h: QUEUE_ROW_H };
+                    y += QUEUE_ROW_H;
+                }
             }
-            if (current) push({ type: 'now', track: current }, QUEUE_ROW_H);
+            if (current) {
+                rows[outIdx++] = { type: 'now', track: current, top: y, h: QUEUE_ROW_H };
+                y += QUEUE_ROW_H;
+            }
             rows.nowTop = current ? y - QUEUE_ROW_H : 0;
-            if (up.manual.length) {
-                push({ type: 'head', label: '接下来播放', count: up.manual.length, clear: true }, QUEUE_HEAD_H);
-                rows.manualStart = rows.length;
-                for (let i = 0; i < up.manual.length; i += 1) push({ type: 'manual', i, track: up.manual[i] }, QUEUE_ROW_H);
-                rows.manualEnd = rows.length;
+            if (manLen) {
+                rows[outIdx++] = { type: 'head', label: '接下来播放', count: manLen, clear: true, top: y, h: QUEUE_HEAD_H };
+                y += QUEUE_HEAD_H;
+                rows.manualStart = outIdx;
+                for (let i = 0; i < manLen; i += 1) {
+                    rows[outIdx++] = { type: 'manual', i, track: manList[i], top: y, h: QUEUE_ROW_H };
+                    y += QUEUE_ROW_H;
+                }
+                rows.manualEnd = outIdx;
             } else {
                 rows.manualStart = rows.manualEnd = 0;
             }
-            if (up.context.length) {
+            if (ctxLen) {
                 const mode = playMode();
                 const radio = app.radio && app.radio.list === app.currentFilteredTracks ? app.radio.label : '';
                 const name = radio || (app.playbackSourceName ? app.playbackSourceName() : app.filteredPlaylistSource?.name) || (app.currentFilteredTracks ? '当前列表' : '全部曲目');
                 const label = mode === 'shuffle' ? `随机 · ${name}` : mode === 'repeat-one' ? '单曲循环' : `接着播放 · ${name}`;
-                push({ type: 'head', label, count: up.context.length }, QUEUE_HEAD_H);
-                for (let i = 0; i < up.context.length; i += 1) push({ type: 'ctx', track: up.context[i] }, QUEUE_ROW_H);
+                rows[outIdx++] = { type: 'head', label, count: ctxLen, top: y, h: QUEUE_HEAD_H };
+                y += QUEUE_HEAD_H;
+                for (let i = 0; i < ctxLen; i += 1) {
+                    rows[outIdx++] = { type: 'ctx', track: ctxList[i], top: y, h: QUEUE_ROW_H };
+                    y += QUEUE_ROW_H;
+                }
             }
             rows.total = y;
-            rows.upcoming = up.manual.length + up.context.length;
+            rows.upcoming = manLen + ctxLen;
             state.queueRows = rows;
             return rows;
         }
@@ -111,11 +133,13 @@
         };
         let manualProto = null;
         let trackProto = null;
+        const ROW_INNER_H = QUEUE_ROW_H - 2;
         const getManualProto = () => {
             if (manualProto) return manualProto;
             const root = document.createElement('div');
             root.setAttribute('role', 'listitem');
             root.className = 'md-qi md-man';
+            root.style.height = `${ROW_INNER_H}px`;
             const gripEl = document.createElement('span');
             gripEl.className = 'md-qgrip';
             gripEl.title = '拖动排序';
@@ -124,11 +148,13 @@
             const tx = document.createElement('span');
             tx.className = 'md-qi-tx';
             tx.append(document.createElement('b'), document.createElement('span'));
+            const durEl = document.createElement('span');
+            durEl.className = 'md-qdur';
             const playBtn = document.createElement('button');
             playBtn.className = 'md-qplay';
             playBtn.type = 'button';
             playBtn.dataset.qact = 'play';
-            playBtn.appendChild(tx);
+            playBtn.append(tx, durEl);
             const actBtn = document.createElement('button');
             actBtn.className = 'md-qx';
             actBtn.type = 'button';
@@ -145,14 +171,17 @@
             const root = document.createElement('div');
             root.setAttribute('role', 'listitem');
             root.className = 'md-qi';
+            root.style.height = `${ROW_INNER_H}px`;
             const tx = document.createElement('span');
             tx.className = 'md-qi-tx';
             tx.append(document.createElement('b'), document.createElement('span'));
+            const durEl = document.createElement('span');
+            durEl.className = 'md-qdur';
             const playBtn = document.createElement('button');
             playBtn.className = 'md-qplay';
             playBtn.type = 'button';
             playBtn.dataset.qact = 'play';
-            playBtn.appendChild(tx);
+            playBtn.append(tx, durEl);
             const actBtn = document.createElement('button');
             actBtn.className = 'md-qx md-qnext';
             actBtn.type = 'button';
@@ -205,12 +234,14 @@
                 const root = getManualProto().cloneNode(true);
                 const playBtn = root.children[1];
                 const tx = playBtn.firstChild;
-                return { kind, el: root, playBtn, titleEl: tx.firstChild, artistEl: tx.lastChild, durEl: null, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastQi: '', k: -1 };
+                const durEl = playBtn.lastChild;
+                return { kind, el: root, playBtn, titleEl: tx.firstChild, artistEl: tx.lastChild, durEl, hasDur: true, lastTop: NaN, lastH: ROW_INNER_H, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastQi: '', k: -1 };
             }
             const root = getTrackProto().cloneNode(true);
             const playBtn = root.children[0];
             const tx = playBtn.firstChild;
-            return { kind, el: root, playBtn, titleEl: tx.firstChild, artistEl: tx.lastChild, durEl: null, hasDur: false, lastTop: NaN, lastH: NaN, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastCls: 'md-qi', k: -1 };
+            const durEl = playBtn.lastChild;
+            return { kind, el: root, playBtn, titleEl: tx.firstChild, artistEl: tx.lastChild, durEl, hasDur: true, lastTop: NaN, lastH: ROW_INNER_H, lastTitle: null, lastArtist: null, lastDur: '', lastAria: '', lastK: '', lastCls: 'md-qi', k: -1 };
         };
         const acquireSlot = (kind) => (pools[kind].length ? pools[kind].pop() : createSlot(kind));
         const releaseSlot = (slot) => {
@@ -257,15 +288,10 @@
             if (slot.lastK !== kStr) { slot.lastK = kStr; slot.el.dataset.k = kStr; }
             const dur = queueDuration(row.track);
             if (dur) {
-                if (!slot.durEl) {
-                    const durEl = document.createElement('span');
-                    durEl.className = 'md-qdur';
-                    slot.durEl = durEl;
-                }
                 if (slot.lastDur !== dur) { slot.lastDur = dur; slot.durEl.textContent = dur; }
-                if (!slot.hasDur) { slot.playBtn.appendChild(slot.durEl); slot.hasDur = true; }
+                if (!slot.hasDur) { slot.durEl.hidden = false; slot.hasDur = true; }
             } else if (slot.hasDur) {
-                slot.durEl.remove();
+                slot.durEl.hidden = true;
                 slot.hasDur = false;
             }
             if (slot.kind === 'manual') {
@@ -314,10 +340,19 @@
             }
             sec = Math.round(sec);
             if (!(sec > 0)) return '';
-            const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), x = String(sec % 60).padStart(2, '0');
-            return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`;
+            if (sec < 3600) {
+                const m = (sec / 60) | 0;
+                const s = sec - m * 60;
+                return `${m}:${s < 10 ? '0' : ''}${s}`;
+            }
+            const h = (sec / 3600) | 0;
+            const rem = sec - h * 3600;
+            const m = (rem / 60) | 0;
+            const s = rem - m * 60;
+            return `${h}:${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
         };
         let cachedQueueH = 0;
+        listen(global, 'resize', () => { cachedQueueH = 0; });
         function renderQueueWindow(scroller, force = false, known = null) {
             if (state.queueDrag?.active) return; // 拖动时别重建行
             const hasKnown = Boolean(known && typeof known.top === 'number');
@@ -325,7 +360,9 @@
             if (!state.panelOpen && !hasKnown) return;
             const rows = state.queueRows || [];
             const scrollTop = hasKnown ? known.top : scroller.scrollTop;
-            let vh = hasKnown ? (known.height || cachedQueueH) : scroller.clientHeight;
+            let vh = hasKnown
+                ? (known.height || cachedQueueH)
+                : ((force ? 0 : cachedQueueH) || scroller.clientHeight || cachedQueueH);
             if (vh > 0) {
                 if (!hasKnown) cachedQueueH = vh;
             } else {

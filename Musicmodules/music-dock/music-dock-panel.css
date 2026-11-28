@@ -266,6 +266,7 @@
 #music-dock-root .md-qx:focus-visible { opacity: 1; }
 #music-dock-root .md-qx:hover { color: var(--md-t1); background: var(--md-fill2); }
 .md-qtag { flex-shrink: 0; font-size: 11px; color: var(--md-t3); }
+#music-dock-root .md-qdur[hidden] { display: none; }
 .md-ql.md-qdragging { cursor: grabbing; }
 .md-ql.md-qdragging .md-qi { pointer-events: none; }
 #music-dock-root .md-qi.md-qdrag {

@@ -23,9 +23,14 @@
         || (code >= 0x3400 && code <= 0x4dbf)
         || (code >= 0xf900 && code <= 0xfaff);
     const stripExt = (t) => {
-        const raw = String(t || '');
-        if (!raw || raw.lastIndexOf('.') === -1) return raw;
-        return raw.replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '');
+        const raw = typeof t === 'string' ? t : String(t || '');
+        const len = raw.length;
+        if (!len) return '';
+        const lo = len > 5 ? len - 5 : 0;
+        for (let i = len - 1; i >= lo; i -= 1) {
+            if (raw.charCodeAt(i) === 46) return raw.replace(/\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff)$/i, '');
+        }
+        return raw;
     };
     const HAN = /[㐀-䶿一-鿿豈-﫿]/;
     const LATIN = /[a-z]/;
@@ -1007,31 +1012,35 @@
             // 若已按 sp.order 顺序入桶，则仅对含有碟号/曲号的专辑跑一次比较排序，无曲号专辑天然已是标题序。
             const trackOrder = !q && isAlbum && sp.mode === 'title' && global.MusicTrackOrder ? global.MusicTrackOrder : null;
             const useOrder = !q && Boolean(sp.order && sp.order.length === list.length);
+            const checkOrder = Boolean(useOrder && trackOrder);
             const groups = new Map();
-            const albumsToSort = useOrder && trackOrder ? new Set() : null;
+            let anyAlbumToSort = false;
             let prevRaw = undefined;
-            let prevName = '';
             let prevBucket = null;
             const pushGroup = (i) => {
                 const tr = list[i];
                 const raw = tr && tr[field];
-                let name;
                 let bucket;
                 if (raw === prevRaw && prevBucket) {
-                    name = prevName;
                     bucket = prevBucket;
                 } else {
-                    name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
+                    let name;
+                    if (typeof raw === 'string') {
+                        const rLen = raw.length;
+                        name = rLen > 0 && raw.charCodeAt(0) > 32 && raw.charCodeAt(rLen - 1) > 32 ? raw : raw.trim();
+                    } else {
+                        name = String(raw || '').trim();
+                    }
+                    if (!name) name = fallbackName;
                     bucket = groups.get(name);
-                    if (!bucket) { bucket = []; groups.set(name, bucket); }
+                    if (!bucket) { bucket = []; bucket._hasOrd = false; groups.set(name, bucket); }
                     prevRaw = raw;
-                    prevName = name;
                     prevBucket = bucket;
                 }
                 bucket.push(i);
-                if (albumsToSort && !albumsToSort.has(name)) {
+                if (checkOrder && !bucket._hasOrd) {
                     const ordInfo = trackOrder.numberOf(tr);
-                    if (ordInfo.no > 0 || ordInfo.disc > 0) albumsToSort.add(name);
+                    if (ordInfo.no > 0 || ordInfo.disc > 0) { bucket._hasOrd = true; anyAlbumToSort = true; }
                 }
             };
             if (q) {
@@ -1052,7 +1061,7 @@
                 keyed.sort((a, b) => LOCALE_CMP(a.key, b.key));
                 ordered = keyed;
             }
-            const needInAlbum = !q && (!useOrder || (albumsToSort && albumsToSort.size > 0));
+            const needInAlbum = !q && (!useOrder || anyAlbumToSort);
             const inAlbum = needInAlbum ? (trackOrder ? trackOrder.albumCompare(list, byTitle) : byTitle) : null;
             const prefix = field + ':';
             for (let oi = 0; oi < ordered.length; oi += 1) {
@@ -1060,7 +1069,7 @@
                 const items = q ? ordered[oi][1] : ordered[oi].items;
                 const ctx = isAlbum ? 'album:' + name : null;
                 head(name, prefix + name, items.length);
-                if (inAlbum && items.length > 1 && (!useOrder || albumsToSort.has(name))) items.sort(inAlbum);
+                if (inAlbum && items.length > 1 && (!useOrder || items._hasOrd)) items.sort(inAlbum);
                 for (let j = 0; j < items.length; j += 1) {
                     const idx = items[j];
                     push(idx, ctx || allCtx(idx));

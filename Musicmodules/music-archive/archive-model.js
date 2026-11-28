@@ -20,9 +20,15 @@
     };
 
     const stripExtension = (title) => {
-        const s = String(title || '');
-        const dot = s.lastIndexOf('.');
-        return dot >= 0 && s.length - dot <= 5 ? s.replace(AUDIO_EXT_RE, '') : s;
+        const s = typeof title === 'string' ? title : String(title || '');
+        const len = s.length;
+        if (!len) return '';
+        // 所有支持的音频扩展名最长 4 个字母（含 '.' 共 5 字符），只查尾部 5 个字符即可跳过整串扫描与正则
+        const lo = len > 5 ? len - 5 : 0;
+        for (let i = len - 1; i >= lo; i -= 1) {
+            if (s.charCodeAt(i) === 46) return s.replace(AUDIO_EXT_RE, '');
+        }
+        return s;
     };
 
     const LOCALE_CMP = typeof Intl !== 'undefined' ? new Intl.Collator().compare : (a, b) => a.localeCompare(b);

@@ -64,6 +64,15 @@
         return false;
     };
 
+    // 单趟倒扫路径分隔符（'/' 或 '\\'），避免 Windows 路径上双 lastIndexOf 全串空扫 '/' 直到下标 0
+    const lastSep = (s, from) => {
+        for (let i = from; i >= 0; i -= 1) {
+            const c = s.charCodeAt(i);
+            if (c === 47 || c === 92) return i;
+        }
+        return -1;
+    };
+
     const parsedCache = new WeakMap();
     // → { disc, no }，不知道的是 0
     const numberOf = (track) => {
@@ -76,7 +85,7 @@
         let no = positive(t.trackNo);
         const s = (!no || !disc) && t.path ? String(t.path) : '';
         if (s) {
-            const cut = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+            const cut = lastSep(s, s.length - 1);
             const baseStart = cut + 1;
             if (!no && mayHaveTrackPrefix(s, baseStart)) {
                 const b = decodeBase(baseStart > 0 ? s.slice(baseStart) : s);
@@ -88,7 +97,7 @@
                 else if ((m = TRACK_PREFIX_RE.exec(name))) no = positive(m[1]); // 抓轨软件默认的「Track01」「Track 1」
             }
             if (!disc && cut > 0) {
-                const prev = Math.max(s.lastIndexOf('/', cut - 1), s.lastIndexOf('\\', cut - 1));
+                const prev = lastSep(s, cut - 1);
                 const pStart = prev + 1;
                 if (cut > pStart && mayHaveParentDisc(s, pStart, cut)) disc = discFromParent(s.slice(pStart, cut));
             }

@@ -47,7 +47,7 @@
         [/^(?:次数|plays)([<>]=?)(\d+)$/i, (m) => { const n = Number(m[2]); const op = m[1]; return { word: '次数' + op + n, test: (t, ctx) => cmp(statOf(ctx, t)?.plays || 0, op, n) }; }],
         [/^([<>]=?)(\d+(?:\.\d+)?)(?:分钟|分|min|m)$/i, (m) => { const n = Number(m[2]) * 60; const op = m[1]; return { word: m[1] + m[2] + '分钟', test: (t) => lengthOf(t) > 0 && cmp(lengthOf(t), op, n) }; }]
     ];
-    const hasCmpChar = (s) => s.includes('>') || s.includes('<') || s.includes('＞') || s.includes('＜');
+    const CMP_CHAR_RE = /[<>＞＜]/;
     const WHITESPACE = /\s/;
     const WS_SPLIT_RE = /\s+/;
     const GT_FULL_RE = /＞/g;
@@ -55,7 +55,7 @@
     function cmp(a, op, b) { return op === '>' ? a > b : op === '>=' ? a >= b : op === '<' ? a < b : a <= b; }
 
     function matchCmpRule(raw) {
-        if (!hasCmpChar(raw)) return null;
+        if (!CMP_CHAR_RE.test(raw)) return null;
         const token = raw.includes('＞') || raw.includes('＜')
             ? raw.replace(GT_FULL_RE, '>').replace(LT_FULL_RE, '<')
             : raw;
@@ -67,30 +67,39 @@
     }
 
     function parse(q) {
-        const str = String(q || '').trim();
+        const str = typeof q === 'string' ? q.trim() : String(q || '').trim();
         if (!str) return { preds: [], text: '' };
-        // 单一普通检索词占绝大多数输入：走 O(1) 哈希查表，免去分词数组与逐条正则回溯
+        // 单一普通检索词占绝大多数输入：按长度门控 O(1) 哈希查表，免去无意义 toLowerCase 与正则回溯
         if (!WHITESPACE.test(str)) {
-            const exact = EXACT_RULES.get(str.toLowerCase());
-            if (exact) return { preds: [exact], text: '' };
+            const len = str.length;
+            if (len >= 2 && len <= 9) {
+                const exact = EXACT_RULES.get(str.toLowerCase());
+                if (exact) return { preds: [exact], text: '' };
+            }
             const cmpPred = matchCmpRule(str);
             return cmpPred ? { preds: [cmpPred], text: '' } : { preds: [], text: str };
         }
         const preds = [];
         const rest = [];
         const tokens = str.split(WS_SPLIT_RE);
+        const mayHaveCmp = CMP_CHAR_RE.test(str);
         for (let t = 0; t < tokens.length; t++) {
             const raw = tokens[t];
             if (!raw) continue;
-            const exact = EXACT_RULES.get(raw.toLowerCase());
-            if (exact) {
-                preds.push(exact);
-                continue;
+            const len = raw.length;
+            if (len >= 2 && len <= 9) {
+                const exact = EXACT_RULES.get(raw.toLowerCase());
+                if (exact) {
+                    preds.push(exact);
+                    continue;
+                }
             }
-            const cmpPred = matchCmpRule(raw);
-            if (cmpPred) {
-                preds.push(cmpPred);
-                continue;
+            if (mayHaveCmp) {
+                const cmpPred = matchCmpRule(raw);
+                if (cmpPred) {
+                    preds.push(cmpPred);
+                    continue;
+                }
             }
             rest.push(raw);
         }

@@ -286,11 +286,13 @@ body.music-stage-active #custom-title-bar {
 
 .sidebar-list-container {
     padding: 0;
+    contain: layout style;
 }
 
 .sidebar-playlist {
     counter-reset: track;
     padding: 4px 0 16px;
+    contain: layout style;
 }
 
 .playlist li,

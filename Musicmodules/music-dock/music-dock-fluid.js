@@ -228,12 +228,17 @@
             return cachedShift;
         };
         let lastLayoutSig = '';
+        let lastBarSig = '';
         const layout = () => {
             const sx = shiftX(true);
             const raw = bar.getBoundingClientRect();
             const rect = { left: raw.left - sx, right: raw.right - sx, top: raw.top, bottom: raw.bottom, width: raw.width, height: raw.height };
             const vh = win.innerHeight || doc.documentElement.clientHeight || 0;
             if (!(rect.width > 0 && rect.height > 0)) return false;
+            const padVar = parseFloat(mistPadRaw !== null ? mistPadRaw : host.style.getPropertyValue('--md-mist-pad'));
+            const pad = Number.isFinite(padVar) ? Math.max(0, Math.min(180, padVar)) : 180;
+            const barSig = `${rect.left.toFixed(1)}|${rect.top.toFixed(1)}|${rect.width.toFixed(1)}|${rect.height.toFixed(1)}|${vh}|${pad.toFixed(1)}|${host.classList.contains('md-squeeze') ? 1 : 0}`;
+            if (s.ring.placed && barSig === lastBarSig) return true;
             const layerW = Math.round(rect.width + PAD_X * 2);
             const left = Math.round(rect.left - PAD_X);
             // 层的底边比播放条再低一点（最多 24px），光晕和雾在播放条下沿不被裁掉。
@@ -247,9 +252,8 @@
             const vr = volBtnEl?.getBoundingClientRect();
             const playX = pr && pr.width ? pr.left - sx + pr.width / 2 - left : x + rect.height / 2;
             const volX = vr && vr.width ? vr.left - sx + vr.width / 2 - left : x + rect.width - rect.height / 2;
-            const padVar = parseFloat(mistPadRaw !== null ? mistPadRaw : host.style.getPropertyValue('--md-mist-pad'));
-            const pad = Number.isFinite(padVar) ? Math.max(0, Math.min(180, padVar)) : 180;
             const sig = `${layerW}|${left}|${bottom}|${rect.width.toFixed(1)}|${rect.height.toFixed(1)}|${playX.toFixed(1)}|${volX.toFixed(1)}|${pad.toFixed(1)}|${vh}`;
+            lastBarSig = barSig;
             if (s.ring.placed && sig === lastLayoutSig) return true;
             lastLayoutSig = sig;
             geo.vh = vh;
