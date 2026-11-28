@@ -6,7 +6,10 @@
 (function (global) {
     'use strict';
 
-    const isLocal = (p) => typeof p === 'string' && p !== '' && !/^[a-z][a-z0-9+.-]+:\/\//i.test(p);
+    const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
+    const EXT_RE = /\.([a-z0-9]{1,5})$/i;
+    const QUERY_HASH_RE = /[?#]/;
+    const isLocal = (p) => typeof p === 'string' && p !== '' && !SCHEME_RE.test(p);
 
     const pad2 = (n) => String(n).padStart(2, '0');
     const clock = (sec) => {
@@ -24,7 +27,7 @@
         if (!(b > 0)) return '';
         return b >= 1024 * 1024 * 1024 ? `${(b / 1024 / 1024 / 1024).toFixed(2)} GB` : b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
     };
-    const extOf = (p) => { const m = /\.([a-z0-9]{1,5})$/i.exec(String(p || '').split(/[?#]/)[0]); return m ? m[1].toUpperCase() : ''; };
+    const extOf = (p) => { const m = EXT_RE.exec(String(p || '').split(QUERY_HASH_RE)[0]); return m ? m[1].toUpperCase() : ''; };
 
     // 对话框里的每一行 [标签, 内容]；没有的信息不列（旧曲库没有采样率这些字段）
     const describeTrack = (track, stat) => {

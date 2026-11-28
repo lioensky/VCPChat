@@ -10,9 +10,15 @@
     const RANGE_KEY = 'musicStatsRange';
     const TOP = 5;
 
+    const BSLASH_RE = /\\/g;
+    const ARTIST_SPLIT_RE = /\s*(?:\/|,|，|、|&|;|feat\.?|ft\.)\s*/;
+    const SCHEME_RE = /^[a-z][a-z0-9+.-]{2,}:\/\//i;
+    const URI_ESC_RE = /[?#']/g;
+    const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const COVER_CANDIDATES = ['cover.jpg', 'folder.jpg', 'cover.png'];
     const norm = (s) => String(s || '').trim().toLowerCase();
-    const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
-    const firstArtist = (t) => String((t && t.artist) || '').split(/\s*(?:\/|,|，|、|&|;|feat\.?|ft\.)\s*/)[0].trim();
+    const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
+    const firstArtist = (t) => String((t && t.artist) || '').split(ARTIST_SPLIT_RE)[0].trim();
 
     // 秒 → 「3 小时 12 分」「45 分」「不到 1 分」
     const formatDuration = (sec) => {
@@ -23,18 +29,18 @@
     };
     // 和 app.fileUrl 一样：路径里的空格、#、?、'、% 都要编码，否则断图
     const fileUrl = (path) => {
-        const p = String(path || '').replace(/\\/g, '/');
+        const p = String(path || '').replace(BSLASH_RE, '/');
         if (!p) return '';
-        if (/^[a-z][a-z0-9+.-]{2,}:\/\//i.test(p)) return p;
-        return 'file://' + encodeURI(p.startsWith('/') ? p : '/' + p).replace(/[?#']/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+        if (SCHEME_RE.test(p)) return p;
+        return 'file://' + encodeURI(p.startsWith('/') ? p : '/' + p).replace(URI_ESC_RE, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
     };
     const coverUrls = (t) => {
         if (!t) return [];
         const out = [];
         if (t.albumArt) out.push(fileUrl(t.albumArt));
-        const p = String(t.path || '').replace(/\\/g, '/');
+        const p = String(t.path || '').replace(BSLASH_RE, '/');
         const cut = p.lastIndexOf('/');
-        if (cut > 0 && !/^[a-z][a-z0-9+.-]{2,}:\/\//i.test(p)) for (const name of ['cover.jpg', 'folder.jpg', 'cover.png']) out.push(fileUrl(p.slice(0, cut) + '/' + name));
+        if (cut > 0 && !SCHEME_RE.test(p)) for (let i = 0; i < COVER_CANDIDATES.length; i += 1) out.push(fileUrl(p.slice(0, cut) + '/' + COVER_CANDIDATES[i]));
         return out;
     };
     // 听歌日历：最近 weeks 周，一列一周（周一在上），今天所在那周是最后一列。
@@ -63,7 +69,7 @@
     };
     // 连续听歌的最长天数（一天听满 1 分钟才算）
     const longestStreak = (daily) => {
-        const keys = Object.keys(daily || {}).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k) && daily[k] >= 60).sort();
+        const keys = Object.keys(daily || {}).filter((k) => DAY_KEY_RE.test(k) && daily[k] >= 60).sort();
         let best = 0, run = 0, prev = null;
         for (const k of keys) {
             const [y, m, d] = k.split('-').map(Number);

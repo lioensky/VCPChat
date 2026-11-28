@@ -8,12 +8,17 @@
 (function (global) {
     'use strict';
 
-    const key = (p) => String(p || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+    const SLASH_RE = /\//g;
+    const TRAIL_BSLASH_RE = /\\+$/;
+    const TRAIL_SEP_RE = /[\\/]+$/;
+    const SEP_SPLIT_RE = /[\\/]+/;
+    const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
+    const key = (p) => String(p || '').replace(SLASH_RE, '\\').replace(TRAIL_BSLASH_RE, '').toLowerCase();
     const underDir = (file, dir) => { const f = key(file); const d = key(dir); return f === d || f.startsWith(d + '\\'); };
-    const parentOf = (dir) => { const s = String(dir).replace(/[\\/]+$/, ''); const at = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/')); return at > 0 ? s.slice(0, at) : ''; };
+    const parentOf = (dir) => { const s = String(dir).replace(TRAIL_SEP_RE, ''); const at = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/')); return at > 0 ? s.slice(0, at) : ''; };
     // 盘符根（D:）或只有一层的路径不再往上并：「D:\」整个盘当一处没意义
-    const depth = (dir) => String(dir).split(/[\\/]+/).filter(Boolean).length;
-    const isLocal = (p) => typeof p === 'string' && p !== '' && !/^[a-z][a-z0-9+.-]+:\/\//i.test(p);
+    const depth = (dir) => String(dir).split(SEP_SPLIT_RE).filter(Boolean).length;
+    const isLocal = (p) => typeof p === 'string' && p !== '' && !SCHEME_RE.test(p);
 
     // → [{ path, count, remembered, exists }]：加过的在前（按原顺序），其他位置按歌数从多到少
     // 几万首、几千个散落文件夹也要快：路径的比较键都先算好，包含关系按「往上找祖先」查表，不两两比较。

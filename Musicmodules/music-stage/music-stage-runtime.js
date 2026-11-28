@@ -541,7 +541,7 @@
                 return state;
             },
             snapshot() { return { ...state, historyBins: bins.length }; },
-            reset() { lastTime = null; hitAt = -Infinity; bins.fill(0); }
+            reset() { lastTime = null; hitAt = -Infinity; bins.fill(0); binsDirty = false; }
         };
     };
 
@@ -596,7 +596,10 @@
             previousLine: currentLineIndex > 0 ? lines[currentLineIndex - 1] : null,
             nextLines: nextLinesOf(lines, currentLineIndex),
             lineProgress,
-            ...wordState,
+            words: wordState.words,
+            activeWordIndex: wordState.activeWordIndex,
+            wordProgress: wordState.wordProgress,
+            wordStates: wordState.wordStates,
             lines,
             // 只有纯文本、不带时间的歌词（app.currentLyricsPlainLines）：原样交给舞台，
             // 要不要按时长铺开由舞台自己决定（MusicStageModeUtils.withPlainLyrics）
@@ -713,11 +716,12 @@
                 lastPhaseText = phaseText;
                 root.style.setProperty('--interlude-phase', phaseText);
             }
-            if (!playing && settledIdle) return;
-            settledIdle = !playing;
+            const motionScale = Math.min(1, motion);
+            const staticFrame = !playing || motionScale <= 0;
+            if (staticFrame && settledIdle) return;
+            settledIdle = staticFrame;
 
             const specLen = spectrum.length;
-            const motionScale = Math.min(1, motion);
             let specSum = 0;
             if (playing && hasSpectrum && motionScale > 0) {
                 ensureBarRanges(specLen);

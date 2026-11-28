@@ -27,9 +27,8 @@
     const MODE_LABELS = Object.freeze({ repeat: '列表循环', 'repeat-one': '单曲循环', shuffle: '随机播放' });
     const MODE_ICONS = Object.freeze({ repeat: 'repeat', 'repeat-one': 'repeat-1', shuffle: 'shuffle' });
 
-    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => (
-        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
-    ));
+    const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC_MAP[c]);
 
     const icon = (name, size = 16, options = {}) => (
         `<svg class="md-i" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"`
@@ -147,61 +146,22 @@
 
         const $ = (sel) => host.querySelector(sel);
         const $$ = (sel) => Array.from(host.querySelectorAll(sel));
+        const md = Object.create(null);
+        for (const n of host.querySelectorAll('[data-md]')) if (!md[n.dataset.md]) md[n.dataset.md] = n;
         const el = {
-            dock: $('.md-dock'),
-            dockIn: $('.md-dock-in'),
-            quick: $('.md-quick'),
-            quickGroup: $('.md-quick-g'),
-            more: $('[data-md="more"]'),
-            like: $('[data-md="like"]'),
-            sleep: $('[data-md="sleep"]'),
-            sleepT: $('[data-md="sleep-t"]'),
-            cap: $('.md-cap'),
-            play: $('[data-md="play"]'),
-            prev: $('[data-md="prev"]'),
-            next: $('[data-md="next"]'),
-            tnav: $('.md-tnav'),
-            cur: $('.md-cur'),
-            pv: $('.md-pv'),
-            title: $('[data-md="title"]'),
-            preview: $('[data-md="preview"]'),
-            artist: $('[data-md="artist"]'),
-            panelSlot: $('[data-md="panel"]'),
-            hdlTip: $('[data-md="hdl-tip"]'),
-            seekTip: $('[data-md="seek-tip"]'),
-            vrail: $('.md-vrail'),
-            vfill: $('.md-vfill'),
-            modeSlot: $('[data-md="mode"]'),
-            stageSlot: $('[data-md="stage"]'),
-            volSlot: $('[data-md="vol"]'),
-            tracks: $$('.md-trk'),
-            t1: $$('[data-md="t1"]'),
-            t2: $$('[data-md="t2"]'),
-            hdl: $('.md-hdl'),
-            handle: $('[data-md="handle"]'),
-            pnl: $('.md-pnl'),
-            pCover: $('.md-hd-cv'),
-            pTitle: $('[data-md="p-title"]'),
-            pArtist: $('[data-md="p-artist"]'),
-            share: $('[data-md="share"]'),
-            body: $('[data-md="body"]'),
-            tabs: $('[data-md="tabs"]'),
-            ext: $('[data-md="ext"]'),
-            body2: $('[data-md="body2"]'),
-            playSec: $('[data-md="play-sec"]'),
-            playSlot: $('[data-md="play-slot"]'),
-            dispSlot: $('[data-md="disp-slot"]'),
-            tuneSec: $('[data-md="tune-sec"]'),
-            tuneTitle: $('[data-md="tune-title"]'),
-            tuneHint: $('[data-md="tune-hint"]'),
-            tuneSlot: $('[data-md="tune-slot"]'),
-            tuneMore: $('[data-md="tune-more"]'),
-            commonSlot: $('[data-md="common-slot"]'),
-            advToggle: $('[data-md="adv-toggle"]'),
-            advBody: $('[data-md="adv-body"]'),
-            arraySlot: $('[data-md="array-slot"]'),
-            advActs: $('[data-md="adv-acts"]'),
-            fxScroll: $('[data-md="fx-scroll"]')
+            dock: $('.md-dock'), dockIn: $('.md-dock-in'), quick: $('.md-quick'), quickGroup: $('.md-quick-g'),
+            cap: $('.md-cap'), tnav: $('.md-tnav'), cur: $('.md-cur'), pv: $('.md-pv'),
+            vrail: $('.md-vrail'), vfill: $('.md-vfill'), hdl: $('.md-hdl'), pnl: $('.md-pnl'), pCover: $('.md-hd-cv'),
+            tracks: $$('.md-trk'), t1: $$('[data-md="t1"]'), t2: $$('[data-md="t2"]'),
+            more: md.more, like: md.like, sleep: md.sleep, sleepT: md['sleep-t'],
+            play: md.play, prev: md.prev, next: md.next, title: md.title, preview: md.preview, artist: md.artist,
+            panelSlot: md.panel, hdlTip: md['hdl-tip'], seekTip: md['seek-tip'],
+            modeSlot: md.mode, stageSlot: md.stage, volSlot: md.vol, handle: md.handle,
+            pTitle: md['p-title'], pArtist: md['p-artist'], share: md.share, body: md.body, tabs: md.tabs,
+            ext: md.ext, body2: md.body2, playSec: md['play-sec'], playSlot: md['play-slot'], dispSlot: md['disp-slot'],
+            tuneSec: md['tune-sec'], tuneTitle: md['tune-title'], tuneHint: md['tune-hint'], tuneSlot: md['tune-slot'], tuneMore: md['tune-more'],
+            commonSlot: md['common-slot'], advToggle: md['adv-toggle'], advBody: md['adv-body'], arraySlot: md['array-slot'], advActs: md['adv-acts'],
+            fxScroll: md['fx-scroll']
         };
 
         const state = {
@@ -759,6 +719,8 @@
             b.setAttribute('aria-label', liked ? '取消喜欢' : '喜欢');
             b.title = liked ? '取消喜欢（L）' : '喜欢（L）';
         };
+        let likePopRaf = 0, slideRaf = 0, bootRaf = 0, volRef = null;
+        const cRaf = (id) => { if (id) global.cancelAnimationFrame?.(id); };
         const toggleCurrentLike = () => {
             const track = currentTrack();
             if (!track || !likeAvailable()) return;
@@ -766,9 +728,11 @@
             app.toggleLike(track);
             paintLike();
             if (willLike && !document.body.classList.contains('music-reduce-motion')) {
-                el.like.classList.remove('md-like-pop');
-                void el.like.offsetWidth;
-                el.like.classList.add('md-like-pop');
+                cRaf(likePopRaf); likePopRaf = 0;
+                if (el.like.classList.contains('md-like-pop')) {
+                    el.like.classList.remove('md-like-pop');
+                    likePopRaf = requestAnimationFrame(() => { likePopRaf = 0; if (!state.destroyed) el.like.classList.add('md-like-pop'); });
+                } else el.like.classList.add('md-like-pop');
             }
         };
         if (el.like) {
@@ -904,14 +868,10 @@
 
         const slideTitle = (dir) => {
             if (reducedMotion?.matches) return;
-            el.cur.style.transition = 'none';
-            el.cur.style.transform = `translateX(${dir * 12}px)`;
-            el.cur.style.opacity = '0';
-            requestAnimationFrame(() => {
-                el.cur.style.transition = '';
-                el.cur.style.transform = '';
-                el.cur.style.opacity = '';
-            });
+            const s = el.cur.style;
+            s.transition = 'none'; s.transform = `translateX(${dir * 12}px)`; s.opacity = '0';
+            cRaf(slideRaf);
+            slideRaf = requestAnimationFrame(() => { slideRaf = 0; if (!state.destroyed) s.transition = s.transform = s.opacity = ''; });
         };
         listen(el.prev, 'click', (event) => { event.stopPropagation(); showPreview(null); if (!prevRestarts()) slideTitle(-1); app.prevTrack?.(); });
         listen(el.next, 'click', (event) => { event.stopPropagation(); showPreview(null); slideTitle(1); app.nextTrack?.(); });
@@ -1109,14 +1069,16 @@
         let lastVRail = '', lastVSlot = '';
         const renderVolume = () => {
             const v = readVolume(), pct = Math.round(v * 100), muted = v <= 0.001, name = volumeIcon(v);
-            const row = el.body.querySelector('.md-vol');
-            if (row) {
-                const q = (s) => row.querySelector(s);
-                q('.md-sld-fill').style.transform = `scaleX(${v})`;
-                q('.md-sld-kn').style.left = `calc(${v} * (100% - 16px))`;
-                q('.md-pct').textContent = `${pct}%`;
-                q('.md-sld').setAttribute('aria-valuenow', String(pct));
-                const btn = q('[data-act="mute"]');
+            if (!volRef?.row.isConnected) {
+                const row = el.body.querySelector('.md-vol'), q = (s) => row.querySelector(s);
+                volRef = row ? { row, fill: q('.md-sld-fill'), kn: q('.md-sld-kn'), pct: q('.md-pct'), sld: q('.md-sld'), btn: q('[data-act="mute"]') } : null;
+            }
+            if (volRef) {
+                const { fill, kn, pct: pe, sld, btn } = volRef;
+                fill.style.transform = `scaleX(${v})`;
+                kn.style.left = `calc(${v} * (100% - 16px))`;
+                pe.textContent = `${pct}%`;
+                sld.setAttribute('aria-valuenow', String(pct));
                 if (btn.dataset.icon !== name) { btn.dataset.icon = name; btn.innerHTML = icon(name, 17); }
             }
             if (el.vfill) {
@@ -2278,7 +2240,7 @@
             }));
         }
         // 字体和布局稳定后再量一次（流体层要对齐按钮的真实位置）。
-        requestAnimationFrame(() => { if (!state.destroyed) animateCapsule(); });
+        bootRaf = requestAnimationFrame(() => { bootRaf = 0; if (!state.destroyed) animateCapsule(); });
         // 预热抽屉：窗口空下来以后，在藏着的抽屉里把当前页签画一遍。第一次打开时样式规则和排版都已经算过一回，
         // 不会比以后每次都慢一大截。真打开时照常重画，这里画的东西不会被直接拿来用。
         const warmIdleIds = new Set();
@@ -2301,6 +2263,7 @@
             idle(() => { run(); idle(warmFx); });
         }, 2500);
         cleanups.push(() => {
+            cRaf(likePopRaf); cRaf(slideRaf); cRaf(bootRaf);
             clearTimeout(warmTimer);
             for (const id of warmIdleIds) global.cancelIdleCallback?.(id);
             warmIdleIds.clear();

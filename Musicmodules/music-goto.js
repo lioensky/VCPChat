@@ -12,13 +12,14 @@
         ['album', '转到专辑', 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z']
     ];
 
+    const EXT_FALLBACK_RE = /\.[a-z0-9]{2,4}$/i;
     const fieldOf = (track, kind) => String((track && track[kind]) || '').trim();
 
     /* 复制出去的文字：「歌名 - 歌手」，没有歌手就只有歌名；去掉文件扩展名 */
     function copyText(app, track) {
         if (!track) return '';
         const raw = String(track.title || '').trim();
-        const title = app.stripAudioExtension ? app.stripAudioExtension(raw) : raw.replace(/\.[a-z0-9]{2,4}$/i, '');
+        const title = app.stripAudioExtension ? app.stripAudioExtension(raw) : raw.replace(EXT_FALLBACK_RE, '');
         const artist = fieldOf(track, 'artist');
         return title ? (artist ? `${title} - ${artist}` : title) : '';
     }

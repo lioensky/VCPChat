@@ -16,7 +16,8 @@
     const DEL = '__eq-delete';
     const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
-    const cleanName = (s) => String(s || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 24);
+    const CTRL_WS_RE = /[\r\n\t]+/g;
+    const cleanName = (s) => String(s || '').replace(CTRL_WS_RE, ' ').trim().slice(0, 24);
     const hasOwn = Object.prototype.hasOwnProperty;
     const bandsEqual = (a, b) => {
         const ba = a || {};
@@ -48,10 +49,14 @@
         };
         const currentBands = () => {
             const out = {};
-            for (const band of Object.keys(app.eqBands || {})) {
-                const slider = getSlider(band);
-                const v = Number(slider ? slider.value : app.eqBands[band]);
-                out[band] = Number.isFinite(v) ? v : 0;
+            const src = app.eqBands;
+            if (src) {
+                for (const band in src) {
+                    if (!hasOwn.call(src, band)) continue;
+                    const slider = getSlider(band);
+                    const v = Number(slider ? slider.value : src[band]);
+                    out[band] = Number.isFinite(v) ? v : 0;
+                }
             }
             return out;
         };

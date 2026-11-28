@@ -9,10 +9,15 @@
 (function (global) {
     'use strict';
 
-    const norm = (p) => String(p || '').replace(/\//g, '\\').toLowerCase();
+    const SLASH_RE = /\//g;
+    const EXT_RE = /\.([a-z0-9]{1,6})$/i;
+    const SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
+    const M3U_EXT_RE = /^m3u8?$/;
+    const M3U_NAME_RE = /\.m3u8?$/i;
+    const norm = (p) => String(p || '').replace(SLASH_RE, '\\').toLowerCase();
     // 和主进程扫描器（musicLibraryScanner SUPPORTED_FORMATS）一致
     const SUPPORTED = new Set(['mp3', 'wav', 'ogg', 'flac', 'm4a']);
-    const extOf = (name) => { const m = /\.([a-z0-9]{1,6})$/i.exec(String(name || '')); return m ? m[1].toLowerCase() : ''; };
+    const extOf = (name) => { const m = EXT_RE.exec(String(name || '')); return m ? m[1].toLowerCase() : ''; };
 
     // entries: [{ path, exists }]，library: [{ path }] → { paths, toAdd, missing }
     const matchEntries = (entries, library) => {
@@ -98,7 +103,7 @@
             const tracks = (pl.tracks || []).map((p) => {
                 const t = byNorm.get(norm(p));
                 return t ? { path: t.path, title: t.title || '', artist: t.artist || '', duration: Number(t.duration) || 0 } : { path: p };
-            }).filter((t) => typeof t.path === 'string' && !/^[a-z][a-z0-9+.-]+:\/\//i.test(t.path)); // 云端（WebDAV）的歌别的播放器打不开
+            }).filter((t) => typeof t.path === 'string' && !SCHEME_RE.test(t.path)); // 云端（WebDAV）的歌别的播放器打不开
             if (!tracks.length) { toast(`「${pl.name}」里没有本机的歌，没什么可导出的`, { kind: 'error' }); return null; }
             let res;
             try { res = await api().exportMusicM3u({ name: pl.name || '', tracks }); } catch (e) { res = { ok: false, message: String(e && e.message || e) }; }
@@ -126,7 +131,7 @@
 
         // 拖进来的文件里有曲库收不了的格式（.ape、.wma、图片、压缩包…）时说一声：以前松手后什么也不发生，不知道是没加上还是还在扫
         const noteUnsupported = (files, dirs = 0) => {
-            const odd = files.filter((f) => { const ext = extOf(f.name); return ext && !SUPPORTED.has(ext) && !/^m3u8?$/.test(ext); });
+            const odd = files.filter((f) => { const ext = extOf(f.name); return ext && !SUPPORTED.has(ext) && !M3U_EXT_RE.test(ext); });
             if (!odd.length) return;
             const kinds = [...new Set(odd.map((f) => extOf(f.name).toUpperCase()))].slice(0, 4).join('、');
             const all = odd.length === files.length && !dirs;
@@ -191,7 +196,7 @@
                     const dirs = items.length - plain.length;
                     noteUnsupported(plain, dirs);
                 }
-                const files = Array.from(event.dataTransfer?.files || []).filter((f) => /\.m3u8?$/i.test(f.name || ''));
+                const files = Array.from(event.dataTransfer?.files || []).filter((f) => M3U_NAME_RE.test(f.name || ''));
                 if (!files.length) return;
                 for (const f of files) {
                     let p = '';

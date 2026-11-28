@@ -59,12 +59,15 @@
         if (trigger.style.minWidth !== minW) trigger.style.minWidth = minW;
     };
 
+    const SELECT_CLS_RE = /select$/;
+    const OPEN_KEYS = new Set(['ArrowDown', 'ArrowUp', 'Enter', ' ']);
+
     function dress(select) {
         if (DRESSED.has(select) || skip(select)) return;
         const trigger = doc.createElement('button');
         trigger.type = 'button';
         trigger.className = 'mfs-trigger';
-        for (const cls of select.classList) if (/select$/.test(cls)) trigger.classList.add(`mfs-from-${cls}`);
+        for (const cls of select.classList) if (SELECT_CLS_RE.test(cls)) trigger.classList.add(`mfs-from-${cls}`);
         trigger.setAttribute('aria-haspopup', 'listbox');
         trigger.setAttribute('aria-expanded', 'false');
         const label = select.getAttribute('aria-label')
@@ -111,7 +114,7 @@
             else open(select);
         });
         trigger.addEventListener('keydown', (event) => {
-            if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+            if (OPEN_KEYS.has(event.key)) {
                 event.preventDefault();
                 if (openState?.select !== select) open(select);
             }

@@ -8,9 +8,13 @@
 
     const radio = () => global.MusicRadioUtils || (typeof require === 'function' ? require('./music-radio.js') : {});
     const AUDIO_EXT = /\.(flac|mp3|wav|m4a|aac|ogg|opus|ape|wv|alac|aiff?|dsf|dff|wma)$/i;
+    const BSLASH_RE = /\\/g;
+    const HTTP_URL_RE = /^https?:\/\//i;
+    const EXT_RE = /\.([a-z0-9]+)$/i;
+    const TRAILING_ZERO_RE = /\.0$/;
     const norm = (s) => String(s || '').trim().toLowerCase();
-    const normPath = (p) => String(p || '').replace(/\\/g, '/').toLowerCase();
-    const isRemote = (t) => Boolean(t && (t.isRemote || /^https?:\/\//i.test(String(t.path || ''))));
+    const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
+    const isRemote = (t) => Boolean(t && (t.isRemote || HTTP_URL_RE.test(String(t.path || ''))));
 
     function dupeKey(t, recKeyFn) {
         const fn = recKeyFn !== undefined ? recKeyFn : radio().recordingKey;
@@ -46,9 +50,9 @@
     }
 
     const spec = (t) => {
-        const ext = (String(t.path).match(/\.([a-z0-9]+)$/i) || [])[1];
+        const ext = (String(t.path).match(EXT_RE) || [])[1];
         const parts = [ext ? ext.toUpperCase() : ''];
-        if (t.bitsPerSample && t.sampleRate) parts.push(`${t.bitsPerSample}/${(t.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')}`);
+        if (t.bitsPerSample && t.sampleRate) parts.push(`${t.bitsPerSample}/${(t.sampleRate / 1000).toFixed(1).replace(TRAILING_ZERO_RE, '')}`);
         else if (t.bitrate) parts.push(`${Math.round(t.bitrate / 1000)}k`);
         if (isRemote(t)) parts.push('WebDAV');
         return parts.filter(Boolean).join(' · ');

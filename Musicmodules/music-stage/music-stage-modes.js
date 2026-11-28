@@ -20,6 +20,7 @@
     const STARBORN_CANDIDATE_IDS = Object.freeze([
         'luminous', 'partita', 'cadenza', 'fume', 'tempera', 'sonnet'
     ]);
+    const PUNCT_MARKS_RE = /[!?！？…—]/g;
 
     const resolveSegment = frame => {
         const current = frame.activeLine;
@@ -44,7 +45,7 @@
         const chorus = segment.lines.some(line => line.isChorus);
         const hintedFast = segment.lines.some(line =>
             ['fast', 'instant'].includes(line.renderHints?.wordRevealMode));
-        const marks = (text.match(/[!?！？…—]/g) || []).length;
+        const marks = (text.match(PUNCT_MARKS_RE) || []).length;
         const random = seededRandom(`starborn:${segment.key}`);
         const scores = {
             luminous: random() * 0.42 + frame.audio.vocal * 1.05 + frame.audio.bass * 0.72
@@ -187,10 +188,10 @@
             }
             const duration = global.MusicStageRuntime.isReducedMotion(reduced) ? 0.001 : 0.52;
             const lowPower = mode.config?.quality === 'energy-saving';
-            children.forEach(child => {
+            for (const child of children) {
                 const retired = child.retireAt !== null;
                 const elapsed = frame.playbackTime - (retired ? child.retireAt : child.born);
-                if (retired && elapsed >= duration) { release(child); return; }
+                if (retired && elapsed >= duration) { release(child); continue; }
                 const progress = Math.max(0, Math.min(1, elapsed / duration));
                 const rawOp = retired ? 1 - progress : progress;
                 const nextOp = rawOp <= 0 ? '0' : rawOp >= 1 ? '1' : rawOp.toFixed(3);
@@ -201,7 +202,7 @@
                 const nextFilter = blur > 0.05 ? `blur(${blur.toFixed(1)}px)` : 'none';
                 if (child._filter !== nextFilter) { child._filter = nextFilter; child.layer.style.filter = nextFilter; }
                 child.mode.updateFrame(frame);
-            });
+            }
         };
         const updateConfig = mode.updateConfig;
         mode.updateConfig = config => {

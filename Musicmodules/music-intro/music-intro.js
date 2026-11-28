@@ -387,6 +387,19 @@
     const TRANSIT = { enter: 1.1, exit: 0.85, switch: 0.7, enterGate: 0.44, enterRelease: 0.58, exitGate: 0.3, exitRelease: 0.3, switchGate: 0.2 };
     const TRANSIT_KINDS = ['enter', 'exit', 'switch'];
     const GATE_MAX = 12; // 最多等 12 秒；再慢也揭开，不把界面挡死
+    const EXT_RE = /\.[a-z0-9]{2,5}$/i;
+    const ENTER_R = Object.freeze([[0, 640], [0.2, 300], [0.45, 168], [0.7, 160]]);
+    const ENTER_SWEEP = Object.freeze([[0, 30], [0.25, 220], [0.5, 360]]);
+    const ENTER_START = Object.freeze([[0, 200], [0.5, -90]]);
+    const EXIT_IN_R = Object.freeze([[0, 640], [0.18, 300], [0.3, 168]]);
+    const EXIT_IN_SWEEP = Object.freeze([[0, 30], [0.26, 360]]);
+    const EXIT_IN_START = Object.freeze([[0, 200], [0.3, -90]]);
+    const EXIT_OUT_R = Object.freeze([[TRANSIT.exitGate + 0.1, 160], [TRANSIT.exitGate + 0.3, 520]]);
+    const EXIT_OUT_SWEEP = Object.freeze([[TRANSIT.exitGate + 0.1, 360], [TRANSIT.exitGate + 0.3, 40]]);
+    const EXIT_OUT_START = Object.freeze([[TRANSIT.exitGate + 0.1, -90], [TRANSIT.exitGate + 0.3, 160]]);
+    const SWITCH_R = Object.freeze([[0, 400], [0.18, 168], [TRANSIT.switchGate + 0.05, 160], [TRANSIT.switch, 420]]);
+    const SWITCH_SWEEP = Object.freeze([[0, 60], [0.18, 360], [TRANSIT.switchGate + 0.05, 360], [TRANSIT.switch, 40]]);
+    const SWITCH_START = Object.freeze([[0, 120], [0.18, -90]]);
     const renderTransit = (n, t, ctx) => {
         const kind = ctx.direction;
         const releaseAt = kind === 'enter' ? TRANSIT.enterRelease : kind === 'exit' ? TRANSIT.exitRelease : TRANSIT.switchGate;
@@ -407,9 +420,9 @@
                 n._lastBackdrop = backdropOpacity;
                 n.svg.parentElement.style.setProperty('--mi-enter-backdrop', backdropOpacity);
             }
-            r = keys([[0, 640], [0.2, 300], [0.45, 168], [0.7, 160]], t);
-            sweep = keys([[0, 30], [0.25, 220], [0.5, 360]], t) * DEG;
-            start = keys([[0, 200], [0.5, -90]], t) * DEG + spin;
+            r = keys(ENTER_R, t);
+            sweep = keys(ENTER_SWEEP, t) * DEG;
+            start = keys(ENTER_START, t) * DEG + spin;
             nextWhiteD = arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG);
             nextScanOp = t >= releaseAt ? '0' : String(smooth(progress(t, 0, 0.08)));
             nextFileLabel = loading || '进入舞台';
@@ -422,14 +435,14 @@
             nextFlashOp = String(smooth(progress(t, gate, gate + 0.1)) * (1 - smooth(progress(t, gate + 0.11, gate + 0.42))));
             nextVeilOp = String(t < gate + 0.1 ? smooth(progress(t, 0.04, 0.28)) : 0);
             if (t < gate + 0.1) {
-                r = keys([[0, 640], [0.18, 300], [0.3, 168]], t);
-                sweep = keys([[0, 30], [0.26, 360]], t) * DEG;
-                start = keys([[0, 200], [0.3, -90]], t) * DEG + spin;
+                r = keys(EXIT_IN_R, t);
+                sweep = keys(EXIT_IN_SWEEP, t) * DEG;
+                start = keys(EXIT_IN_START, t) * DEG + spin;
                 nextScanOp = String(smooth(progress(t, 0, 0.08)));
             } else {
-                r = keys([[gate + 0.1, 160], [gate + 0.3, 520]], t);
-                sweep = keys([[gate + 0.1, 360], [gate + 0.3, 40]], t) * DEG;
-                start = keys([[gate + 0.1, -90], [gate + 0.3, 160]], t) * DEG + spin;
+                r = keys(EXIT_OUT_R, t);
+                sweep = keys(EXIT_OUT_SWEEP, t) * DEG;
+                start = keys(EXIT_OUT_START, t) * DEG + spin;
                 nextScanOp = String(1 - smooth(progress(t, gate + 0.1, gate + 0.38)));
             }
             nextWhiteD = t < gate + 0.1 ? arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG) : '';
@@ -440,9 +453,9 @@
             const gate = TRANSIT.switchGate;
             nextFlashOp = '0';
             nextVeilOp = String(smooth(progress(t, 0, 0.14)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch))));
-            r = keys([[0, 400], [0.18, 168], [gate + 0.05, 160], [TRANSIT.switch, 420]], t);
-            sweep = keys([[0, 60], [0.18, 360], [gate + 0.05, 360], [TRANSIT.switch, 40]], t) * DEG;
-            start = keys([[0, 120], [0.18, -90]], t) * DEG + spin;
+            r = keys(SWITCH_R, t);
+            sweep = keys(SWITCH_SWEEP, t) * DEG;
+            start = keys(SWITCH_START, t) * DEG + spin;
             nextWhiteD = arc(r * 0.9, start + Math.PI * 0.8, 50 * DEG);
             nextScanOp = String(smooth(progress(t, 0, 0.1)) * (1 - smooth(progress(t, gate + 0.05, TRANSIT.switch - 0.1))));
             nextFileLabel = loading || '切换舞台';
@@ -733,7 +746,7 @@
                 document.body.classList.add('music-stage-entering');
                 const track = app?.playlist?.[app.currentTrackIndex];
                 // 过场中间写的是要播放的曲名（去掉扩展名）
-                const file = String(track?.title || '').replace(/\.[a-z0-9]{2,5}$/i, '');
+                const file = String(track?.title || '').replace(EXT_RE, '');
                 const hold = () => {
                     document.body.classList.remove('mi-stage-hold-exit');
                     document.body.classList.add('mi-stage-hold-enter');

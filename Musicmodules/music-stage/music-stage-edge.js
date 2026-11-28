@@ -171,13 +171,17 @@
             if (len === 0) return 0;
             if (specPrefix.length < len + 1) specPrefix = new Float64Array(len + 1);
             let sum = 0;
+            let maxVal = 0;
             specPrefix[0] = 0;
             for (let i = 0; i < len; i += 1) {
                 const v = +spectrum[i];
-                if (v > 0) sum += v;
+                if (v > 0) {
+                    sum += v;
+                    if (v > maxVal) maxVal = v;
+                }
                 specPrefix[i + 1] = sum;
             }
-            return sum;
+            return maxVal;
         };
 
         const getEdgeLookup = (side, count, offset, specLen, inset, width, height, amplitude) => {
@@ -366,8 +370,8 @@
 
         const drawEdgeSpectrum = (frame) => {
             if (state.config.edgeSpectrum === false) {
-                if (edgeContext && !edgeCanvasState.blank) {
-                    clearEdgeStrips();
+                if (edgeContext && (!edgeCanvasState.blank || edgeCanvasState.width > 0)) {
+                    if (!edgeCanvasState.blank) clearEdgeStrips();
                     if (edgeCanvasState.width > 0) release();
                     else edgeCanvasState.blank = true;
                 }
@@ -395,6 +399,7 @@
                 || Math.max(1, rootSize.width) !== edgeCanvasState.width
                 || Math.max(1, rootSize.height) !== edgeCanvasState.height
                 || qualityChanged;
+            const palRef = app?.stagePalette?.accentRgb || null;
             // Gate throttled playing frames before touching canvas sizing or accent resolution.
             if (frame.isPlaying) {
                 edgeCanvasState.pausedAt = 0;
@@ -403,7 +408,6 @@
                 if (!needsResize && !trackChanged && !edgeCanvasState.blank && edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < aim - 3) return;
             } else {
                 if (now < edgeCanvasState.pausedAt) edgeCanvasState.pausedAt = now;
-                const palRef = app?.stagePalette?.accentRgb || null;
                 if (!needsResize && !trackChanged && !edgeCanvasState.blank
                     && palRef && palRef === edgeCanvasState.lastAccentRef) {
                     edgeCanvasState.pausedAt ||= now;
@@ -411,12 +415,21 @@
                     if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
                 }
             }
-            const color = global.MusicStageModeUtils.resolveAccent(app);
-            const colorChanged = color.r !== edgeCanvasState.lastR
-                || color.g !== edgeCanvasState.lastG
-                || color.b !== edgeCanvasState.lastB;
+            let colorChanged = false;
+            let colorR = edgeCanvasState.lastR;
+            let colorG = edgeCanvasState.lastG;
+            let colorB = edgeCanvasState.lastB;
+            if (!palRef || palRef !== edgeCanvasState.lastAccentRef || colorR < 0) {
+                const color = global.MusicStageModeUtils.resolveAccent(app);
+                colorR = color.r;
+                colorG = color.g;
+                colorB = color.b;
+                colorChanged = colorR !== edgeCanvasState.lastR
+                    || colorG !== edgeCanvasState.lastG
+                    || colorB !== edgeCanvasState.lastB;
+            }
             if (!frame.isPlaying && !needsResize && !trackChanged && !colorChanged && !edgeCanvasState.blank) {
-                edgeCanvasState.lastAccentRef = app?.stagePalette?.accentRgb || null;
+                edgeCanvasState.lastAccentRef = palRef;
                 edgeCanvasState.pausedAt ||= now;
                 if (now - edgeCanvasState.pausedAt > 1500) return;
                 if (edgeCanvasState.drawnAt && now - edgeCanvasState.drawnAt < 250) return;
@@ -424,13 +437,13 @@
             if (!resizeEdgeCanvas(frame)) return;
             const { width, height, inset, horizontalAmplitude, verticalAmplitude, horizontalCount, verticalCount } = edgeCanvasState;
             edgeCanvasState.lastTrack = track;
-            edgeCanvasState.lastAccentRef = app?.stagePalette?.accentRgb || null;
+            edgeCanvasState.lastAccentRef = palRef;
             // If track/theme accent or quality tier changed while paused, wake the settled paused border once to match.
             if (colorChanged || qualityChanged) {
-                edgeCanvasState.lastR = color.r;
-                edgeCanvasState.lastG = color.g;
-                edgeCanvasState.lastB = color.b;
-                edgeCanvasState.lastRgb = `${color.r}, ${color.g}, ${color.b}`;
+                edgeCanvasState.lastR = colorR;
+                edgeCanvasState.lastG = colorG;
+                edgeCanvasState.lastB = colorB;
+                edgeCanvasState.lastRgb = `${colorR}, ${colorG}, ${colorB}`;
                 edgeCanvasState.lastQuality = quality;
                 edgeCanvasState.pausedAt = 0;
                 edgeCanvasState.drawnAt = 0;
@@ -449,13 +462,17 @@
             const alpha = 0.28 + (Number(frame.audio.power) || 0) * 0.62;
             const alphaKey = alpha.toFixed(3);
             const lightGlow = quality === 'energy-saving';
-            const spectrumSum = buildSpectrumPrefix(spectrum);
+            // If peak bin <= 0.025, every windowed average is <= 0.025 and maps to zero displacement in POW_LUT.
+            const specMax = buildSpectrumPrefix(spectrum);
+            const activeSpectrum = specMax > 0.025;
             let flatBase = '';
-            const getFlatBase = () => flatBase || (flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`);
 
-            if (spectrumSum <= 0 && !edgeCanvasState.blank && getFlatBase() === edgeCanvasState.lastFlatKey) {
-                edgeCanvasState.drawnAt = now;
-                return;
+            if (!activeSpectrum && !edgeCanvasState.blank) {
+                flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
+                if (flatBase === edgeCanvasState.lastFlatKey) {
+                    edgeCanvasState.drawnAt = now;
+                    return;
+                }
             }
 
             const top = ensureEdgeBuffer('top', horizontalCount);
@@ -466,7 +483,7 @@
             let mRight = false;
             let mBottom = false;
             let mLeft = false;
-            if (spectrumSum > 0) {
+            if (activeSpectrum) {
                 mTop = fillEdgePoints(top, 'top', spectrum, 0, inset, width, height, horizontalAmplitude, idleScale);
                 mRight = fillEdgePoints(right, 'right', spectrum, 0.11, inset, width, height, verticalAmplitude, idleScale);
                 mBottom = fillEdgePoints(bottom, 'bottom', spectrum, 0.21, inset, width, height, horizontalAmplitude, idleScale);
@@ -479,7 +496,10 @@
             }
 
             const hasMotion = mTop || mRight || mBottom || mLeft;
-            const flatKey = hasMotion ? '' : getFlatBase();
+            if (!mTop || !mRight || !mBottom || !mLeft) {
+                if (!flatBase) flatBase = `${rgb}|${alphaKey}|${lightGlow ? 1 : 0}|${width}x${height}x${edgeCanvasState.dpr}`;
+            }
+            const flatKey = hasMotion ? '' : flatBase;
             edgeCanvasState.drawnAt = now;
             if (!hasMotion && !edgeCanvasState.blank && flatKey === edgeCanvasState.lastFlatKey) {
                 return;
@@ -497,7 +517,7 @@
                 edgeCanvasState.mainStroke = `rgba(${rgb}, ${alphaKey})`;
                 edgeCanvasState.mainShadow = `rgba(${rgb}, ${Math.min(0.9, alpha * 1.45).toFixed(3)})`;
             }
-            const fb = (!mTop || !mRight || !mBottom || !mLeft) ? getFlatBase() : '';
+            const fb = (!mTop || !mRight || !mBottom || !mLeft) ? flatBase : '';
             drawSide(edgeStrips.top, top, mTop, wasBlank, fb, lightGlow);
             drawSide(edgeStrips.right, right, mRight, wasBlank, fb, lightGlow);
             drawSide(edgeStrips.bottom, bottom, mBottom, wasBlank, fb, lightGlow);

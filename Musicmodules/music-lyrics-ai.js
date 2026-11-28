@@ -10,6 +10,8 @@
 
     const KEY = 'musicLyricsAiTranslate';
     const NOTICE_KEY = 'musicLyricsAiNoticeShown';
+    const KANA_HANGUL_RE = /[぀-ヿ가-힯ᄀ-ᇿ]/;
+    const HAN_RE = /[一-鿿]/;
 
     const textOf = (line) => String((line && (line.original ?? line.text ?? line.fullText)) || '').trim();
 
@@ -23,7 +25,7 @@
             if (!t) continue;
             withText++;
             if (String(line.translation || '').trim()) translated++;
-            const kanaOrHangul = /[぀-ヿ가-힯ᄀ-ᇿ]/.test(t);
+            const kanaOrHangul = KANA_HANGUL_RE.test(t);
             let latin = 0;
             if (!kanaOrHangul) {
                 for (let i = 0; i < t.length && latin < 3; i++) {
@@ -31,7 +33,7 @@
                     if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 0xC0 && c <= 0x24F)) latin++;
                 }
             }
-            const han = !kanaOrHangul && latin >= 3 && /[一-鿿]/.test(t);
+            const han = !kanaOrHangul && latin >= 3 && HAN_RE.test(t);
             if (kanaOrHangul || (latin >= 3 && !han)) foreign++;
         }
         if (withText < 2) return false;

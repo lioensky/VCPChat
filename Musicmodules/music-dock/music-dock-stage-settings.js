@@ -7,6 +7,28 @@
 (function (global) {
     'use strict';
 
+    // 每个舞台先露出最常动的几项，其余的收在「全部 N 项」里原地展开。没列出的舞台按定义顺序取前几项。
+    const TUNE_FIRST = Object.freeze({
+        diorama: ['rain', 'lyricCarrier', 'showTranslation', 'letterbox', 'cameraCuts', 'fireworks'],
+        tunnel: ['cameraSpeed', 'showTranslation', 'fontScale', 'starfield', 'showPlanets', 'showShips'],
+        kowloon: ['rain', 'cameraMode', 'lightning', 'reflections', 'showTranslation', 'fog'],
+        orbit: ['tilt', 'roll', 'axisLine', 'showTranslation'],
+        signal: ['panel', 'showSpectrum', 'pulseRate', 'showTranslation'],
+        groupchat: ['echoes', 'voiceNotes', 'fontScale', 'showTranslation'],
+        impression: ['timeOfDay', 'flecks', 'frame', 'showTranslation'],
+        clockwork: ['secondHand', 'fontScale', 'waitingOpacity', 'showTranslation'],
+        hanabi: ['density', 'trails', 'reflection', 'showTranslation'],
+        lumiere: ['smoke', 'dust', 'fontScale', 'showTranslation'],
+        fogpane: ['fog', 'rain', 'drops', 'drips', 'cameraSpeed', 'showTranslation'],
+        inkdraft: ['cameraCuts', 'figures', 'collisions', 'halftone', 'inkFlip', 'showTranslation'],
+        luminous: ['fontScale', 'layoutStyle', 'showTranslation', 'showUpcoming', 'glow'],
+        partita: ['fontScale', 'layoutStyle', 'showTranslation', 'showUpcoming', 'glow'],
+        cadenza: ['fontScale', 'showTranslation', 'showUpcoming', 'heroEmphasis', 'glow'],
+        fume: ['cameraMode', 'cameraSpeed', 'geometricBackground', 'glow', 'heroScale']
+    });
+    const TUNE_FIRST_COUNT = 6;
+    const TUNE_LABEL_NOTE_RE = /^(.+?)（(.+)）$/;
+
     function create(ctx) {
         const {
             state, el, cleanups, listen, openPanel,
@@ -31,26 +53,6 @@
         });
         const tuningNode = el.tuneSlot.firstElementChild;
 
-        // 每个舞台先露出最常动的几项，其余的收在「全部 N 项」里原地展开。没列出的舞台按定义顺序取前几项。
-        const TUNE_FIRST = Object.freeze({
-            diorama: ['rain', 'lyricCarrier', 'showTranslation', 'letterbox', 'cameraCuts', 'fireworks'],
-            tunnel: ['cameraSpeed', 'showTranslation', 'fontScale', 'starfield', 'showPlanets', 'showShips'],
-            kowloon: ['rain', 'cameraMode', 'lightning', 'reflections', 'showTranslation', 'fog'],
-            orbit: ['tilt', 'roll', 'axisLine', 'showTranslation'],
-            signal: ['panel', 'showSpectrum', 'pulseRate', 'showTranslation'],
-            groupchat: ['echoes', 'voiceNotes', 'fontScale', 'showTranslation'],
-            impression: ['timeOfDay', 'flecks', 'frame', 'showTranslation'],
-            clockwork: ['secondHand', 'fontScale', 'waitingOpacity', 'showTranslation'],
-            hanabi: ['density', 'trails', 'reflection', 'showTranslation'],
-            lumiere: ['smoke', 'dust', 'fontScale', 'showTranslation'],
-            fogpane: ['fog', 'rain', 'drops', 'drips', 'cameraSpeed', 'showTranslation'],
-            inkdraft: ['cameraCuts', 'figures', 'collisions', 'halftone', 'inkFlip', 'showTranslation'],
-            luminous: ['fontScale', 'layoutStyle', 'showTranslation', 'showUpcoming', 'glow'],
-            partita: ['fontScale', 'layoutStyle', 'showTranslation', 'showUpcoming', 'glow'],
-            cadenza: ['fontScale', 'showTranslation', 'showUpcoming', 'heroEmphasis', 'glow'],
-            fume: ['cameraMode', 'cameraSpeed', 'geometricBackground', 'glow', 'heroScale']
-        });
-        const TUNE_FIRST_COUNT = 6;
         let tuneBusy = false;
         let tuningDirty = true;
         let lastTuneSceneId = '';
@@ -72,7 +74,7 @@
                     const label = row.querySelector('.music-stage-tuning-label');
                     if (!label || label.dataset.mdDone) continue;
                     label.dataset.mdDone = '1';
-                    const match = /^(.+?)（(.+)）$/.exec(label.textContent || '');
+                    const match = TUNE_LABEL_NOTE_RE.exec(label.textContent || '');
                     if (match) {
                         label.textContent = match[1];
                         const note = document.createElement('small');
