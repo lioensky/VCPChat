@@ -93,10 +93,13 @@ function calculateDurationScore(targetDurationMs, searchDurationMs) {
 
 function splitArtists(artistText) {
     if (!artistText) return [];
-    return String(artistText)
-        .split(ARTIST_SPLIT_RE)
-        .map(a => normalizeLyricMatchText(a))
-        .filter(a => a.length > 0);
+    const parts = String(artistText).split(ARTIST_SPLIT_RE);
+    const out = [];
+    for (let i = 0; i < parts.length; i += 1) {
+        const norm = normalizeLyricMatchText(parts[i]);
+        if (norm.length > 0) out.push(norm);
+    }
+    return out;
 }
 
 function calculateArtistSimilarity(target, search) {
@@ -108,8 +111,10 @@ function calculateArtistSimilarity(target, search) {
     }
 
     let matchCount = 0;
-    for (const a1 of tArtists) {
-        for (const a2 of sArtists) {
+    for (let i = 0; i < tArtists.length; i += 1) {
+        const a1 = tArtists[i];
+        for (let j = 0; j < sArtists.length; j += 1) {
+            const a2 = sArtists[j];
             if (a1 === a2 || (a1.length >= 2 && a2.includes(a1)) || (a2.length >= 2 && a1.includes(a2))) {
                 matchCount++;
                 break;
@@ -124,6 +129,7 @@ function calculateArtistSimilarity(target, search) {
         (sArtists[0].length >= 2 && tArtists[0].includes(sArtists[0])));
 
     const mainBonus = isMainArtistMatched ? Math.max(tokenSim, 0.75) : tokenSim;
+    if (mainBonus >= 1) return 1;
     return Math.max(mainBonus, stringSimilarity(target, search));
 }
 

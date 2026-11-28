@@ -25,7 +25,10 @@
     const DAY = 86400000;
 
     const BSLASH_RE = /\\/g;
-    const normPath = (p) => String(p || '').replace(BSLASH_RE, '/').toLowerCase();
+    const normPath = (p) => {
+        const s = String(p || '');
+        return (s.indexOf('\\') >= 0 ? s.replace(BSLASH_RE, '/') : s).toLowerCase();
+    };
     const playedEnough = (sec, duration) => {
         const d = Number(duration);
         const need = d > 0 ? Math.min(MAX_FULL, Math.max(d / 2, Math.min(d, SKIP_BEFORE))) : UNKNOWN_LEN;
@@ -63,6 +66,7 @@
             const raw = JSON.parse(storage?.getItem(LOG_KEY) || 'null');
             if (raw && raw.v === 1 && raw.d && typeof raw.d === 'object') log = raw.d;
         } catch (e) { log = {}; }
+        let logCount = Object.keys(log).length;
         // 缓存当前小时窗口对应的本地日期与小时号，播放时每秒 tick 免去重复构造 Date 和拼串（跨小时自动重算，兼顾夏令时）
         let cachedHourStart = -1;
         let cachedHourEnd = -1;
@@ -80,12 +84,19 @@
         };
         const dayKey = (t) => dayAndHour(t).k;
         const dayOfKey = (k) => {
-            if (!log[k]) {
-                log[k] = { s: new Array(24).fill(0), p: {} };
-                const keys = Object.keys(log).sort();
-                for (let i = 0; i < keys.length - KEEP_DAYS; i++) delete log[keys[i]];
+            let day = log[k];
+            if (!day) {
+                day = { s: new Array(24).fill(0), p: {} };
+                log[k] = day;
+                logCount += 1;
+                if (logCount > KEEP_DAYS) {
+                    const keys = Object.keys(log).sort();
+                    const drop = keys.length - KEEP_DAYS;
+                    for (let i = 0; i < drop; i += 1) delete log[keys[i]];
+                    logCount = KEEP_DAYS;
+                }
             }
-            return log[k];
+            return day;
         };
         const dayOf = (t) => dayOfKey(dayKey(t));
         let resumeSaved = 0;
@@ -217,33 +228,66 @@
         }
 
         // ---- 查询 ----
-        const all = () => (tableCount ? Object.values(table).filter((e) => e[0] > 0) : []);
+        const hasOwn = Object.prototype.hasOwnProperty;
+        const lookupEntry = (input) => {
+            if (!tableCount) return null;
+            return table[normPath(input && typeof input === 'object' ? input.path : input)] || null;
+        };
+        const extractPaths = (list, limit) => {
+            const cap = limit < list.length ? limit : list.length;
+            const out = new Array(cap);
+            for (let i = 0; i < cap; i += 1) out[i] = list[i][4];
+            return out;
+        };
         const api = {
+            has(input) {
+                return lookupEntry(input) !== null;
+            },
             get(input) {
-                if (!tableCount) return null;
-                const e = table[normPath(input && typeof input === 'object' ? input.path : input)];
+                const e = lookupEntry(input);
                 return e ? { plays: e[0], last: e[1], skips: e[2], first: e[3] } : null;
             },
             top(n = 30, { minPlays = 2 } = {}) {
-                if (!tableCount) return [];
-                return all().filter((e) => e[0] >= minPlays).sort((a, b) => b[0] - a[0] || b[1] - a[1]).slice(0, n).map((e) => e[4]);
+                if (!tableCount || n <= 0) return [];
+                const floor = minPlays > 0 ? minPlays : 1;
+                const list = [];
+                for (const k in table) {
+                    if (!hasOwn.call(table, k)) continue;
+                    const e = table[k];
+                    if (e[0] >= floor) list.push(e);
+                }
+                list.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
+                return extractPaths(list, n);
             },
             lastPlayed(n = 30) {
-                if (!tableCount) return [];
-                return all().sort((a, b) => b[1] - a[1]).slice(0, n).map((e) => e[4]);
+                if (!tableCount || n <= 0) return [];
+                const list = [];
+                for (const k in table) {
+                    if (!hasOwn.call(table, k)) continue;
+                    const e = table[k];
+                    if (e[0] > 0) list.push(e);
+                }
+                list.sort((a, b) => b[1] - a[1]);
+                return extractPaths(list, n);
             },
             forgotten({ minPlays = 3, days = 30, limit = 30 } = {}) {
-                if (!tableCount) return [];
+                if (!tableCount || limit <= 0) return [];
                 const before = now() - days * DAY;
-                return all().filter((e) => e[0] >= minPlays && e[1] && e[1] < before)
-                    .sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, limit).map((e) => e[4]);
+                const floor = minPlays > 0 ? minPlays : 1;
+                const list = [];
+                for (const k in table) {
+                    if (!hasOwn.call(table, k)) continue;
+                    const e = table[k];
+                    if (e[0] >= floor && e[1] && e[1] < before) list.push(e);
+                }
+                list.sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+                return extractPaths(list, limit);
             },
             // 一首歌的「常听程度」0..1，自动续播挑歌时用来加权（跳过多的往后放）
             affinity(input) {
-                if (!tableCount) return 0;
-                const s = api.get(input);
-                if (!s) return 0;
-                const score = Math.log2(1 + s.plays) - 0.6 * Math.log2(1 + s.skips);
+                const e = lookupEntry(input);
+                if (!e) return 0;
+                const score = Math.log2(1 + e[0]) - 0.6 * Math.log2(1 + e[2]);
                 return Math.max(0, Math.min(1, score / 5));
             },
             // 首页「接着听」：{ track, position, at } 或 null（那首歌已不在曲库里也返回 null）

@@ -207,12 +207,19 @@
     // 常见编码器的低通：128 kbps 约 16–17 kHz，192 kbps 约 18.5–19 kHz，256 kbps 约 19.5–20 kHz，320 kbps 约 20–20.5 kHz
     // （找到的切口会比编码器设的低通略高一点，阈值留了余量）
     const LOSSY_GUESS = [[17800, '128 kbps 左右'], [19400, '160–192 kbps'], [20300, '256 kbps 左右'], [21000, '320 kbps']];
+    const MARKS_HI = [0, 20000, 40000, 60000, 80000];
+    const MARKS_LO = [0, 5000, 10000, 15000, 20000];
     function verdict({ cutoff, sampleRate, lossless }) {
         const nyquist = sampleRate / 2;
         if (!lossless) {
             return { level: 'info', text: cutoff ? `这是有损文件，频谱到 ${kHz(cutoff)} 为止，属于正常。` : `这是有损文件，频谱一直到 ${kHz(nyquist)}。` };
         }
-        const guess = cutoff ? LOSSY_GUESS.find(([limit]) => cutoff < limit) : null;
+        let guess = null;
+        if (cutoff) {
+            for (let i = 0; i < LOSSY_GUESS.length; i += 1) {
+                if (cutoff < LOSSY_GUESS[i][0]) { guess = LOSSY_GUESS[i]; break; }
+            }
+        }
         if (guess) return { level: 'warn', text: `频谱在 ${kHz(cutoff)} 处被齐刷刷切掉，像是 ${guess[1]}${ALNUM_END_RE.test(guess[1]) ? ' ' : ''}的有损文件转成的${sampleRate > 50000 ? '高采样率文件' : '无损'}。` };
         if (sampleRate > 50000) {
             if (cutoff && cutoff < 24500) return { level: 'warn', text: `标的是 ${kHz(sampleRate)} 高采样率，但 ${kHz(cutoff)} 以上几乎没有内容，像是从 CD 规格（44.1/48 kHz）升上来的。` };
@@ -284,6 +291,18 @@
             const o = overlay;
             overlay = null;
             global.removeEventListener('keydown', onKey, true);
+            const back = previousFocus;
+            previousFocus = null;
+            if (!isImmediate) {
+                if (back && back !== doc.body && back.isConnected && !o.contains(back) && typeof back.focus === 'function') {
+                    try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
+                } else {
+                    const active = doc.activeElement;
+                    if (active && o.contains(active) && typeof active.blur === 'function') {
+                        try { active.blur(); } catch (e) { /* 没关系 */ }
+                    }
+                }
+            }
             o.dataset.closing = '1';
             o.classList.remove('visible');
             if (isImmediate) disposeOverlay(o);
@@ -291,17 +310,12 @@
                 closingOverlay = o;
                 closeTimer = setTimeout(() => { closeTimer = 0; if (closingOverlay === o) closingOverlay = null; disposeOverlay(o); }, 320);
             }
-            const back = previousFocus;
-            previousFocus = null;
-            if (!isImmediate && back && back.isConnected && typeof back.focus === 'function') {
-                try { back.focus({ preventScroll: true }); } catch (e) { /* 还不回去就算了 */ }
-            }
         };
         const onKey = (e) => {
             if (doc.querySelector('.dialog-overlay.music-dialog:not([data-closing])')) return;
             if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); close(); return; }
             if (e.key === 'Tab' && overlay) {
-                const focusables = [...overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])')];
+                const focusables = overlay.querySelectorAll('button:not([disabled]):not([hidden]), [tabindex]:not([tabindex="-1"])');
                 if (focusables.length) {
                     const first = focusables[0], last = focusables[focusables.length - 1];
                     const active = doc.activeElement;
@@ -383,14 +397,16 @@
             const lossless = track.lossless === true || LOSSLESS_EXT.test(String(track.path || ''));
             const v = verdict({ cutoff, sampleRate, lossless });
             const body = cur.querySelector('.mspec-body');
-            body.innerHTML = '';
+            const frag = doc.createDocumentFragment();
             const verdictBox = el('p', 'mspec-verdict ' + v.level, v.text);
-            body.appendChild(verdictBox);
+            frag.appendChild(verdictBox);
             const figure = el('div', 'mspec-figure');
             const axis = el('div', 'mspec-yaxis');
             const nyquist = sampleRate / 2;
-            const marks = nyquist > 30000 ? [0, 20000, 40000, 60000, 80000].filter((f) => f <= nyquist) : [0, 5000, 10000, 15000, 20000].filter((f) => f <= nyquist);
-            for (const f of marks) {
+            const marks = nyquist > 30000 ? MARKS_HI : MARKS_LO;
+            for (let i = 0; i < marks.length; i += 1) {
+                const f = marks[i];
+                if (f > nyquist) break;
                 const m = el('span', '', f ? `${f / 1000}k` : '0');
                 m.style.bottom = `${(f / nyquist) * 100}%`;
                 axis.appendChild(m);
@@ -408,14 +424,22 @@
             }
             figure.appendChild(axis);
             figure.appendChild(plot);
-            body.appendChild(figure);
+            frag.appendChild(figure);
             const totalSec = Math.max(0, Math.round(audio.duration));
             const mins = Math.floor(totalSec / 60);
             const secs = String(totalSec % 60).padStart(2, '0');
-            const spec = [String(track.path || '').split('.').pop().toUpperCase(), `${(sampleRate / 1000).toFixed(sampleRate % 1000 ? 1 : 0)} kHz`, track.bitsPerSample ? `${track.bitsPerSample} bit` : '', track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '', `${mins}:${secs}`].filter(Boolean).join(' · ');
-            body.appendChild(el('p', 'mspec-spec', spec));
-            body.appendChild(el('p', 'mstats-note', '只是按频谱估计：老录音、某些母带本身高频就少，也会显示成被切掉。'));
+            const rawPath = String(track.path || '');
+            const dotIdx = rawPath.lastIndexOf('.');
+            const extStr = (dotIdx >= 0 ? rawPath.slice(dotIdx + 1) : rawPath).toUpperCase();
+            let spec = extStr ? `${extStr} · ` : '';
+            spec += `${(sampleRate / 1000).toFixed(sampleRate % 1000 ? 1 : 0)} kHz`;
+            if (track.bitsPerSample) spec += ` · ${track.bitsPerSample} bit`;
+            if (track.bitrate) spec += ` · ${Math.round(track.bitrate / 1000)} kbps`;
+            spec += ` · ${mins}:${secs}`;
+            frag.appendChild(el('p', 'mspec-spec', spec));
+            frag.appendChild(el('p', 'mstats-note', '只是按频谱估计：老录音、某些母带本身高频就少，也会显示成被切掉。'));
             draw(canvas, result);
+            body.replaceChildren(frag);
         };
 
         app.openSpectrum = async (ref) => {

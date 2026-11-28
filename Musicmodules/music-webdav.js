@@ -35,6 +35,28 @@ function setupWebDav(app) {
     let browseReqId = 0;
     const boundLists = new WeakSet();
     let currentEntries = [];
+    let prevModalFocus = null;
+    let prevServerFocus = null;
+    const restoreModalFocus = (prev, container) => {
+        if (typeof document === 'undefined') return;
+        const contains = typeof container?.contains === 'function' ? (n) => container.contains(n) : () => false;
+        if (prev && prev !== document.body && prev.isConnected && !contains(prev) && typeof prev.focus === 'function') {
+            try { prev.focus({ preventScroll: true }); } catch (e) { /* 归还不了就算了 */ }
+            return;
+        }
+        const active = document.activeElement;
+        if (active && contains(active) && typeof active.blur === 'function') {
+            try { active.blur(); } catch (e) { /* 没关系 */ }
+        }
+    };
+    const findServerById = (id) => {
+        const key = String(id);
+        const list = app.webdavServers;
+        for (let i = 0; i < list.length; i += 1) {
+            if (String(list[i].id) === key) return list[i];
+        }
+        return null;
+    };
 
     const selectServer = (server) => {
         app.activeWebDavServer = server;
@@ -84,16 +106,14 @@ function setupWebDav(app) {
             const removeBtn = e.target.closest?.('.webdav-server-remove');
             if (removeBtn && list.contains(removeBtn)) {
                 e.stopPropagation();
-                const id = removeBtn.dataset.id;
-                const server = app.webdavServers.find((s) => String(s.id) === String(id));
+                const server = findServerById(removeBtn.dataset.id);
                 if (server) removeServerItem(server, removeBtn);
                 return;
             }
             const nameEl = e.target.closest?.('.webdav-server-name');
             if (!nameEl || !list.contains(nameEl)) return;
             const row = nameEl.closest('.webdav-server-item');
-            const id = row?.dataset.serverId;
-            const server = app.webdavServers.find((s) => String(s.id) === String(id));
+            const server = row ? findServerById(row.dataset.serverId) : null;
             if (server) selectServer(server);
         });
     };
@@ -135,6 +155,7 @@ function setupWebDav(app) {
     };
 
     app.openWebDavModal = async () => {
+        prevModalFocus = typeof document !== 'undefined' ? document.activeElement : null;
         app.webdavModal.classList.add('active');
         if (!app.api?.listWebdavServers) return;
         const reqId = ++browseReqId;
@@ -151,6 +172,9 @@ function setupWebDav(app) {
 
     app.closeWebDavModal = () => {
         browseReqId += 1;
+        const back = prevModalFocus;
+        prevModalFocus = null;
+        restoreModalFocus(back, app.webdavModal);
         app.webdavModal.classList.remove('active');
     };
 
@@ -206,11 +230,17 @@ function setupWebDav(app) {
         }
         const currentPath = safeDecode(dirPath.replace(TRAIL_SLASH_RE, ''));
         const rawEntries = Array.isArray(result.entries) ? result.entries : [];
-        const entries = rawEntries.filter((entry) => {
-            if (!entry || !entry.isDir) return Boolean(entry);
+        const entries = [];
+        for (let i = 0; i < rawEntries.length; i += 1) {
+            const entry = rawEntries[i];
+            if (!entry) continue;
+            if (!entry.isDir) {
+                entries.push(entry);
+                continue;
+            }
             const entryPath = safeDecode(String(entry.href || '').replace(TRAIL_SLASH_RE, ''));
-            return currentPath ? entryPath !== currentPath : entryPath !== '';
-        });
+            if (currentPath ? entryPath !== currentPath : entryPath !== '') entries.push(entry);
+        }
         if (entries.length === 0) {
             app.webdavFileList.innerHTML = '<div class="no-lyrics" style="padding:20px;">此目录为空</div>';
             return;
@@ -233,8 +263,7 @@ function setupWebDav(app) {
 
     app.renderWebDavBreadcrumb = (dirPath) => {
         bindBreadcrumb();
-        app.webdavBreadcrumb.innerHTML = '';
-        const parts = dirPath.replace(ROOT_SLASH_RE, '').split('/').filter(Boolean);
+        const rawParts = String(dirPath || '').replace(ROOT_SLASH_RE, '').split('/');
         const frag = document.createDocumentFragment();
         const root = document.createElement('span');
         root.className = 'webdav-crumb';
@@ -242,8 +271,9 @@ function setupWebDav(app) {
         root.textContent = app.activeWebDavServer ? app.activeWebDavServer.name : '根目录';
         frag.appendChild(root);
         let cumPath = '';
-        for (let i = 0; i < parts.length; i += 1) {
-            const part = parts[i];
+        for (let i = 0; i < rawParts.length; i += 1) {
+            const part = rawParts[i];
+            if (!part) continue;
             cumPath += '/' + part;
             const sep = document.createElement('span');
             sep.textContent = ' / ';
@@ -255,7 +285,7 @@ function setupWebDav(app) {
             span.textContent = safeDecode(part);
             frag.appendChild(span);
         }
-        app.webdavBreadcrumb.appendChild(frag);
+        app.webdavBreadcrumb.replaceChildren(frag);
     };
 
     app.playWebDavTrack = async (entry) => {
@@ -269,7 +299,10 @@ function setupWebDav(app) {
             isRemote: true,
             serverId: app.activeWebDavServer.id,
         };
-        let idx = app.playlist.findIndex((t) => t && t.path === track.path);
+        let idx = -1;
+        for (let i = 0; i < app.playlist.length; i += 1) {
+            if (app.playlist[i] && app.playlist[i].path === track.path) { idx = i; break; }
+        }
         if (idx === -1) {
             idx = app.playlist.length;
             app.playlist.push(track);
@@ -296,6 +329,7 @@ function setupWebDav(app) {
         app.webdavModalClose?.addEventListener('click', app.closeWebDavModal);
         app.webdavModal?.addEventListener('click', (e) => { if (e.target === app.webdavModal) app.closeWebDavModal(); });
         app.webdavAddServerBtn?.addEventListener('click', () => {
+            prevServerFocus = typeof document !== 'undefined' ? document.activeElement : null;
             const nameInput = getDialogInput('name', 'webdav-server-name');
             if (nameInput) nameInput.value = '';
             const urlInput = getDialogInput('url', 'webdav-server-url');
@@ -312,6 +346,9 @@ function setupWebDav(app) {
         let testReqId = 0;
         const closeServerDialog = () => {
             testReqId += 1;
+            const back = prevServerFocus;
+            prevServerFocus = null;
+            restoreModalFocus(back, app.webdavServerDialog);
             app.webdavServerDialog.classList.remove('active');
         };
         app.webdavDialogCancel?.addEventListener('click', closeServerDialog);

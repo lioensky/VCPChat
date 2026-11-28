@@ -155,9 +155,15 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
     ipcMain.handle('music-list-ir-presets', async () => {
         try {
             const files = await fs.readdir(irPresetDir);
-            return files
-                .filter(file => IR_AUDIO_EXTENSIONS.has(path.extname(file).toLowerCase()))
-                .map(file => path.parse(file).name);
+            const presets = [];
+            for (let i = 0; i < files.length; i += 1) {
+                const file = files[i];
+                const ext = path.extname(file);
+                if (ext && IR_AUDIO_EXTENSIONS.has(ext.toLowerCase())) {
+                    presets.push(file.slice(0, file.length - ext.length));
+                }
+            }
+            return presets;
         } catch (err) {
             if (err?.code === 'ENOENT') return [];
             console.error('[Music] Failed to list IR presets:', err);
@@ -169,11 +175,14 @@ function registerMusicEngineHandlers({ ipcMain, dialog, audioEngineApi, webdavMa
         if (typeof presetName !== 'string' || !presetName) return null;
         try {
             const files = await fs.readdir(irPresetDir);
-            const match = files.find(file => {
-                const p = path.parse(file);
-                return p.name === presetName && IR_AUDIO_EXTENSIONS.has(p.ext.toLowerCase());
-            });
-            return match ? path.join(irPresetDir, match) : null;
+            for (let i = 0; i < files.length; i += 1) {
+                const file = files[i];
+                const ext = path.extname(file);
+                if (ext && IR_AUDIO_EXTENSIONS.has(ext.toLowerCase()) && file.slice(0, file.length - ext.length) === presetName) {
+                    return path.join(irPresetDir, file);
+                }
+            }
+            return null;
         } catch (err) {
             if (err?.code === 'ENOENT') return null;
             console.error('[Music] Failed to get IR preset path:', err);
