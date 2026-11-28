@@ -430,3 +430,114 @@ test('Batch 107: archive lyrics quantizes --lp writes and deduplicates unchanged
     ly.destroy();
     window.close();
 });
+
+test('Batch 117: archive-wall/grid cover-bucket fast path & tileProto, archive-lyrics wordsOf, m3u/matchScore/lyricsTranslate fast paths', () => {
+    // 1. archive-lyrics wordsOf fast exact match & whitespace-collapsed fallback + HTML escape
+    {
+        const { window, app, ly, at } = setup({ playing: true });
+        const { wordsOf } = window.MusicArchiveLyrics;
+        const wExact = [{ text: 'hello ', startTime: 0, endTime: 1 }, { text: 'world', startTime: 1, endTime: 2 }];
+        assert.equal(wordsOf({ text: 'hello world', words: wExact }), wExact, 'exact match returns words directly');
+        const wWs = [{ text: 'hello', startTime: 0, endTime: 1 }, { text: 'world', startTime: 1, endTime: 2 }];
+        assert.equal(wordsOf({ text: 'hello   world', words: wWs }), wWs, 'whitespace-collapsed fallback still matches');
+        assert.equal(wordsOf({ text: 'mismatch', words: wWs }), null);
+        app.currentLyrics = [{ time: 1, text: '<A & "B">' }];
+        ly.sync();
+        at(1.2);
+        assert.equal(ly.el.querySelector('p[data-k="0"] b').textContent, '<A & "B">', 'hoisted ESC_MAP escapes special chars');
+        ly.destroy();
+        window.close();
+    }
+
+    // 2. archive-grid & archive-wall skip redundant thumbs.get on unchanged cover bucket, but refresh on coverFound
+    {
+        const dom = new JSDOM('<!doctype html><body><div id="h"></div></body>', { pretendToBeVisual: true, runScripts: 'outside-only', url: 'http://localhost/' });
+        const { window } = dom;
+        try {
+            const rafs = [];
+            window.requestAnimationFrame = (fn) => { rafs.push(fn); return rafs.length; };
+            window.cancelAnimationFrame = () => {};
+            window.HTMLElement.prototype.scrollTo = function (o) { this.scrollTop = o?.top || 0; };
+            window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-wall.js'), 'utf8'));
+            window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-archive/archive-grid.js'), 'utf8'));
+            const host = window.document.getElementById('h');
+            let thumbCalls = 0;
+            let thumbVal = 'blob:low';
+            const origCreateThumbs = window.MusicArchiveWall.createThumbs;
+            window.MusicArchiveWall = {
+                ...window.MusicArchiveWall,
+                createThumbs: () => ({
+                    get: () => { thumbCalls += 1; return thumbVal; },
+                    failed: () => false,
+                    clearQueue() {},
+                    destroy() {}
+                })
+            };
+            const tracks = [
+                { path: 'C:\\1.flac', title: 'One', artist: 'A', albumArt: 'art1.jpg' },
+                { path: 'C:\\2.flac', title: 'Two', artist: 'B', albumArt: '' }
+            ];
+            const grid = window.MusicArchiveGrid.create({
+                host,
+                sections: () => ({ key: 'k', list: [{ id: 's0', name: 'A', ids: [0, 1] }] }),
+                track: (i) => tracks[i],
+                cover: (t) => t.albumArt,
+                selected: () => 0,
+                playing: () => ({ index: -1, active: false }),
+                meta: (t, i) => ({ title: t.title, artist: t.artist, album: '', code: String(i + 1) }),
+                pick() {}, play() {}, menu() {}, reducedMotion: () => true
+            });
+            grid.setRoom({ left: 0, top: 0, width: 600, height: 400 });
+            grid.show(true);
+            rafs.splice(0).forEach((fn) => fn(16));
+            assert.equal(thumbCalls, 1, 'initial grid render resolves cover once for track with art');
+            // Second full render without cover change skips thumbs.get
+            grid.el.querySelector('.ag-scroll').dispatchEvent(new window.Event('scroll'));
+            rafs.splice(0).forEach((fn) => fn(32));
+            assert.equal(thumbCalls, 1, 'scroll render with unchanged bucket skips redundant thumbs.get');
+            // coverFound forces upgrade
+            thumbVal = 'blob:hi';
+            grid.coverFound();
+            rafs.splice(0).forEach((fn) => fn(48));
+            assert.equal(thumbCalls, 2, 'coverFound upgrades cached cover URL');
+            assert.equal(grid.el.querySelector('.ag-cell img').getAttribute('src'), 'blob:hi');
+            grid.destroy();
+            window.MusicArchiveWall.createThumbs = origCreateThumbs;
+        } finally {
+            window.close();
+        }
+    }
+
+    // 3. modules/ipc/musicM3u fast paths (Windows local, file://, http:// skipped, newline sanitization)
+    {
+        const { parseM3u, buildM3u } = require('../modules/ipc/musicM3u.js');
+        const parsed = parseM3u([
+            '#EXTM3U',
+            '#PLAYLIST:Mix',
+            '#EXTINF:180,Art - Song',
+            'C:\\Music\\a.flac',
+            'C:/Music/b.mp3',
+            'file:///D:/Track%203.wav',
+            'https://example.com/stream.mp3'
+        ].join('\n'), { platform: 'win32' });
+        assert.equal(parsed.name, 'Mix');
+        assert.equal(parsed.skipped, 1);
+        assert.deepEqual(parsed.entries.map((e) => e.path), ['C:\\Music\\a.flac', 'C:\\Music\\b.mp3', 'D:\\Track 3.wav']);
+        const built = buildM3u('My\r\nList', [{ path: 'C:\\Music\\a.flac', title: 'Line1\nLine2', artist: 'Art', duration: 95 }]);
+        assert.ok(built.includes('#PLAYLIST:My List\r\n'));
+        assert.ok(built.includes('#EXTINF:95,Art - Line1 Line2\r\n'));
+    }
+
+    // 4. modules/lyrics/matchScore & modules/musicLyricsTranslate fast paths
+    {
+        const { normalizeTitleForMatch } = require('../modules/lyrics/matchScore.js');
+        assert.equal(normalizeTitleForMatch('Starlight.flac'), 'starlight');
+        assert.equal(normalizeTitleForMatch('Starlight (feat. Guest) (Live)'), 'starlight live');
+        assert.equal(normalizeTitleForMatch('Starlight feat. Guest'), 'starlight');
+        assert.equal(normalizeTitleForMatch('夜に駆ける'), '夜に駆ける');
+
+        const { parseTranslations } = require('../modules/musicLyricsTranslate.js');
+        assert.deepEqual(parseTranslations('["你好", "世界"]', 2), ['你好', '世界']);
+        assert.deepEqual(parseTranslations('```json\n["甲", "乙"]\n```', 2), ['甲', '乙']);
+    }
+});
