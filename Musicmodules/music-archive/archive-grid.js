@@ -218,8 +218,9 @@
             const now = performance.now();
             const entering = now < (st.enterUntil || 0);
             const sweepOn = entering && now - (st.shownAt || 0) < 400 && Boolean(opts.host.querySelector('.archive-layout-sweep'));
-            const hostW = sweepOn ? (opts.host.clientWidth || global.innerWidth || 1600) : 0;
+            const hostW = sweepOn ? (global.innerWidth || opts.host.clientWidth || 1600) : 0;
             const hw = st.cols * st.cell + (st.cols - 1) * GAP_X;
+            let hasFocus = false;
             let frag = null;
             for (let r = rowAt(Math.max(0, view0)); r < st.rows.length && st.rows[r].y < view1; r++) {
                 const row = st.rows[r];
@@ -293,6 +294,7 @@
                     }
                     applyNodeCover(n, t, dpr, refreshCovers);
                     const isSel = i === st.sel;
+                    if (isSel) hasFocus = true;
                     const isPlaying = i === play.index && play.active;
                     const isCurrent = i === play.index && !play.active;
                     const cls = (isSel ? 1 : 0) | (isPlaying ? 2 : 0) | (isCurrent ? 4 : 0);
@@ -308,6 +310,7 @@
                 }
             }
             if (frag) content.appendChild(frag);
+            if (hasFocus !== st.hasFocusCls) scroller.classList.toggle('has-focus', st.hasFocusCls = hasFocus);
             for (const [id, n] of st.nodes) if (!keep.has(id)) { st.nodes.delete(id); recycle(n); }
             for (const [s, h] of st.heads) if (!keepHeads.has(s)) { st.heads.delete(s); recycleHead(h); }
             // 吸顶节标题：最上面那一行属于哪一节（节标题自己还在视野里时不显示，免得叠两层）
@@ -470,6 +473,7 @@
                     stickySec = -1;
                     delete sticky.dataset.s;
                     sticky.hidden = true;
+                    if (st.hasFocusCls) scroller.classList.toggle('has-focus', st.hasFocusCls = false);
                     for (const n of st.nodes.values()) recycle(n);
                     st.nodes.clear();
                     for (const n of st.pool) {

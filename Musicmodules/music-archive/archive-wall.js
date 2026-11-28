@@ -524,7 +524,7 @@
             const now = performance.now();
             if (sweepCache && now - sweepCache.t < 50) return sweepCache.v;
             const on = opts.host.querySelector('.archive-layout-sweep');
-            const w = opts.host.clientWidth || global.innerWidth || 1600;
+            const w = global.innerWidth || opts.host.clientWidth || 1600;
             sweepCache = { t: now, v: on && now - (st.shownAt || 0) < 400 ? { w, ms: Math.round(Math.min(720, 380 + w * 0.16)) } : null };
             return sweepCache.v;
         };
@@ -914,23 +914,21 @@
             return val;
         };
         const keepSet = new Set();
-        let locHide = true, locAway = false, hasOpen = false, camTf = '';
+        let locHide = true, locAway = false, hasOpen = false, hf = false, camTf = '';
+        const setHf = (v) => { if (v !== hf) el.classList.toggle('has-focus', hf = v); };
         const layoutTiles = (rc = false) => {
             st.dirty = false;
             if (!st.g || !st.ids.length || !st.room.width) {
                 if (!locHide) locateBtn.hidden = locHide = true;
+                setHf(false);
                 for (const node of st.nodes.values()) recycle(node);
                 st.nodes.clear();
                 return;
             }
-            const g = st.g;
-            const over = g.pitch * 3;
+            const g = st.g, over = g.pitch * 3;
             let vx0 = st.cam.x - over, vy0 = st.cam.y - over, vx1 = st.cam.x + st.room.width + over, vy1 = st.cam.y + st.room.height + over;
             if (tilt) {
-                // 倒下去的桌面：把视口四个角按透视反投到桌面上，得到真正看得见的那块梯形的外接框，再留一格余量。
-                // 以前按经验框了 2.8×3 个视口那么大，屏幕外的格子是看得见的三四倍，大幅滚动时全在白白合成。
-                const b = tiltBounds(st.room.width, st.room.height);
-                const m = g.pitch * 1.25;
+                const b = tiltBounds(st.room.width, st.room.height), m = g.pitch * 1.25;
                 vx0 = st.cam.x + b.u0 - m; vx1 = st.cam.x + b.u1 + m;
                 vy0 = st.cam.y + b.v0 - m; vy1 = st.cam.y + b.v1 + m;
             }
@@ -1021,6 +1019,7 @@
             }
             const open = Boolean(exp);
             if (open !== hasOpen) world.classList.toggle('aw-has-open', hasOpen = open);
+            setHf(Boolean(sel && keep.has(sel)));
             st.laidAt = { x: st.cam.x, y: st.cam.y };
             st.revealOk = !reduced();
         };
@@ -1267,7 +1266,8 @@
                     seekDrag = null;
                     panelStateKey = '';
                     isDim = false;
-                    el.classList.remove('aw-dim', 'aw-moving', 'is-grabbing');
+                    el.classList.remove('aw-dim', 'aw-moving', 'is-grabbing', 'has-focus');
+                    hf = false;
                     seekEl.classList.remove('is-drag');
                     setExpanded(null, { animate: false });
                     if (panel.parentNode) panel.remove();

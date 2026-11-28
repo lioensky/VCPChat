@@ -2366,14 +2366,14 @@
             if (layoutSelect.value === 'classic') { layoutSelect.value = state.layout; setMode('classic'); return; }
             setLayout(layoutSelect.value);
         });
+        const setFlatHold = (on) => { const cur = on ? flat() : null; wall?.el?.classList.toggle('layout-holding', cur === wall); table?.el?.classList.toggle('layout-holding', cur === table); grid?.el?.classList.toggle('layout-holding', cur === grid); };
         const revealSweep = (el, w) => {
             el.classList.remove('is-covering');
-            // 纸盖着时新视图的翻入动画是暂停的（layout-holding），揭开这一刻一起放，和扫描线对得上
-            root.classList.remove('layout-holding');
-            root.classList.add('layout-revealing');
+            setFlatHold(false);
+            if (state.layout === 'table') table?.el?.classList.add('layout-revealing');
             const anim = el.firstChild.animate?.([{ transform: 'translateX(0)' }, { transform: `translateX(${w + 90}px)` }],
                 { duration: Math.round(Math.min(720, 380 + w * 0.16)), easing: 'cubic-bezier(.5, 0, .2, 1)', fill: 'forwards' });
-            const done = () => { if (layoutSweepEl === el) { layoutSweepEl = null; root.classList.remove('layout-revealing'); } el.remove(); };
+            const done = () => { if (layoutSweepEl === el) { layoutSweepEl = null; table?.el?.classList.remove('layout-revealing'); } el.remove(); };
             if (anim) anim.onfinish = anim.oncancel = done; else done();
         };
         const sweepToLayout = (layout) => {
@@ -2381,23 +2381,22 @@
             markLayoutButtons(layout);
             if (layoutJob) { layoutJob.layout = layout; return; }
             layoutSweepEl?.remove();
-            root.classList.remove('layout-revealing');
+            table?.el?.classList.remove('layout-revealing');
             const el = document.createElement('div');
             el.className = 'archive-layout-sweep is-covering';
             el.setAttribute('aria-hidden', 'true');
             el.innerHTML = '<i></i>';
             root.insertBefore(el, refs.hud);
             layoutSweepEl = el;
-            const w = root.clientWidth || global.innerWidth || 1600;
+            const w = global.innerWidth || root.clientWidth || 1600;
             const job = layoutJob = { layout };
             const swap = () => {
                 if (layoutJob !== job) return;
                 layoutJob = null;
-                if (layoutSweepEl !== el || !el.isConnected) { root.classList.remove('layout-holding'); applyLayout(job.layout, true); return; }
+                if (layoutSweepEl !== el || !el.isConnected) { setFlatHold(false); applyLayout(job.layout, true); return; }
                 el.dataset.full = '1';
-                root.classList.add('layout-holding');
                 applyLayout(job.layout, true);
-                // 盖着等两帧：新视图第一帧（最重的那帧）画完再揭开
+                setFlatHold(true);
                 requestAnimationFrame(() => requestAnimationFrame(() => { if (layoutSweepEl === el) revealSweep(el, w); }));
             };
             const anim = el.firstChild.animate?.([{ transform: `translateX(${-w - 4}px)` }, { transform: 'translateX(0)' }],

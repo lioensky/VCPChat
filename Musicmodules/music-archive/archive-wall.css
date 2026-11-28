@@ -345,7 +345,7 @@ body.music-reduce-motion .aw-tile .aw-in, body.music-reduce-motion .aw-panel > *
 .ag-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ar-ink) 22%, transparent); border-radius: 3px; }
 .ag-scroll::-webkit-scrollbar-track { background: color-mix(in srgb, var(--ar-ink) 5%, transparent); }
 .ag-content { position: relative; }
-.ag-head, .ag-cell { position: absolute; left: 0; top: 0; }
+.ag-head, .ag-cell { position: absolute; left: 0; top: 0; contain: layout style; }
 /* 节标题：大字 + 数量 + 一条结构线，和左边目录表的分组标题同一路 */
 .ag-head { height: 92px; display: flex; align-items: flex-end; gap: 16px; padding-bottom: 16px; box-sizing: border-box; color: var(--ar-ink); }
 .ag-head b { font-size: clamp(40px, 4vw, 60px); font-weight: 800; line-height: .9; letter-spacing: -.045em; max-width: 70%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -609,8 +609,8 @@ body.light-theme .aw-tile.is-open .aw-in { box-shadow: 0 0 0 1px color-mix(in sr
 /* Tab 停在墙/网格上：选中的那张多一圈虚线，表示方向键现在管它 */
 .archive-wall:focus-visible .aw-tile.is-focus .aw-in,
 .ag-scroll:focus-visible .ag-cell.is-focus .ag-art { outline: 1px dashed var(--ar-accent); outline-offset: 5px; }
-/* 还没选中任何一张：整块区域内侧描一圈虚线 */
-#music-archive-view :is(.archive-wall, .ag-scroll):focus-visible:not(:has(.is-focus)):not(#_) { outline: 1px dashed var(--ar-accent); outline-offset: -6px; }
+/* 还没选中任何一张：整块区域内侧描一圈虚线（由脚本镜像 .has-focus，避免容器挂 :has() 在翻卡时全子树重算） */
+#music-archive-view :is(.archive-wall, .ag-scroll):focus-visible:not(.has-focus):not(#_) { outline: 1px dashed var(--ar-accent); outline-offset: -6px; }
 /* 定位圆键：焦点圈贴近一点，跟着圆走 */
 #music-archive-view .aw-locate:focus-visible { outline-offset: 3px; }
 
@@ -619,11 +619,15 @@ body.light-theme .aw-tile.is-open .aw-in { box-shadow: 0 0 0 1px color-mix(in sr
 #music-archive-view .aw-seek:focus-visible .aw-seek-bar { outline: 1px dashed var(--ar-accent); outline-offset: 5px; }
 
 /* ---------- 换视图过场的配合（archive-view.js sweepToLayout） ---------- */
-/* 纸盖着：新视图的入场动画先停在第一帧，揭开时一起放 */
-#music-archive-view.layout-holding :is(.aw-tile.aw-flip .aw-in, .aw-tile.aw-entering .aw-in, .ag-cell.ag-flip > .ag-art, .ag-cell.ag-entering > *, .ag-head.ag-entering > *) { animation-play-state: paused; }
+/* 纸盖着：新视图的入场动画先停在第一帧，揭开时一起放（挂在目标平面视图自身而非 #music-archive-view，避免波及 HUD 与目录） */
+.archive-wall.layout-holding .aw-tile.aw-flip .aw-in,
+.archive-wall.layout-holding .aw-tile.aw-entering .aw-in,
+.archive-grid.layout-holding .ag-cell.ag-flip > .ag-art,
+.archive-grid.layout-holding .ag-cell.ag-entering > *,
+.archive-grid.layout-holding .ag-head.ag-entering > * { animation-play-state: paused; }
 /* 揭开的这半秒里平放的景深模糊先关掉（几百张一起翻时它每帧都要重算），扫完再淡回来 */
 .archive-wall.aw-table::after { transition: opacity .4s var(--mt-ease, ease); }
-#music-archive-view.layout-revealing .archive-wall.aw-table::after { opacity: 0; transition: none; }
+.archive-wall.aw-table.layout-revealing::after { opacity: 0; transition: none; }
 
 
 /* ---------- 镜头在动（archive-wall.js setMoving） ---------- */
