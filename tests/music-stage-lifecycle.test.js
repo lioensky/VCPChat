@@ -3018,3 +3018,76 @@ test('Batch 119: stage runtime splitGraphemes ASCII/emoji, clamp01 Infinity/NaN,
         dom.window.close();
     }
 });
+
+test('Batch 121: stage-edge reads --stage-edge-mono before canvas writes, stage-host skips idle window resize, and core/pixi CSS disables enter animations under reduced motion', () => {
+    const dom = createStageDom();
+    try {
+        // 1. Verify stage-edge calls getComputedStyle BEFORE mutating strip canvas width/style
+        const root = dom.window.document.getElementById('music-stage');
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        const ops = [];
+        const origGetCS = dom.window.getComputedStyle.bind(dom.window);
+        dom.window.getComputedStyle = (el, ...rest) => {
+            if (el === edgeCanvas) ops.push('read:mono');
+            return origGetCS(el, ...rest);
+        };
+        const widthDesc = Object.getOwnPropertyDescriptor(dom.window.HTMLCanvasElement.prototype, 'width');
+        Object.defineProperty(edgeCanvas, 'width', {
+            configurable: true,
+            get() { return widthDesc ? widthDesc.get.call(this) : (this._w || 0); },
+            set(v) {
+                if (v > 1) ops.push('write:width');
+                if (widthDesc) widthDesc.set.call(this, v); else this._w = v;
+            }
+        });
+        installCanvasStub(dom.window);
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
+        Object.defineProperty(root, 'clientWidth', { configurable: true, value: 800 });
+        Object.defineProperty(root, 'clientHeight', { configurable: true, value: 600 });
+        const edge = dom.window.MusicStageEdge.create({
+            app: {},
+            root,
+            elements: { edgeSpectrum, edgeCanvas },
+            state: { config: { quality: 'standard', edgeSpectrum: true } },
+            scope: { add() {} },
+            clamp: (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v))
+        });
+        edge.draw({ now: 100, isPlaying: true, track: { path: '/a.flac' }, viewport: { dpr: 1 }, audio: { power: 0.4, spectrum: new Array(64).fill(0.5) } });
+        const rIdx = ops.indexOf('read:mono');
+        const wIdx = ops.indexOf('write:width');
+        assert.ok(rIdx !== -1 && wIdx !== -1 && rIdx < wIdx, `getComputedStyle(--stage-edge-mono) runs before canvas resize writes (${ops.join(',')})`);
+        edge.release();
+
+        // 2. Inactive stageHost skips scheduling rAF on window resize
+        runScript(dom, 'Musicmodules/music-stage/music-stage-config.js');
+        for (const dep of [
+            'modes/stage-lyric-layout.js', 'modes/stage-lyric-performance.js',
+            'modes/luminous-manager.js', 'modes/partita-manager.js', 'modes/cadenza-manager.js',
+            'modes/tempera-manager.js', 'modes/sonnet-manager.js', 'modes/diorama-manager.js',
+            'modes/fume-manager.js', 'music-stage-advanced-modes.js',
+            'music-stage-modes.js', 'music-stage-host.js'
+        ]) {
+            runScript(dom, `Musicmodules/music-stage/${dep}`);
+        }
+        const { app } = createApp();
+        dom.window.setupMusicStage(app);
+        let resizeRafs = 0;
+        const origRaf = dom.window.requestAnimationFrame;
+        dom.window.requestAnimationFrame = (fn) => { resizeRafs += 1; return origRaf ? origRaf(fn) : 1; };
+        dom.window.dispatchEvent(new dom.window.Event('resize'));
+        assert.equal(resizeRafs, 0, 'inactive stage host skips rAF on window resize');
+        app.stageHost.destroy();
+
+        // 3. Reduced-motion CSS coverage in core-modes and pixi-3d stylesheets
+        const coreCss = read('Musicmodules/music-stage/music-stage-core-modes.css');
+        const pixiCss = read('Musicmodules/music-stage/music-stage-pixi-3d.css');
+        assert.match(coreCss, /body\.music-reduce-motion \.luminous-line\.is-entering[\s\S]*?animation:\s*none;/);
+        assert.match(coreCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.starborn-transition-burst\.is-active/);
+        assert.match(pixiCss, /body\.music-reduce-motion \.tempera-shot\.is-entering[\s\S]*?animation:\s*none;/);
+    } finally {
+        dom.window.close();
+    }
+});

@@ -2773,3 +2773,55 @@ test('Batch 118: segmented arrow keys do not trigger dock seek, palette --Artist
         window.close();
     }
 });
+
+test('Batch 121: fluid-kit skips input focusin & checks trail container before :focus-visible, palette cancels bud on close & filters compound queries via only, and drawer CSS disables low-tier blur', () => {
+    const { window, doc, app, dock } = setup((a) => {
+        a.playlist.splice(0, a.playlist.length,
+            { path: 'C:/a1.flac', title: 'Live Alpha', artist: 'Jay', album: 'One', duration: 200 },
+            { path: 'C:/a2.flac', title: 'Live Beta', artist: 'Eason', album: 'Two', duration: 210 },
+            { path: 'C:/a3.flac', title: 'Studio Gamma', artist: 'Jay', album: 'Three', duration: 220 }
+        );
+    });
+    try {
+        window.eval(read('Musicmodules/music-dock/music-fluid-kit.js'));
+        window.eval(read('Musicmodules/music-archive/archive-index.js'));
+
+        // 1. Focusing an <input> or a non-trail button must not call matches(':focus-visible')
+        const outsideBtn = doc.createElement('button');
+        outsideBtn.type = 'button';
+        const plainInput = doc.createElement('input');
+        doc.body.append(outsideBtn, plainInput);
+        let fvCalls = 0;
+        for (const node of [outsideBtn, plainInput]) {
+            const origMatches = node.matches.bind(node);
+            node.matches = (sel) => {
+                if (sel === ':focus-visible') fvCalls += 1;
+                return origMatches(sel);
+            };
+        }
+        plainInput.focus();
+        outsideBtn.focus();
+        assert.equal(fvCalls, 0, 'focusin on input or non-trail button skips :focus-visible style check');
+
+        // 2. Palette close cancels active MusicFluid.bud(box) and compound filter passes only: order
+        let cancelledNode = null;
+        const origFluid = window.MusicFluid;
+        window.MusicFluid = { ...origFluid, cancel: (node) => { cancelledNode = node; return origFluid.cancel?.(node); } };
+        dock.openPalette();
+        const input = doc.querySelector('.md-cmd-in');
+        input.value = 'Live --artist Jay';
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        const titles = [...doc.querySelectorAll('.md-cmd-row .md-cmd-title')].map((n) => n.textContent);
+        assert.deepEqual(titles, ['Live Alpha'], 'compound text + --artist filter preserves exact match');
+        dock.closePalette();
+        assert.equal(cancelledNode, doc.querySelector('.md-cmd-box'), 'closePalette cancels any running bud animation on .md-cmd-box');
+
+        // 3. Energy-saving drawer CSS disables backdrop-filter on .md-drbg and .md-hdl-tip
+        const drawerCss = read('Musicmodules/music-dock/music-dock-drawer.css');
+        assert.match(drawerCss, /body\.music-fl-low \.md-drbg[\s\S]*?backdrop-filter:\s*none;/);
+        assert.match(drawerCss, /body\.music-fl-low \.md-hdl-tip[\s\S]*?backdrop-filter:\s*none;/);
+    } finally {
+        dock.destroy();
+        window.close();
+    }
+});
