@@ -22,6 +22,11 @@ const uiManager = (() => {
         __vcpSettingsOps: Object.entries(patch || {}).map(([key, value]) => ({ op: 'set', path: [key], value })),
     });
     let themeDisposer = null;
+    let hasAppliedInitialTheme = false;
+    let themeSwitchOwner = null;
+    let pendingTransitionCommit = null;
+    let pendingThemeTarget = null;
+    let activeViewTransition = null;
     const tasks = new Set();
     const fallbackTimers = new Set();
     const resizers = new Set();
@@ -170,11 +175,118 @@ const uiManager = (() => {
         }
     }
 
+    function beginThemeSwitch() {
+        const owner = Symbol('theme-switch');
+        themeSwitchOwner = owner;
+        if (hasAppliedInitialTheme) {
+            document.documentElement?.classList?.add('theme-switching');
+        }
+        return owner;
+    }
+
+    function finishThemeSwitch(owner) {
+        if (owner === null || themeSwitchOwner !== owner) return;
+        themeSwitchOwner = null;
+        document.documentElement?.classList?.remove('theme-switching');
+    }
+
+    function canUseThemeViewTransition() {
+        if (!hasAppliedInitialTheme || typeof document === 'undefined' || typeof window === 'undefined') {
+            return false;
+        }
+        if (typeof document.startViewTransition !== 'function') {
+            return false;
+        }
+        if (document.visibilityState === 'hidden') {
+            return false;
+        }
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+            return false;
+        }
+        return true;
+    }
+
+    function flushPendingViewTransition() {
+        if (pendingTransitionCommit) {
+            const commit = pendingTransitionCommit;
+            pendingTransitionCommit = null;
+            pendingThemeTarget = null;
+            commit();
+        } else {
+            pendingThemeTarget = null;
+        }
+        if (activeViewTransition) {
+            try {
+                activeViewTransition.skipTransition?.();
+            } catch {
+                // Ignore if transition already finished
+            }
+            activeViewTransition = null;
+        }
+    }
+
+    function runWithThemeViewTransition(targetTheme, commit, animate = true) {
+        flushPendingViewTransition();
+
+        let owner = null;
+        let committed = false;
+        const executeCommit = () => {
+            if (committed) return;
+            committed = true;
+            pendingTransitionCommit = null;
+            pendingThemeTarget = null;
+            owner = beginThemeSwitch();
+            commit();
+        };
+
+        const commitWithoutSnapshot = () => {
+            try {
+                executeCommit();
+            } finally {
+                try {
+                    document.documentElement?.getBoundingClientRect?.();
+                } finally {
+                    finishThemeSwitch(owner);
+                }
+            }
+        };
+
+        if (!animate || !canUseThemeViewTransition()) {
+            commitWithoutSnapshot();
+            return;
+        }
+
+        pendingThemeTarget = targetTheme;
+        pendingTransitionCommit = executeCommit;
+
+        try {
+            const transition = document.startViewTransition(() => {
+                executeCommit();
+            });
+            activeViewTransition = transition;
+            transition.ready?.catch?.(() => {});
+            transition.updateCallbackDone?.catch?.(() => {
+                executeCommit();
+            });
+            transition.finished?.catch?.(() => {}).finally(() => {
+                if (activeViewTransition === transition) {
+                    activeViewTransition = null;
+                }
+                finishThemeSwitch(owner);
+            });
+        } catch {
+            pendingTransitionCommit = null;
+            pendingThemeTarget = null;
+            commitWithoutSnapshot();
+        }
+    }
+
     /**
      * Applies the specified theme (light/dark) to the document body and updates the toggle button.
      * @param {string} theme - The theme to apply ('light' or 'dark').
+     * @param {object} [options] - Optional transition settings.
      */
-    function applyTheme(theme) {
+    function applyTheme(theme, options = {}) {
         if (disposed) return false;
         if (!theme || (theme !== 'light' && theme !== 'dark')) {
             console.warn(`[UIManager] Invalid theme specified: ${theme}. Defaulting to system or light.`);
@@ -184,6 +296,10 @@ const uiManager = (() => {
 
         const body = document.body;
         if (!body) return false;
+
+        if (pendingThemeTarget === theme) {
+            return false;
+        }
 
         const shouldUseLight = theme === 'light';
         const domAlreadyApplied = body.classList.contains('light-theme') === shouldUseLight
@@ -205,35 +321,40 @@ const uiManager = (() => {
         // process broadcasts the persisted value afterwards. Keep this operation
         // idempotent so that the echo cannot invalidate and repaint the whole tree.
         if (domAlreadyApplied && channelAlreadyApplied && !rootNeedsSync) {
+            hasAppliedInitialTheme = true;
             return false;
         }
 
-        // Express the final state directly. Removing both classes before adding the
-        // target class creates an avoidable unthemed intermediate style state.
-        if (!domAlreadyApplied) {
-            body.classList.toggle('light-theme', shouldUseLight);
-            body.classList.toggle('dark-theme', !shouldUseLight);
-        }
-        // Theme selectors and the UI-system token contract both consume this
-        // attribute. Keep it in lockstep with the legacy classes so a theme
-        // update cannot leave Web Awesome scopes resolving the previous
-        // palette while the document visually reports the new mode.
-        if (body.dataset.vcpTheme !== theme) body.dataset.vcpTheme = theme;
+        const commitTheme = () => {
+            const latestBody = document.body;
+            const latestRoot = document.documentElement;
+            if (latestBody) {
+                // Express the final state directly. Removing both classes before adding the
+                // target class creates an avoidable unthemed intermediate style state.
+                latestBody.classList.toggle('light-theme', shouldUseLight);
+                latestBody.classList.toggle('dark-theme', !shouldUseLight);
+                // Theme selectors and the UI-system token contract both consume this
+                // attribute. Keep it in lockstep with the legacy classes so a theme
+                // update cannot leave Web Awesome scopes resolving the previous
+                // palette while the document visually reports the new mode.
+                if (latestBody.dataset.vcpTheme !== theme) latestBody.dataset.vcpTheme = theme;
+            }
 
-        if (root) {
-            root.classList.toggle('light-theme', shouldUseLight);
-            root.classList.toggle('dark-theme', !shouldUseLight);
-            if (root.dataset.vcpTheme !== theme) root.dataset.vcpTheme = theme;
-        }
+            if (latestRoot) {
+                latestRoot.classList.toggle('light-theme', shouldUseLight);
+                latestRoot.classList.toggle('dark-theme', !shouldUseLight);
+                if (latestRoot.dataset.vcpTheme !== theme) latestRoot.dataset.vcpTheme = theme;
+            }
 
-        if (!channelAlreadyApplied) {
             themeChannel?.publish(
                 Object.freeze({ ready: true, effective: theme }),
                 { source: 'ui-manager' }
             );
-        }
+            hasAppliedInitialTheme = true;
+            console.log(`[UIManager] Theme applied: ${theme}`);
+        };
 
-        console.log(`[UIManager] Theme applied: ${theme}`);
+        runWithThemeViewTransition(theme, commitTheme, options?.animate !== false);
         return true;
     }
 
@@ -635,6 +756,8 @@ const uiManager = (() => {
             if (disposed) return;
             disposed = true;
             generation += 1;
+            flushPendingViewTransition();
+            finishThemeSwitch(themeSwitchOwner);
             disposeResizers();
             themeDisposer?.();
             themeDisposer = null;

@@ -190,8 +190,12 @@ function applyTokens(scopeRoot) {
         ? new MutationObserver(syncTheme)
         : null;
     observer?.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    const unsubscribeTheme = window.uiManager?.subscribeTheme?.(syncTheme)
+        || window.VCPStateChannels?.get?.('theme')?.subscribe?.(syncTheme)
+        || null;
     return () => {
         observer?.disconnect();
+        unsubscribeTheme?.();
         scopeRoot.removeAttribute('data-wa-scope');
         scopeRoot.classList.toggle('wa-light', hadLightClass);
         scopeRoot.classList.toggle('wa-dark', hadDarkClass);
