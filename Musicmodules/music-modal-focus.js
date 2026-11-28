@@ -26,12 +26,13 @@
     // 多数弹窗用 visible 开关，WebDAV 两个弹窗用的是 active：两种都算开着，不然开着的弹窗会被设成 inert，点什么都没反应
     const isOpen = (o) => o.classList.contains('visible') || o.classList.contains('active');
     const shown = (el) => !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    const isVisibleFocusable = (el) => !el.hidden && !el.closest('[inert]') && shown(el);
     const focusables = (o) => {
         const nodes = o.querySelectorAll(FOCUSABLE);
         const out = [];
         for (let i = 0; i < nodes.length; i += 1) {
             const el = nodes[i];
-            if (!el.hidden && !el.closest('[inert]') && shown(el)) out.push(el);
+            if (isVisibleFocusable(el)) out.push(el);
         }
         return out;
     };
@@ -42,17 +43,27 @@
 
     const focusInside = (o) => {
         if (o.contains(document.activeElement)) return;
-        const list = focusables(o);
-        let auto = null;
-        let field = null;
-        for (let i = 0; i < list.length; i += 1) {
-            const el = list[i];
-            if (!auto && el.matches('[autofocus]')) auto = el;
-            if (!field && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) field = el;
-            if (auto) break;
+        // 先定向查 [autofocus]，再按需扫描至首个可见输入框即提前退出，避免大列表弹窗对数百按钮全量跑 getClientRects + getComputedStyle。
+        const autoNodes = o.querySelectorAll('[autofocus]');
+        for (let i = 0; i < autoNodes.length; i += 1) {
+            const el = autoNodes[i];
+            if (el.matches(FOCUSABLE) && isVisibleFocusable(el)) {
+                el.focus({ preventScroll: true });
+                return;
+            }
         }
-        const target = auto || field || list[0];
-        target?.focus({ preventScroll: true });
+        const nodes = o.querySelectorAll(FOCUSABLE);
+        let fallback = null;
+        for (let i = 0; i < nodes.length; i += 1) {
+            const el = nodes[i];
+            if (!isVisibleFocusable(el)) continue;
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                el.focus({ preventScroll: true });
+                return;
+            }
+            if (!fallback) fallback = el;
+        }
+        fallback?.focus({ preventScroll: true });
     };
 
     // 关弹窗时列表常会整块重画（编辑歌单关掉后侧栏歌单列表重建），原来那个按钮已经不在页面上。

@@ -3,6 +3,8 @@
 // Ported from Folia qrcDecrypt implementation
 
 const zlib = require('zlib');
+const HEX_RE = /^[0-9a-fA-F]+$/;
+const HEX_PAIR_RE = /.{1,2}/g;
 
 const SBOX = [
   [
@@ -56,8 +58,8 @@ const SBOX = [
 ];
 
 function bitnum(a, b, c) {
-  const index = Math.floor(b / 32) * 4 + 3 - Math.floor((b % 32) / 8);
-  const shift = 7 - (b % 8);
+  const index = ((b >> 5) << 2) + 3 - ((b & 31) >> 3);
+  const shift = 7 - (b & 7);
   return ((a[index] >> shift) & 1) << c;
 }
 
@@ -73,34 +75,7 @@ function sbox_bit(a) {
   return (a & 32) | ((a & 31) >> 1) | ((a & 1) << 4);
 }
 
-function initial_permutation(input_data) {
-  const s0 = (
-    bitnum(input_data, 57, 31) | bitnum(input_data, 49, 30) | bitnum(input_data, 41, 29) | bitnum(input_data, 33, 28) |
-    bitnum(input_data, 25, 27) | bitnum(input_data, 17, 26) | bitnum(input_data, 9, 25) | bitnum(input_data, 1, 24) |
-    bitnum(input_data, 59, 23) | bitnum(input_data, 51, 22) | bitnum(input_data, 43, 21) | bitnum(input_data, 35, 20) |
-    bitnum(input_data, 27, 19) | bitnum(input_data, 19, 18) | bitnum(input_data, 11, 17) | bitnum(input_data, 3, 16) |
-    bitnum(input_data, 61, 15) | bitnum(input_data, 53, 14) | bitnum(input_data, 45, 13) | bitnum(input_data, 37, 12) |
-    bitnum(input_data, 29, 11) | bitnum(input_data, 21, 10) | bitnum(input_data, 13, 9) | bitnum(input_data, 5, 8) |
-    bitnum(input_data, 63, 7) | bitnum(input_data, 55, 6) | bitnum(input_data, 47, 5) | bitnum(input_data, 39, 4) |
-    bitnum(input_data, 31, 3) | bitnum(input_data, 23, 2) | bitnum(input_data, 15, 1) | bitnum(input_data, 7, 0)
-  ) >>> 0;
-
-  const s1 = (
-    bitnum(input_data, 56, 31) | bitnum(input_data, 48, 30) | bitnum(input_data, 40, 29) | bitnum(input_data, 32, 28) |
-    bitnum(input_data, 24, 27) | bitnum(input_data, 16, 26) | bitnum(input_data, 8, 25) | bitnum(input_data, 0, 24) |
-    bitnum(input_data, 58, 23) | bitnum(input_data, 50, 22) | bitnum(input_data, 42, 21) | bitnum(input_data, 34, 20) |
-    bitnum(input_data, 26, 19) | bitnum(input_data, 18, 18) | bitnum(input_data, 10, 17) | bitnum(input_data, 2, 16) |
-    bitnum(input_data, 60, 15) | bitnum(input_data, 52, 14) | bitnum(input_data, 44, 13) | bitnum(input_data, 36, 12) |
-    bitnum(input_data, 28, 11) | bitnum(input_data, 20, 10) | bitnum(input_data, 12, 9) | bitnum(input_data, 4, 8) |
-    bitnum(input_data, 62, 7) | bitnum(input_data, 54, 6) | bitnum(input_data, 46, 5) | bitnum(input_data, 38, 4) |
-    bitnum(input_data, 30, 3) | bitnum(input_data, 22, 2) | bitnum(input_data, 14, 1) | bitnum(input_data, 6, 0)
-  ) >>> 0;
-
-  return [s0, s1];
-}
-
-function inverse_permutation(s0, s1) {
-  const data = new Uint8Array(8);
+function inverse_permutation(s0, s1, data) {
   data[3] = bitnum_intr(s1, 7, 7) | bitnum_intr(s0, 7, 6) | bitnum_intr(s1, 15, 5) |
             bitnum_intr(s0, 15, 4) | bitnum_intr(s1, 23, 3) | bitnum_intr(s0, 23, 2) |
             bitnum_intr(s1, 31, 1) | bitnum_intr(s0, 31, 0);
@@ -199,8 +174,28 @@ function f(state, key) {
   ) >>> 0;
 }
 
-function crypt(input_data, key) {
-  let [s0, s1] = initial_permutation(input_data);
+function crypt(input_data, key, out) {
+  let s0 = (
+    bitnum(input_data, 57, 31) | bitnum(input_data, 49, 30) | bitnum(input_data, 41, 29) | bitnum(input_data, 33, 28) |
+    bitnum(input_data, 25, 27) | bitnum(input_data, 17, 26) | bitnum(input_data, 9, 25) | bitnum(input_data, 1, 24) |
+    bitnum(input_data, 59, 23) | bitnum(input_data, 51, 22) | bitnum(input_data, 43, 21) | bitnum(input_data, 35, 20) |
+    bitnum(input_data, 27, 19) | bitnum(input_data, 19, 18) | bitnum(input_data, 11, 17) | bitnum(input_data, 3, 16) |
+    bitnum(input_data, 61, 15) | bitnum(input_data, 53, 14) | bitnum(input_data, 45, 13) | bitnum(input_data, 37, 12) |
+    bitnum(input_data, 29, 11) | bitnum(input_data, 21, 10) | bitnum(input_data, 13, 9) | bitnum(input_data, 5, 8) |
+    bitnum(input_data, 63, 7) | bitnum(input_data, 55, 6) | bitnum(input_data, 47, 5) | bitnum(input_data, 39, 4) |
+    bitnum(input_data, 31, 3) | bitnum(input_data, 23, 2) | bitnum(input_data, 15, 1) | bitnum(input_data, 7, 0)
+  ) >>> 0;
+
+  let s1 = (
+    bitnum(input_data, 56, 31) | bitnum(input_data, 48, 30) | bitnum(input_data, 40, 29) | bitnum(input_data, 32, 28) |
+    bitnum(input_data, 24, 27) | bitnum(input_data, 16, 26) | bitnum(input_data, 8, 25) | bitnum(input_data, 0, 24) |
+    bitnum(input_data, 58, 23) | bitnum(input_data, 50, 22) | bitnum(input_data, 42, 21) | bitnum(input_data, 34, 20) |
+    bitnum(input_data, 26, 19) | bitnum(input_data, 18, 18) | bitnum(input_data, 10, 17) | bitnum(input_data, 2, 16) |
+    bitnum(input_data, 60, 15) | bitnum(input_data, 52, 14) | bitnum(input_data, 44, 13) | bitnum(input_data, 36, 12) |
+    bitnum(input_data, 28, 11) | bitnum(input_data, 20, 10) | bitnum(input_data, 12, 9) | bitnum(input_data, 4, 8) |
+    bitnum(input_data, 62, 7) | bitnum(input_data, 54, 6) | bitnum(input_data, 46, 5) | bitnum(input_data, 38, 4) |
+    bitnum(input_data, 30, 3) | bitnum(input_data, 22, 2) | bitnum(input_data, 14, 1) | bitnum(input_data, 6, 0)
+  ) >>> 0;
 
   for (let idx = 0; idx < 15; idx++) {
     const previous_s1 = s1;
@@ -209,7 +204,7 @@ function crypt(input_data, key) {
   }
   s0 = (f(s1, key[15]) ^ s0) >>> 0;
 
-  return inverse_permutation(s0, s1);
+  return inverse_permutation(s0, s1, out);
 }
 
 function key_schedule(key, mode) {
@@ -276,12 +271,11 @@ function tripledes_key_setup(key, mode) {
   }
 }
 
-function tripledes_crypt(data, keySchedule) {
-  let temp = data;
-  for (let i = 0; i < 3; i++) {
-    temp = crypt(temp, keySchedule[i]);
-  }
-  return temp;
+function tripledes_crypt(data, keySchedule, bufA, bufB) {
+  crypt(data, keySchedule[0], bufA);
+  crypt(bufA, keySchedule[1], bufB);
+  crypt(bufB, keySchedule[2], bufA);
+  return bufA;
 }
 
 const QRC_DECRYPT_SCHEDULE = tripledes_key_setup(Buffer.from('!@#)(*$%123ZXC!@!@#)(NHL', 'utf8'), 0);
@@ -296,33 +290,38 @@ async function qrcDecrypt(encryptedHexOrBytes) {
   if (typeof encryptedHexOrBytes === 'string') {
     const hex = encryptedHexOrBytes.trim();
     if (!hex) throw new Error('Invalid hexadecimal lyric string');
-    if (hex.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(hex)) {
+    if ((hex.length & 1) === 0 && HEX_RE.test(hex)) {
       encryptedBytes = Buffer.from(hex, 'hex');
     } else {
-      const matches = hex.match(/.{1,2}/g);
+      const matches = hex.match(HEX_PAIR_RE);
       if (!matches) throw new Error('Invalid hexadecimal lyric string');
-      encryptedBytes = new Uint8Array(matches.map(byte => parseInt(byte, 16)));
+      encryptedBytes = new Uint8Array(matches.length);
+      for (let i = 0; i < matches.length; i += 1) encryptedBytes[i] = parseInt(matches[i], 16);
     }
+  } else if (encryptedHexOrBytes instanceof Uint8Array) {
+    encryptedBytes = encryptedHexOrBytes;
   } else {
     encryptedBytes = new Uint8Array(encryptedHexOrBytes);
   }
 
-  if (encryptedBytes.length === 0) {
+  const len = encryptedBytes.length;
+  if (len === 0) {
     throw new Error('No data to decrypt');
   }
 
   const schedule = QRC_DECRYPT_SCHEDULE; // precomputed 3DES DECRYPT schedule
 
-  const decryptedBytes = new Uint8Array(encryptedBytes.length);
-  for (let i = 0; i < encryptedBytes.length; i += 8) {
-    const block = encryptedBytes.subarray(i, Math.min(i + 8, encryptedBytes.length));
-    let paddedBlock = block;
-    if (block.length < 8) {
-      paddedBlock = new Uint8Array(8);
-      paddedBlock.set(block);
-    }
-    const decryptedBlock = tripledes_crypt(paddedBlock, schedule);
-    decryptedBytes.set(decryptedBlock.subarray(0, block.length), i);
+  const decryptedBytes = new Uint8Array(len);
+  const blockBuf = new Uint8Array(8);
+  const scratchA = new Uint8Array(8);
+  const scratchB = new Uint8Array(8);
+  for (let i = 0; i < len; i += 8) {
+    const remain = len - i;
+    const take = remain < 8 ? remain : 8;
+    for (let j = 0; j < take; j += 1) blockBuf[j] = encryptedBytes[i + j];
+    for (let j = take; j < 8; j += 1) blockBuf[j] = 0;
+    const decryptedBlock = tripledes_crypt(blockBuf, schedule, scratchA, scratchB);
+    for (let j = 0; j < take; j += 1) decryptedBytes[i + j] = decryptedBlock[j];
   }
 
   return new Promise((resolve, reject) => {

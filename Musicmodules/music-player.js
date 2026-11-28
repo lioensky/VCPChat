@@ -781,17 +781,15 @@ function setupPlayer(app) {
     // 撤销前已经放掉（不在队列里了）的不再加回来，入队之后别处的改动也不动。
     app.queueSnapshot = () => app.manualQueue.slice();
     app.queueRevert = (tracks, before) => {
-        const touched = new Set((tracks || []).filter(t => app.manualQueue.includes(t)));
+        const cur = new Set(app.manualQueue), touched = new Set();
+        if (tracks) for (let i = 0; i < tracks.length; i++) if (cur.has(tracks[i])) touched.add(tracks[i]);
         if (!touched.size) return;
         const rest = app.manualQueue.filter(t => !touched.has(t));
-        for (const t of before || []) {
+        if (before) for (let at = 0; at < before.length; at++) {
+            const t = before[at];
             if (!touched.has(t)) continue;
-            const at = before.indexOf(t);
             let after = -1;
-            for (let k = at - 1; k >= 0; k--) {
-                const i = rest.indexOf(before[k]);
-                if (i !== -1) { after = i; break; }
-            }
+            for (let k = at - 1; k >= 0; k--) { const i = rest.indexOf(before[k]); if (i !== -1) { after = i; break; } }
             rest.splice(after + 1, 0, t);
         }
         app.manualQueue = rest;
@@ -934,16 +932,16 @@ function setupPlayer(app) {
         return Number.isFinite(value) ? value : 0;
     };
     const lyricTrackPath = () => app.playlist?.[app.currentTrackIndex]?.path || null;
+    const addNum = (o, k, d) => { if (typeof o[k] === 'number') o[k] += d; };
     const shiftLine = (line, d) => {
-        for (const k of ['time', 'startTime', 'endTime']) if (typeof line[k] === 'number') line[k] += d;
-        if (line.renderHints && typeof line.renderHints.renderEndTime === 'number') line.renderHints.renderEndTime += d;
-        for (const w of Array.isArray(line.words) ? line.words : []) {
-            if (typeof w.startTime === 'number') w.startTime += d;
-            if (typeof w.endTime === 'number') w.endTime += d;
-            for (const syl of Array.isArray(w.syllables) ? w.syllables : []) {
-                if (typeof syl.startTime === 'number') syl.startTime += d;
-                if (typeof syl.endTime === 'number') syl.endTime += d;
-            }
+        addNum(line, 'time', d); addNum(line, 'startTime', d); addNum(line, 'endTime', d);
+        if (line.renderHints) addNum(line.renderHints, 'renderEndTime', d);
+        const words = line.words;
+        if (!Array.isArray(words)) return;
+        for (let i = 0; i < words.length; i++) {
+            const w = words[i], syls = w.syllables;
+            addNum(w, 'startTime', d); addNum(w, 'endTime', d);
+            if (Array.isArray(syls)) for (let j = 0; j < syls.length; j++) { addNum(syls[j], 'startTime', d); addNum(syls[j], 'endTime', d); }
         }
     };
     const lyricIndexAt = (time) => {
@@ -1033,7 +1031,7 @@ function setupPlayer(app) {
         const origin = app.contextFrom?.(app.playbackContext?.origin) ? app.playbackContext.origin : '';
         return `${track.path}|${ctx ? ctx.length + ':' + (ctx[0]?.path || '') + ':' + (ctx[ctx.length - 1]?.path || '') : 'ALL'}|${src?.type || ''}:${src?.id || ''}:${src?.name || ''}|${origin}|${mq?.length || 0}:${mq?.[0]?.path || ''}:${mq?.[mq.length - 1]?.path || ''}|${mode}|${shuf ? shuf.length + ':' + shuf[0] + ':' + shuf[shuf.length - 1] : ''}`;
     };
-    const pathsOf = (list) => (list || []).map(t => t && t.path).filter(Boolean);
+    const pathsOf = (list) => { const out = []; if (list) for (let i = 0; i < list.length; i++) { const p = list[i]?.path; if (p) out.push(p); } return out; };
     app.saveSession = () => {
         const track = app.playlist?.[app.currentTrackIndex];
         if (!track) return;

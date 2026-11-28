@@ -357,39 +357,24 @@
             return hit !== undefined ? hit : -1;
         };
 
+        let plTracksCache = new WeakMap();
         const playlistTracks = (pl, byPath) => {
-            const tracks = app.playlist || [];
+            const raw = pl && pl.tracks;
+            if (!raw || !raw.length) return [];
             const map = byPath || getTrackByPath();
-            const raw = pl.tracks || [];
-            const out = [];
-            for (let i = 0; i < raw.length; i += 1) {
+            const rLen = raw.length, hit = plTracksCache.get(raw);
+            if (hit && hit.map === map && hit.len === rLen && hit.r0 === raw[0] && hit.rL === raw[rLen - 1]) return hit.out;
+            const tracks = app.playlist || [], out = [];
+            for (let i = 0; i < rLen; i += 1) {
                 const idx = lookupTrackIndex(map, raw[i]);
                 if (idx >= 0 && tracks[idx]) out.push(tracks[idx]);
             }
+            plTracksCache.set(raw, { map, len: rLen, r0: raw[0], rL: raw[rLen - 1], out });
             return out;
         };
         const playlistItem = (pl, group = '歌单', byPath) => {
             const tracks = playlistTracks(pl, byPath);
-            return {
-                id: `playlist:${pl.id}`,
-                section: '歌单',
-                group,
-                icon: 'list-music',
-                title: pl.name || '未命名歌单',
-                desc: `${tracks.length} 首`,
-                queueable: tracks.length > 0,
-                run: () => {
-                    // 和经典侧栏点歌单一样：把这个歌单设成当前列表，从第一首放起。
-                    if (!tracks.length) return;
-                    app.filteredPlaylistSource = { type: 'playlist', name: pl.name, id: pl.id };
-                    app.currentFilteredTracks = tracks;
-                    try { app.renderPlaylist?.(tracks); } catch (error) { /* 旧列表只是同步显示 */ }
-                    const index = app.playlist.indexOf(tracks[0]);
-                    if (index !== -1) app.loadTrack?.(index);
-                },
-                playNext: () => queueTracks(tracks, true, `歌单「${pl.name}」`),
-                addToQueue: () => queueTracks(tracks, false, `歌单「${pl.name}」`)
-            };
+            return { kind: 'playlist', id: `playlist:${pl.id}`, section: '歌单', group, icon: 'list-music', title: pl.name || '未命名歌单', desc: `${tracks.length} 首`, queueable: tracks.length > 0, _pl: pl, _tracks: tracks };
         };
 
         // 拼音索引：跟曲库同一份，曲库换了（数组或长度变了）才重建。
@@ -733,32 +718,22 @@
         let rowProto = null;
         const getRowProto = () => {
             if (rowProto) return rowProto;
+            const sp = (c) => { const n = document.createElement('span'); n.className = c; return n; };
             const btn = document.createElement('button');
             btn.type = 'button';
+            btn.className = 'md-cmd-row';
             btn.setAttribute('role', 'option');
-            const ri = document.createElement('span');
-            ri.className = 'md-cmd-ri';
+            btn.setAttribute('aria-selected', 'false');
+            btn.dataset.mdDist = '4';
+            const ri = sp('md-cmd-ri'), rt = sp('md-cmd-rt'), l1 = sp('md-cmd-l1'), descEl = sp('md-cmd-desc'), runEl = sp('md-cmd-run');
             cloneIconInto(ri, 'music', 16);
-            const rt = document.createElement('span');
-            rt.className = 'md-cmd-rt';
-            const l1 = document.createElement('span');
-            l1.className = 'md-cmd-l1';
-            const titleEl = document.createElement('span');
-            titleEl.className = 'md-cmd-title';
-            const grpEl = document.createElement('span');
-            grpEl.className = 'md-cmd-grp';
-            const descEl = document.createElement('span');
-            descEl.className = 'md-cmd-desc';
             descEl.hidden = true;
-            const runEl = document.createElement('span');
-            runEl.className = 'md-cmd-run';
             cloneIconInto(runEl, 'corner-down-left', 13);
-            runEl.appendChild(document.createTextNode(''));
-            l1.append(titleEl, grpEl);
+            runEl.appendChild(document.createTextNode('播放'));
+            l1.append(sp('md-cmd-title'), sp('md-cmd-grp'));
             rt.append(l1, descEl);
             btn.append(ri, rt, runEl);
-            rowProto = btn;
-            return rowProto;
+            return (rowProto = btn);
         };
         const createRowSlot = () => {
             const btn = getRowProto().cloneNode(true);
@@ -773,8 +748,8 @@
             return {
                 btn, ri, rt, l1, titleEl, chipEl: null, grpEl, descEl, runText,
                 iconName: 'music', hasChip: false, hasDesc: false,
-                lastCls: '', lastId: '', lastSel: '', lastIdx: '', lastDist: '',
-                lastTitle: null, lastHint: null, lastGrp: null, lastDesc: '', lastRun: null
+                lastCls: 'md-cmd-row', lastId: '', lastSel: 'false', lastIdx: '', lastDist: '4',
+                lastTitle: null, lastHint: null, lastGrp: null, lastDesc: '', lastRun: '播放'
             };
         };
         const hydrateRowSlot = (slot, item, i) => {
@@ -975,6 +950,7 @@
             if (how !== 'run' && item.queueable) {
                 // 入队后面板留着，方便接着挑下一首。
                 if (item.kind === 'song') queueTracks([item._track], how === 'next', item.title);
+                else if (item.kind === 'playlist') queueTracks(item._tracks, how === 'next', `歌单「${item._pl.name}」`);
                 else if (how === 'next') item.playNext();
                 else item.addToQueue();
                 input.focus();
@@ -994,7 +970,15 @@
             }
             close(false);
             if (item.kind === 'song') { if (item._index !== -1) app.loadTrack?.(item._index); }
-            else item.run();
+            else if (item.kind === 'playlist') {
+                const tracks = item._tracks;
+                if (!tracks.length) return;
+                app.filteredPlaylistSource = { type: 'playlist', name: item._pl.name, id: item._pl.id };
+                app.currentFilteredTracks = tracks;
+                try { app.renderPlaylist?.(tracks); } catch (error) { /* 旧列表只是同步显示 */ }
+                const idx = app.playlist.indexOf(tracks[0]);
+                if (idx !== -1) app.loadTrack?.(idx);
+            } else item.run();
         };
 
         // ───────── 打开 / 关闭 ─────────
@@ -1016,6 +1000,7 @@
         function open(initial = '') {
             cachedCmdList = null;
             cachedCmdSig = '';
+            plTracksCache = new WeakMap();
             if (state.open) { input.focus({ preventScroll: true }); input.select(); return; }
             closeOthers?.();
             state.open = true;
@@ -1161,6 +1146,7 @@
                 pinyinCache.clear();
                 playlistRomanFn = null;
                 playlistRomanCache.clear();
+                plTracksCache = new WeakMap();
                 root.remove();
             }
         };

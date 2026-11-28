@@ -178,6 +178,7 @@
         const frag = doc.createDocumentFragment();
         let group = null;
         const opts = select.options;
+        const selIdx = select.selectedIndex;
         for (let index = 0; index < opts.length; index += 1) {
             const option = opts[index];
             const skipRender = option.hidden && option.disabled && !option.selected;
@@ -193,8 +194,10 @@
                 group = null;
             }
             const item = doc.createElement('div');
-            item.className = 'mfs-item';
+            const isSel = index === selIdx;
+            item.className = isSel ? 'mfs-item mfs-on' : 'mfs-item';
             item.setAttribute('role', 'option');
+            item.setAttribute('aria-selected', isSel ? 'true' : 'false');
             item.dataset.mfsIdx = String(index);
             item.tabIndex = -1;
             if (option.disabled) item.setAttribute('aria-disabled', 'true');
@@ -226,8 +229,7 @@
         trigger.setAttribute('aria-controls', menu.id);
         trigger.classList.add('mfs-open');
         openState = { select, menu, trigger, items };
-        paintSelected();
-        const selItem = items[select.selectedIndex];
+        const selItem = items[selIdx];
         let current = (selItem && selItem.isConnected) ? selItem : null;
         if (!current) {
             for (let i = 0; i < items.length; i += 1) {
@@ -267,10 +269,11 @@
         if (!openState) return;
         const { menu, trigger } = openState;
         openState = null;
+        // 先拍菜单几何快照再写触发器类名与属性，避免先写后读触发同步回流
+        const snap = global.MusicFluid?.enabled?.() ? global.MusicFluid.snapshot?.(menu) : null;
         trigger.setAttribute('aria-expanded', 'false');
         trigger.removeAttribute('aria-controls');
         trigger.classList.remove('mfs-open');
-        const snap = global.MusicFluid?.enabled?.() ? global.MusicFluid.snapshot?.(menu) : null;
         menu.remove();
         if (snap) global.MusicFluid.melt(snap, trigger, { duration: 240 });
         if (restoreFocus && doc.contains(trigger)) trigger.focus({ preventScroll: true });
@@ -380,7 +383,7 @@
                     const tag = n.tagName;
                     if (tag !== 'SELECT' && (!n.firstElementChild || LEAF_TAGS.has(tag))) continue;
                     const ncl = n.classList;
-                    if (ncl && (ncl.contains('mfs-trigger') || ncl.contains('mfs-menu') || ncl.contains('md-ql') || ncl.contains('md-ql-sizer') || ncl.contains('md-qh') || ncl.contains('md-cmd-list') || ncl.contains('mtst-layer'))) continue;
+                    if (ncl && (ncl.contains('mfs-trigger') || ncl.contains('mfs-menu') || ncl.contains('md-ql') || ncl.contains('md-ql-sizer') || ncl.contains('md-qh') || ncl.contains('md-qi') || ncl.contains('md-qhd') || ncl.contains('md-cmd-list') || ncl.contains('md-cmd-row') || ncl.contains('md-cmd-sec') || ncl.contains('mtst-layer'))) continue;
                     if (!checkedTgt) {
                         checkedTgt = true;
                         const tgt = r.target;

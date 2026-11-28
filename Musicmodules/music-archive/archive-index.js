@@ -35,6 +35,18 @@
     const WS_SPLIT_RE = /\s+/;
     const ASCII_TERM_RE = /^[a-z0-9]+$/;
     const BSLASH_RE = /\\/g;
+    // 31-bit 正整数字符存在位图：a-z 占 bit 0..25，0-9 折叠到 bit 26..30（非负 Smi，零符号位溢出）。
+    // romanizeNormalized 保留原文与首字母里的所有 ASCII 字母/数字，因此 alnumMask(py) 是 v/py/ini 的精确超集，
+    // 查询时按位与未命中可直接跳过字符串 indexOf 与 Map 查找，保证零假阴性。
+    const alnumMask = (s) => {
+        let m = 0;
+        for (let i = 0; i < s.length; i += 1) {
+            const c = s.charCodeAt(i);
+            if (c >= 97 && c <= 122) m |= 1 << (c - 97);
+            else if (c >= 48 && c <= 57) m |= 1 << (26 + ((c - 48) % 5));
+        }
+        return m;
+    };
     const PINYIN_CACHE = new WeakMap();
     const cachedPinyin = (pinyin, ch) => {
         let map = PINYIN_CACHE.get(pinyin);
@@ -231,6 +243,27 @@
             for (let i = 0; i < list.length; i += 1) keep.add(list[i] && list[i].path);
             for (const k of cache.keys()) if (!keep.has(k)) cache.delete(k);
         }
+        // 紧致整型位图数组（按曲库下标对齐）：缓存命中与 0 命中搜索先走 L1 整数按位与筛选，避免扫 5000 条字符串。
+        const n = entries.length;
+        const titleMasks = new Int32Array(n);
+        const artistMasks = new Int32Array(n);
+        const albumMasks = new Int32Array(n);
+        const allMasks = new Int32Array(n);
+        const artistMaskCache = new Map();
+        const albumMaskCache = new Map();
+        for (let i = 0; i < n; i += 1) {
+            const e = entries[i];
+            if (!e) continue;
+            const tm = alnumMask(e.titlePy);
+            let am = artistMaskCache.get(e.artistPy);
+            if (am === undefined) { am = alnumMask(e.artistPy); artistMaskCache.set(e.artistPy, am); }
+            let alm = albumMaskCache.get(e.albumPy);
+            if (alm === undefined) { alm = alnumMask(e.albumPy); albumMaskCache.set(e.albumPy, alm); }
+            titleMasks[i] = tm;
+            artistMasks[i] = am;
+            albumMasks[i] = alm;
+            allMasks[i] = tm | am | alm;
+        }
 
         /* 一个词在一个字段上的得分；0 表示不匹配（单趟 indexOf，跳过与原文等价的 py/ini） */
         const scoreField = (v, py, ini, w, term, ascii) => {
@@ -320,9 +353,14 @@
             }
             const rawParts = norm(q).split(WS_SPLIT_RE);
             const terms = [];
+            let combinedMask = 0;
             for (let i = 0; i < rawParts.length; i += 1) {
                 const term = rawParts[i];
-                if (term) terms.push({ term, ascii: ASCII_TERM_RE.test(term) });
+                if (term) {
+                    const mask = alnumMask(term);
+                    combinedMask |= mask;
+                    terms.push({ term, ascii: ASCII_TERM_RE.test(term), mask });
+                }
             }
             const kindCode = kind === 'artist' ? 1 : kind === 'album' ? 2 : 0;
             if (!terms.length) return only ? pool.slice(0, limit) : [];
@@ -349,13 +387,16 @@
                 const matchedIds = cacheable ? [] : null;
                 const t0 = terms[0].term;
                 const a0 = terms[0].ascii;
+                const m0 = terms[0].mask;
                 const t0Code = t0.charCodeAt(0);
                 if (kindCode === 1 || kindCode === 2) {
                     const isArtist = kindCode === 1;
                     const weight = isArtist ? 2 : 1;
+                    const fieldMasks = isArtist ? artistMasks : albumMasks;
                     const totalCache = useFieldCache ? new Map() : null;
                     for (let idxPos = 0; idxPos < scanLen; idxPos += 1) {
                         const i = pool ? pool[idxPos] : idxPos;
+                        if (combinedMask && (fieldMasks[i] & combinedMask) !== combinedMask) continue;
                         const e = entries[i];
                         if (!e) continue;
                         const fieldVal = isArtist ? e.artist : e.album;
@@ -402,22 +443,25 @@
                     const alMap0 = alMaps ? alMaps[0] : null;
                     for (let idxPos = 0; idxPos < scanLen; idxPos += 1) {
                         const i = pool ? pool[idxPos] : idxPos;
+                        if (combinedMask && (allMasks[i] & combinedMask) !== combinedMask) continue;
                         const e = entries[i];
                         if (!e) continue;
                         // 先查按歌手缓存的得分：当歌手前缀命中（200 分）时，仅标题前缀命中（300 分）能超越，
                         // 跳过 5000 首歌上标题全串/拼音/首字母与专辑扫描（数学上完全等价）。
                         let sa0;
-                        if (aMap0) {
+                        if (m0 && (artistMasks[i] & m0) !== m0) {
+                            sa0 = 0;
+                        } else if (aMap0) {
                             sa0 = aMap0.get(e.artist);
                             if (sa0 === undefined) { sa0 = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0); aMap0.set(e.artist, sa0); }
                         } else sa0 = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0);
                         let best0;
                         if (sa0 === 200) {
-                            best0 = (e.title && e.title.charCodeAt(0) === t0Code && e.title.startsWith(t0)) ? 300 : 200;
+                            best0 = (!m0 || (titleMasks[i] & m0) === m0) && e.title && e.title.charCodeAt(0) === t0Code && e.title.startsWith(t0) ? 300 : 200;
                         } else {
-                            best0 = scoreField(e.title, e.titlePy, e.titleIni, 3, t0, a0);
+                            best0 = (m0 && (titleMasks[i] & m0) !== m0) ? 0 : scoreField(e.title, e.titlePy, e.titleIni, 3, t0, a0);
                             if (sa0 > best0) best0 = sa0;
-                            if (best0 < 100) {
+                            if (best0 < 100 && (!m0 || (albumMasks[i] & m0) === m0)) {
                                 let sal;
                                 if (alMap0) {
                                     sal = alMap0.get(e.album);
@@ -432,19 +476,22 @@
                             const termObj = terms[t];
                             const term = termObj.term;
                             const ascii = termObj.ascii;
+                            const mt = termObj.mask;
                             let sa;
-                            if (aMaps) {
+                            if (mt && (artistMasks[i] & mt) !== mt) {
+                                sa = 0;
+                            } else if (aMaps) {
                                 const am = aMaps[t];
                                 sa = am.get(e.artist);
                                 if (sa === undefined) { sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii); am.set(e.artist, sa); }
                             } else sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii);
                             let best;
                             if (sa === 200) {
-                                best = (e.title && e.title.charCodeAt(0) === term.charCodeAt(0) && e.title.startsWith(term)) ? 300 : 200;
+                                best = (!mt || (titleMasks[i] & mt) === mt) && e.title && e.title.charCodeAt(0) === term.charCodeAt(0) && e.title.startsWith(term) ? 300 : 200;
                             } else {
-                                best = scoreField(e.title, e.titlePy, e.titleIni, 3, term, ascii);
+                                best = (mt && (titleMasks[i] & mt) !== mt) ? 0 : scoreField(e.title, e.titlePy, e.titleIni, 3, term, ascii);
                                 if (sa > best) best = sa;
-                                if (best < 100) {
+                                if (best < 100 && (!mt || (albumMasks[i] & mt) === mt)) {
                                     let sal;
                                     if (alMaps) {
                                         const alm = alMaps[t];
@@ -484,8 +531,10 @@
             }
             const hits = [];
             const matchedIds = cacheable ? [] : null;
+            const gateMasks = kindCode === 1 ? artistMasks : kindCode === 2 ? albumMasks : allMasks;
             for (let order = 0; order < scanLen; order += 1) {
                 const i = pool ? pool[order] : order;
+                if (combinedMask && (gateMasks[i] & combinedMask) !== combinedMask) continue;
                 const e = entries[i];
                 if (!e) continue;
                 let total = 0;

@@ -20,10 +20,17 @@
     const ICON_FOR = { info: 'info', success: 'check', error: 'circle-alert', progress: 'loader-circle' };
     const ICONS = global.MusicDockIcons || {};
 
-    const icon = (name, size = 16) => (
-        `<svg class="mtst-i" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"`
-        + ` stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`
-    );
+    const iconCache = new Map();
+    const icon = (name, size = 16) => {
+        const k = `${name}:${size}`;
+        let hit = iconCache.get(k);
+        if (hit === undefined) {
+            hit = `<svg class="mtst-i" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"`
+                + ` stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+            iconCache.set(k, hit);
+        }
+        return hit;
+    };
 
     let layer = null;
     let posX = null;

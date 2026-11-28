@@ -294,29 +294,8 @@
 
         // ── 小环：停在播放条顶边（播放条凹进去让它），或者飞回右下角 ──
         // 角落点换算到层坐标：层的底边在窗口 y = vh - bottom。
-        const cornerLocal = () => {
-            const vw = win.innerWidth || 0;
-            // 紧凑档播放条贴满宽度，右下角被它占着：小环改停在播放条右端上方。
-            if (vw < 640) return { x: geo.x + geo.w - 26, y: geo.y - 34 };
-            const vh = win.innerHeight || 0;
-            // 和抽屉右下角凹口的圆心对齐（music-dock.js 的 NOTCH_D）。
-            const cx = vw - 40;
-            const cy = vh - 40;
-            const layerTop = vh - geo.bottom - LAYER_H;
-            return { x: cx - geo.left, y: cy - layerTop };
-        };
         const progressFrac = () => s.range.a + Math.min(1, Math.max(0, s.progress)) * (s.range.b - s.range.a);
         const progressX = () => geo.x + geo.w * progressFrac();
-        const dockPoint = () => {
-            // 暂停或让位时沉进条里（配合 showTarget 一起淡掉），播放时骑在条的上沿。
-            if (s.ringMode === 'playhead') return { x: progressX(), y: geo.y + 2 + (playheadUp() ? 0 : 14) };
-            if (s.ringMode === 'drop') {
-                const p = s.drop.p;
-                const fall = p < 0.5 ? 1 - Math.pow(p / 0.5, 2) : 0;
-                return { x: geo.ringX, y: geo.y - 2 - fall * 110 + (p > 0.5 ? (p - 0.5) * 28 : 0) };
-            }
-            return { x: geo.ringX, y: geo.y - 2 };
-        };
         // 播放头只在真正播放（或正被拖动）时露出；快捷按钮升起时让开，不和它抢条上方那块位置。
         const playheadUp = () => s.ring.focusDrag || (s.playing && s.quick.t < 0.5);
         const sizeTarget = () => (!s.ring.docked || s.ringMode !== 'playhead' || s.ringFocus || s.ring.focusDrag ? 1 : 0.55);
@@ -329,8 +308,34 @@
             return 1;
         };
         const retargetRing = () => {
-            const p = s.ring.docked ? dockPoint() : cornerLocal();
-            s.ring.tx = p.x; s.ring.ty = p.y;
+            if (s.ring.docked) {
+                // 暂停或让位时沉进条里（配合 showTarget 一起淡掉），播放时骑在条的上沿。
+                if (s.ringMode === 'playhead') {
+                    s.ring.tx = progressX();
+                    s.ring.ty = geo.y + 2 + (playheadUp() ? 0 : 14);
+                    return;
+                }
+                if (s.ringMode === 'drop') {
+                    const p = s.drop.p;
+                    const fall = p < 0.5 ? 1 - Math.pow(p / 0.5, 2) : 0;
+                    s.ring.tx = geo.ringX;
+                    s.ring.ty = geo.y - 2 - fall * 110 + (p > 0.5 ? (p - 0.5) * 28 : 0);
+                    return;
+                }
+                s.ring.tx = geo.ringX;
+                s.ring.ty = geo.y - 2;
+                return;
+            }
+            const vw = win.innerWidth || 0;
+            // 紧凑档播放条贴满宽度，右下角被它占着：小环改停在播放条右端上方。
+            if (vw < 640) { s.ring.tx = geo.x + geo.w - 26; s.ring.ty = geo.y - 34; return; }
+            const vh = win.innerHeight || 0;
+            // 和抽屉右下角凹口的圆心对齐（music-dock.js 的 NOTCH_D）。
+            const cx = vw - 40;
+            const cy = vh - 40;
+            const layerTop = vh - geo.bottom - LAYER_H;
+            s.ring.tx = cx - geo.left;
+            s.ring.ty = cy - layerTop;
         };
         const placeRing = (instant) => {
             retargetRing();
@@ -345,6 +350,8 @@
 
         const moving = () => {
             const eps = 0.01;
+            const dx = s.ring.x - s.ring.tx;
+            const dy = s.ring.y - s.ring.ty;
             return Math.abs(s.solidity.v - s.solidity.t) > eps
                 || Math.abs(s.bump.x - s.bump.tx) > 0.5 || Math.abs(s.bump.r - s.bump.tr) > 0.3
                 || Math.abs(s.vol.v - s.vol.t) > eps
@@ -353,7 +360,7 @@
                 || s.drop.p < 1
                 || Math.abs(s.show.v - s.show.t) > 0.01
                 || Math.abs(s.size.v - sizeTarget()) > 0.01
-                || Math.hypot(s.ring.x - s.ring.tx, s.ring.y - s.ring.ty) > 0.5;
+                || (dx * dx + dy * dy) > 0.25;
         };
 
         // 除了小环的位置以外还有没有量在动（进度小步推进时用来判断能不能直接落位）
@@ -418,7 +425,9 @@
             fitFilters(Math.min(geo.y + 6 - Math.max(0, s.bump.r), vy, q.v > 0.01 && q.w > 0 ? geo.y + 4 + (q.y - geo.y - 4) * q.v : geo.y));
             const rx = s.ring.x;
             const ry = s.ring.y;
-            const near = Math.hypot(rx - s.ring.tx, ry - s.ring.ty) < 120 && s.ring.docked;
+            const rdx = rx - s.ring.tx;
+            const rdy = ry - s.ring.ty;
+            const near = s.ring.docked && (rdx * rdx + rdy * rdy) < 14400;
             const sh = s.show.v;
             const sz = s.size.v;
             // 凹口跟着小环：环藏起来时凹口愈合；环落在条上方很远时也不开口。
