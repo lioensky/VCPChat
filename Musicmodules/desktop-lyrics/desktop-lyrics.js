@@ -59,7 +59,6 @@
         const key = snap ? `${snap.path ?? ''}\u0001${snap.index}\u0001${(line && line.text) || ''}` : '';
         if (key !== lineKey) {
             lineKey = key;
-            cur.textContent = '';
             cur.classList.remove('idle', 'swap');
             words = null;
             lineSpan = null;
@@ -73,16 +72,18 @@
                         const w = srcWords[i];
                         const el = wordSpan(w.text);
                         frag.appendChild(el);
-                        words[i] = { el, s: w.s, e: w.e, last: '' };
+                        words[i] = { el, s: w.s, e: w.e, last: -1 };
                     }
-                    cur.appendChild(frag);
+                    if (typeof cur.replaceChildren === 'function') cur.replaceChildren(frag);
+                    else { cur.textContent = ''; cur.appendChild(frag); }
                 } else {
                     // 整句按到下一句的时间填（最长 8 秒，免得长间奏前的一句填得太慢）
                     const s = line.time;
                     const nextAt = snap.next ? snap.next.time : s + 4;
                     const el = wordSpan(line.text);
-                    cur.appendChild(el);
-                    lineSpan = { el, s, e: s + Math.min(8, Math.max(0.6, nextAt - s)), last: '' };
+                    if (typeof cur.replaceChildren === 'function') cur.replaceChildren(el);
+                    else { cur.textContent = ''; cur.appendChild(el); }
+                    lineSpan = { el, s, e: s + Math.min(8, Math.max(0.6, nextAt - s)), last: -1 };
                 }
             } else {
                 // 间奏、前奏或没有歌词：显示歌名
@@ -113,37 +114,37 @@
             for (let i = 0; i < words.length; i += 1) {
                 const w = words[i];
                 if (t >= w.e) {
-                    if (w.last !== '100.0%') {
-                        w.last = '100.0%';
+                    if (w.last !== 1000) {
+                        w.last = 1000;
                         w.el.style.setProperty('--f', '100.0%');
                     }
                     continue;
                 }
                 moving = true;
                 if (t <= w.s) {
-                    if (w.last !== '0.0%') {
-                        w.last = '0.0%';
+                    if (w.last !== 0) {
+                        w.last = 0;
                         w.el.style.setProperty('--f', '0.0%');
                     }
                     continue;
                 }
-                const val = pct(t, w.s, w.e).toFixed(1) + '%';
-                if (val !== w.last) {
-                    w.last = val;
-                    w.el.style.setProperty('--f', val);
+                const q = Math.round(pct(t, w.s, w.e) * 10);
+                if (q !== w.last) {
+                    w.last = q;
+                    w.el.style.setProperty('--f', (q / 10).toFixed(1) + '%');
                 }
             }
         } else if (lineSpan) {
-            let val;
+            let q;
             if (t >= lineSpan.e) {
-                val = '100.0%';
+                q = 1000;
             } else {
                 moving = true;
-                val = t <= lineSpan.s ? '0.0%' : pct(t, lineSpan.s, lineSpan.e).toFixed(1) + '%';
+                q = t <= lineSpan.s ? 0 : Math.round(pct(t, lineSpan.s, lineSpan.e) * 10);
             }
-            if (val !== lineSpan.last) {
-                lineSpan.last = val;
-                lineSpan.el.style.setProperty('--f', val);
+            if (q !== lineSpan.last) {
+                lineSpan.last = q;
+                lineSpan.el.style.setProperty('--f', q === 1000 ? '100.0%' : q === 0 ? '0.0%' : (q / 10).toFixed(1) + '%');
             }
         }
         const wantFrame = Boolean(moving && snap && snap.playing && !document.hidden);

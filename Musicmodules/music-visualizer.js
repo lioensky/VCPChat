@@ -55,9 +55,10 @@ function setupVisualizer(app) {
     let vocalResizeObserver = null;
     let vocalR = -1, vocalG = -1, vocalB = -1;
     let vocalStrokeStyles = null;
+    let gradH = -1, gradR = -1, gradG = -1, gradB = -1;
     let particleR = -1, particleG = -1, particleB = -1;
     let particleStrokeStyle = '';
-    let lastCoverScaleStr = '';
+    let lastCoverScaleQ = -1;
 
     const markVocalSizeDirty = () => {
         vocalSizeDirty = true;
@@ -140,7 +141,11 @@ function setupVisualizer(app) {
         const { r, g, b } = app.visualizerColor;
         if (vocalR !== r || vocalG !== g || vocalB !== b || !vocalStrokeStyles) {
             vocalR = r; vocalG = g; vocalB = b;
-            vocalStrokeStyles = app.vocalWaves.map((wave) => `rgba(${r}, ${g}, ${b}, ${wave.alpha})`);
+            const wLen = app.vocalWaves.length;
+            vocalStrokeStyles = new Array(wLen);
+            for (let i = 0; i < wLen; i += 1) {
+                vocalStrokeStyles[i] = `rgba(${r}, ${g}, ${b}, ${app.vocalWaves[i].alpha})`;
+            }
         }
         const energyBoost = app.smoothedVocalEnergy * 35;
         ctx.lineWidth = 1.5;
@@ -370,6 +375,8 @@ function setupVisualizer(app) {
         app.particles.length = 0;
         vocalFadeWidth = 0;
         vocalFade = null;
+        gradH = -1;
+        app._visualizerGradient = null;
         if (app.visualizerCanvas) app.visualizerCanvas.width = app.visualizerCanvas.height = 1;
         if (app.vocalCanvas) app.vocalCanvas.width = app.vocalCanvas.height = 1;
     };
@@ -385,16 +392,15 @@ function setupVisualizer(app) {
         const bufferLength = data.length;
         if (bufferLength < 2 || !w || !h) return;
 
-        // 渐变只和画布高度、主题色有关，不必每帧新建。
+        // 渐变只和画布高度、主题色有关，不必每帧新建（整数比较避免 60fps 模板串分配）。
         const { r, g, b } = app.visualizerColor;
-        const gradientKey = `${h}|${r},${g},${b}`;
-        if (app._visualizerGradientKey !== gradientKey) {
+        if (gradH !== h || gradR !== r || gradG !== g || gradB !== b || !app._visualizerGradient) {
             const created = ctx.createLinearGradient(0, 0, 0, h);
             created.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.85)`);
             created.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, 0.4)`);
             created.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
             app._visualizerGradient = created;
-            app._visualizerGradientKey = gradientKey;
+            gradH = h; gradR = r; gradG = g; gradB = b;
         }
         const gradient = app._visualizerGradient;
 
@@ -528,19 +534,19 @@ function setupVisualizer(app) {
                 app.coverPulseEnergy += (shapedEnergy - app.coverPulseEnergy) * app.COVER_PULSE_SMOOTHING;
 
                 app.bassScale = 1 + Math.min(app.coverPulseEnergy, 1) * app.COVER_PULSE_INTENSITY;
-                const scaleStr = `scale(${app.bassScale.toFixed(4)})`;
-                if (scaleStr !== lastCoverScaleStr) {
-                    lastCoverScaleStr = scaleStr;
-                    app.albumArtWrapper.style.transform = scaleStr;
+                const scaleQ = Math.round(app.bassScale * 10000);
+                if (scaleQ !== lastCoverScaleQ) {
+                    lastCoverScaleQ = scaleQ;
+                    app.albumArtWrapper.style.transform = `scale(${(scaleQ / 10000).toFixed(4)})`;
                 }
             } else if (app.albumArtWrapper && app.bassScale !== 1.0) {
                 app.coverPulseEnergy = 0;
                 app.bassScale += (1.0 - app.bassScale) * 0.18;
                 if (Math.abs(app.bassScale - 1.0) < 0.001) app.bassScale = 1.0;
-                const scaleStr = app.bassScale === 1.0 ? 'scale(1)' : `scale(${app.bassScale.toFixed(4)})`;
-                if (scaleStr !== lastCoverScaleStr) {
-                    lastCoverScaleStr = scaleStr;
-                    app.albumArtWrapper.style.transform = scaleStr;
+                const scaleQ = app.bassScale === 1.0 ? 10000 : Math.round(app.bassScale * 10000);
+                if (scaleQ !== lastCoverScaleQ) {
+                    lastCoverScaleQ = scaleQ;
+                    app.albumArtWrapper.style.transform = scaleQ === 10000 ? 'scale(1)' : `scale(${(scaleQ / 10000).toFixed(4)})`;
                 }
             }
 

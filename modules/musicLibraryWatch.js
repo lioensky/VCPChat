@@ -126,6 +126,7 @@ function createLibraryWatch({
 } = {}) {
     let watchers = [];
     let queue = [];
+    const queueNorms = new Set();
     let running = false;
     let generation = 0;
     let abort = null;
@@ -136,7 +137,9 @@ function createLibraryWatch({
         try {
             const list = (await readFolders()) || [];
             const target = norm(dir);
-            if (list.some((d) => norm(d) === target)) return;
+            for (let i = 0; i < list.length; i += 1) {
+                if (norm(list[i]) === target) return;
+            }
             await writeFolders(collapseRoots([...list, dir]));
         } catch (e) { log.warn?.('[MusicWatch] remember folder failed:', e?.message || e); }
     };
@@ -144,7 +147,8 @@ function createLibraryWatch({
     // 加过的文件夹在前；推出来的文件夹去掉被加过的文件夹包含的，也去掉包含加过的文件夹的（太宽）
     const roots = async () => {
         const remembered = collapseRoots((await readFolders().catch(() => [])) || []);
-        const rememberedNorms = remembered.map(norm);
+        const rememberedNormList = new Array(remembered.length);
+        for (let i = 0; i < remembered.length; i += 1) rememberedNormList[i] = norm(remembered[i]);
         const known = (await readKnown().catch(() => [])) || [];
         const candidates = collapseRoots(inferredDirs(known));
         const inferred = [];
@@ -152,8 +156,8 @@ function createLibraryWatch({
             const d = candidates[i];
             const dn = norm(d);
             let overlaps = false;
-            for (let j = 0; j < rememberedNorms.length; j += 1) {
-                const rn = rememberedNorms[j];
+            for (let j = 0; j < rememberedNormList.length; j += 1) {
+                const rn = rememberedNormList[j];
                 if (isUnderNorm(dn, rn) || isUnderNorm(rn, dn)) { overlaps = true; break; }
             }
             if (!overlaps) inferred.push(d);
@@ -161,6 +165,12 @@ function createLibraryWatch({
         return { list: [...remembered, ...inferred], remembered, known };
     };
     let rememberedNow = [];
+    const rememberedNorms = new Set();
+    const setRemembered = (list) => {
+        rememberedNow = list;
+        rememberedNorms.clear();
+        for (let i = 0; i < list.length; i += 1) rememberedNorms.add(norm(list[i]));
+    };
 
     const runQueue = async (gen) => {
         if (running) return;
@@ -168,6 +178,8 @@ function createLibraryWatch({
         try {
             while (queue.length && gen === generation) {
                 const root = queue.shift();
+                const rootNorm = norm(root);
+                queueNorms.delete(rootNorm);
                 if (!(await exists(root))) continue; // 拔掉的盘、改名的文件夹：不动
                 const known = (await readKnown().catch(() => [])) || [];
                 abort = new AbortController();
@@ -175,19 +187,22 @@ function createLibraryWatch({
                 try { result = await scan(root, abort.signal); } catch (e) { log.warn?.('[MusicWatch] scan failed:', root, e?.message || e); continue; }
                 if (gen !== generation || !result || result.stats?.aborted) continue;
                 let tracks = result.tracks || [];
-                const rootNorm = norm(root);
-                const full = rememberedNow.some((r) => norm(r) === rootNorm);
+                const full = rememberedNorms.has(rootNorm);
                 if (!full) {
                     const byPath = new Map();
                     for (let i = 0; i < known.length; i += 1) {
                         const t = known[i];
                         if (t && t.path) byPath.set(t.path, t);
                     }
-                    tracks = tracks.filter((t) => {
+                    const updated = [];
+                    for (let i = 0; i < tracks.length; i += 1) {
+                        const t = tracks[i];
                         const k = byPath.get(t.path);
-                        return k && (Number(k.size) !== Number(t.size) || Math.abs((Number(k.mtimeMs) || 0) - (Number(t.mtimeMs) || 0)) > 1 || (!k.albumArt && t.albumArt));
-                    });
-                    if (!tracks.length) continue;
+                        if (k && (Number(k.size) !== Number(t.size) || Math.abs((Number(k.mtimeMs) || 0) - (Number(t.mtimeMs) || 0)) > 1 || (!k.albumArt && t.albumArt))) {
+                            updated.push(t);
+                        }
+                    }
+                    if (!updated.length) continue;
                     // 扫的这段时间里用户可能把其中一些移出了曲库（整理重复的歌）：按最新的曲库再筛一遍，不把它们加回去
                     const latestList = (await readKnown().catch(() => [])) || [];
                     const latest = new Set();
@@ -195,11 +210,20 @@ function createLibraryWatch({
                         const p = latestList[i] && latestList[i].path;
                         if (p) latest.add(p);
                     }
-                    tracks = tracks.filter((t) => latest.has(t.path));
+                    tracks = [];
+                    for (let i = 0; i < updated.length; i += 1) {
+                        if (latest.has(updated[i].path)) tracks.push(updated[i]);
+                    }
                     if (!tracks.length || gen !== generation) continue;
                 } else {
                     const excluded = new Set((await readExcluded().catch(() => [])) || []);
-                    if (excluded.size) tracks = tracks.filter((t) => !excluded.has(t.path));
+                    if (excluded.size) {
+                        const allowed = [];
+                        for (let i = 0; i < tracks.length; i += 1) {
+                            if (!excluded.has(tracks[i].path)) allowed.push(tracks[i]);
+                        }
+                        tracks = allowed;
+                    }
                     if (!changedSince(known, tracks, root)) continue;
                 }
                 log.log?.(`[MusicWatch] ${root} changed on disk, syncing ${tracks.length} tracks (${full ? 'full' : 'update only'})`);
@@ -214,7 +238,10 @@ function createLibraryWatch({
 
     const enqueue = (root) => {
         const rootNorm = norm(root);
-        if (!queue.some((r) => norm(r) === rootNorm)) queue.push(root);
+        if (!queueNorms.has(rootNorm)) {
+            queueNorms.add(rootNorm);
+            queue.push(root);
+        }
         runQueue(generation).catch(() => {});
     };
 
@@ -226,9 +253,11 @@ function createLibraryWatch({
             if (gen !== generation) return;
             const { list, remembered } = await roots();
             if (gen !== generation) return;
-            rememberedNow = remembered;
-            list.forEach(enqueue);
-            for (const root of list.slice(0, MAX_WATCHED)) {
+            setRemembered(remembered);
+            for (let i = 0; i < list.length; i += 1) enqueue(list[i]);
+            const watchLimit = Math.min(list.length, MAX_WATCHED);
+            for (let i = 0; i < watchLimit; i += 1) {
+                const root = list[i];
                 if (!(await exists(root)) || gen !== generation) continue;
                 try {
                     const w = watch(root, (_type, file) => {
@@ -258,6 +287,7 @@ function createLibraryWatch({
     function stop() {
         generation++;
         queue = [];
+        queueNorms.clear();
         abort?.abort();
         for (const t of timers.values()) clearTimer(t);
         timers.clear();
@@ -293,14 +323,21 @@ function createLibraryWatch({
                     }
                 }
             }
+            const batchChecks = [];
             for (let at = 0; at < toCheck.length; at += 32) {
-                const slice = toCheck.slice(at, at + 32);
-                const results = await Promise.all(slice.map((p) => fileExists(p)));
-                for (let i = 0; i < slice.length; i++) {
-                    if (results[i] && !set.has(slice[i])) { set.add(slice[i]); changed = true; }
+                const end = Math.min(at + 32, toCheck.length);
+                batchChecks.length = end - at;
+                for (let i = 0; i < batchChecks.length; i += 1) batchChecks[i] = fileExists(toCheck[at + i]);
+                const results = await Promise.all(batchChecks);
+                for (let i = 0; i < results.length; i += 1) {
+                    const p = toCheck[at + i];
+                    if (results[i] && !set.has(p)) { set.add(p); changed = true; }
                 }
             }
-            if (changed) await writeExcluded([...set].slice(-20000));
+            if (changed) {
+                const out = Array.from(set);
+                await writeExcluded(out.length > 20000 ? out.slice(-20000) : out);
+            }
         }).catch((e) => log.warn?.('[MusicWatch] note removals failed:', e?.message || e));
         return excludeChain;
     };
@@ -308,7 +345,7 @@ function createLibraryWatch({
     const rememberAndSync = async (dir) => {
         await rememberFolder(dir);
         const dirNorm = norm(dir);
-        if (!rememberedNow.some((r) => norm(r) === dirNorm)) rememberedNow = collapseRoots([...rememberedNow, dir]);
+        if (!rememberedNorms.has(dirNorm)) setRemembered(collapseRoots([...rememberedNow, dir]));
     };
     // 曲库文件夹管理用：加过的文件夹；「移出」时从记录里拿掉（连同它下面的子文件夹），之后不再同步它
     const folders = async () => collapseRoots((await readFolders().catch(() => [])) || []);
@@ -317,10 +354,22 @@ function createLibraryWatch({
         const dirNorm = norm(dir);
         const underDir = (candidate) => isUnderNorm(norm(candidate), dirNorm);
         const list = (await readFolders().catch(() => [])) || [];
-        const kept = list.filter((d) => !underDir(d));
+        const kept = [];
+        for (let i = 0; i < list.length; i += 1) if (!underDir(list[i])) kept.push(list[i]);
         if (kept.length !== list.length) await writeFolders(kept);
-        rememberedNow = rememberedNow.filter((d) => !underDir(d));
-        queue = queue.filter((d) => !underDir(d));
+        const keptRemembered = [];
+        for (let i = 0; i < rememberedNow.length; i += 1) if (!underDir(rememberedNow[i])) keptRemembered.push(rememberedNow[i]);
+        setRemembered(keptRemembered);
+        const keptQueue = [];
+        queueNorms.clear();
+        for (let i = 0; i < queue.length; i += 1) {
+            const q = queue[i];
+            if (!underDir(q)) {
+                keptQueue.push(q);
+                queueNorms.add(norm(q));
+            }
+        }
+        queue = keptQueue;
         for (const [rootKey, timerId] of timers) {
             if (rootKey !== 'start' && underDir(rootKey)) {
                 clearTimer(timerId);
@@ -346,8 +395,8 @@ function createLibraryWatch({
             const gen = generation;
             return roots().then(({ list, remembered }) => {
                 if (gen !== generation) return;
-                rememberedNow = remembered;
-                list.forEach(enqueue);
+                setRemembered(remembered);
+                for (let i = 0; i < list.length; i += 1) enqueue(list[i]);
             });
         }
     };

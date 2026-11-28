@@ -8,8 +8,13 @@ const AUDIO_EXT = /\.(mp3|flac|wav|ogg|m4a|aac|opus|ape|wma|alac|aiff?|dsf|dff|w
 // ASCII、基础平假名与 CJK 统一汉字在 NFKC 下恒等，跳过常规曲名的 ICU 规范化开销
 const NEEDS_NFKC_RE = /[^\x00-\x7f\u4e00-\u9fff\u3041-\u3096]/;
 const SPACE_UNDER_RE = /[\s_]+/g;
-const PATH_SEP_RE = /[\\/]/;
 const SPLIT_QUERY_RE = /\s+[-–—]\s+|\s+by\s+|\s*\/\s*|\s*的\s*/i;
+
+function baseNameOf(rawPath) {
+    const s = String(rawPath);
+    const sep = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+    return sep >= 0 ? s.slice(sep + 1) : s;
+}
 
 function norm(value) {
     const raw = String(value ?? '');
@@ -37,7 +42,7 @@ function getTrackNorm(track) {
     if (hit && hit.rawTitle === rawTitle && hit.rawPath === rawPath && hit.rawArtist === rawArtist && hit.rawAlbum === rawAlbum) {
         return hit;
     }
-    const title = norm(rawTitle || (rawPath ? String(rawPath).split(PATH_SEP_RE).pop() : ''));
+    const title = norm(rawTitle || (rawPath ? baseNameOf(rawPath) : ''));
     const entry = {
         rawTitle, rawPath, rawArtist, rawAlbum,
         title,
@@ -51,8 +56,19 @@ function getTrackNorm(track) {
 
 // 「歌名 - 歌手」「歌名 by 歌手」「歌手 的 歌名」这类写法拆成两半。
 function splitQuery(q) {
-    const parts = q.split(SPLIT_QUERY_RE).map((s) => s.trim()).filter(Boolean);
-    return parts.length === 2 ? parts : null;
+    const raw = q.split(SPLIT_QUERY_RE);
+    let a = '';
+    let b = '';
+    let count = 0;
+    for (let i = 0; i < raw.length; i += 1) {
+        const s = raw[i].trim();
+        if (!s) continue;
+        count += 1;
+        if (count === 1) a = s;
+        else if (count === 2) b = s;
+        else return null;
+    }
+    return count === 2 ? [a, b] : null;
 }
 
 const fieldMatches = (field, part) => Boolean(field && (field === part || field.includes(part)));
@@ -93,7 +109,8 @@ function findTrack(playlist, target) {
     const pair = splitQuery(q);
     let best = null;
     let bestScore = 0;
-    for (const track of playlist) {
+    for (let i = 0, len = playlist.length; i < len; i += 1) {
+        const track = playlist[i];
         if (!track || typeof track !== 'object') continue;
         const score = scoreTrack(track, q, qs, pair, bestScore);
         if (score > bestScore) { best = track; bestScore = score; }

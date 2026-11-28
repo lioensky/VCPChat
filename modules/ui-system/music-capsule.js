@@ -11,7 +11,7 @@
         const trigger = root.querySelector('.music-capsule-trigger');
         const details = root.querySelector('.music-capsule-details');
         const surface = root.querySelector('.music-capsule-surface');
-        const buttons = [...surface.querySelectorAll('button')];
+        const buttons = surface.querySelectorAll('button');
         const measure = document.createElement('span');
         measure.className = 'music-capsule-title music-capsule-measure';
         measure.setAttribute('aria-hidden', 'true');
@@ -25,10 +25,10 @@
         let focused = false;
         let previewing = false;
         let injectionPending = false;
-        let lastInjectionSig = '';
+        let lastInjectionSig = -1;
         const renderInjection = () => {
             const enabled = state.musicInfoInjectionEnabled !== false;
-            const sig = `${enabled ? 1 : 0}|${injectionPending ? 1 : 0}`;
+            const sig = (enabled ? 1 : 0) | (injectionPending ? 2 : 0);
             if (sig === lastInjectionSig) return;
             lastInjectionSig = sig;
             root.classList.toggle('is-injection-disabled', !enabled);
@@ -176,7 +176,7 @@
                 if (!disposed) {
                     renderInjection();
                     if (failure) {
-                        lastInjectionSig = '';
+                        lastInjectionSig = -1;
                         trigger.title = '音乐信息注入状态保存失败，请右键重试';
                         trigger.setAttribute('aria-label', trigger.title);
                     }

@@ -98,11 +98,12 @@ function setupEffects(app) {
     };
 
     app.createEqBands = () => {
-        app.eqBandsContainer.innerHTML = '';
+        const useFrag = typeof document.createDocumentFragment === 'function';
+        const canReplace = useFrag && typeof app.eqBandsContainer.replaceChildren === 'function';
+        if (!canReplace) app.eqBandsContainer.innerHTML = '';
         eqSliderCache.clear();
         eqBandSrc = null;
         eqBandKeys = null;
-        const useFrag = typeof document.createDocumentFragment === 'function';
         const target = useFrag ? document.createDocumentFragment() : app.eqBandsContainer;
         for (const band in app.eqBands) {
             const bandContainer = document.createElement('div');
@@ -121,7 +122,8 @@ function setupEffects(app) {
             bandContainer.appendChild(slider);
             target.appendChild(bandContainer);
         }
-        if (useFrag) app.eqBandsContainer.appendChild(target);
+        if (canReplace) app.eqBandsContainer.replaceChildren(target);
+        else if (useFrag) app.eqBandsContainer.appendChild(target);
         app.syncEqPresetSelect();
     };
 

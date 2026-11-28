@@ -75,10 +75,14 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
         pendingWrite = false;
         const tmp = `${stateFile}.${process.pid}.${gen}.sync.tmp`;
         try {
-            fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+            if (!dirEnsured) {
+                fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+                dirEnsured = true;
+            }
             fs.writeFileSync(tmp, JSON.stringify(prefs));
             fs.renameSync(tmp, stateFile);
         } catch (e) {
+            if (e && e.code === 'ENOENT') dirEnsured = false;
             try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
             console.error('[Music] 桌面歌词设置没存上:', e.message);
         }
@@ -118,8 +122,11 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
         return { x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + area.height - height - 40), width, height };
     };
     const restoredBounds = () => {
-        let areas = [];
-        try { areas = electronApi.screen.getAllDisplays().map((d) => d.workArea); } catch (_) { /* 同上 */ }
+        const areas = [];
+        try {
+            const displays = electronApi.screen.getAllDisplays();
+            for (let i = 0; i < displays.length; i += 1) areas.push(displays[i].workArea);
+        } catch (_) { /* 同上 */ }
         return windowBounds.restoreBounds(prefs.bounds, areas, { minWidth: 360, minHeight: 90 }) || defaultBounds();
     };
     const rememberBounds = () => {
@@ -174,7 +181,7 @@ function createDesktopLyrics({ ipcMain, getMusicWindow, stateFile, projectRoot, 
         self.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }));
         self.on('moved', () => { if (win === self) rememberBounds(); });
         self.on('resized', () => { if (win === self) rememberBounds(); });
-        self.on('closed', () => {
+        self.once('closed', () => {
             if (win === self) { win = null; lastIgnoreMouse = null; }
             // 用户在歌词条上点了关闭（或被系统关掉）：记成关；跟着音乐窗口一起关的不改开关
             if (!self.withMusic && prefs.on) { prefs.on = false; save(); tellMusic(); }

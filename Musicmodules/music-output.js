@@ -19,8 +19,9 @@ function setupOutput(app) {
             const result = await app.api.getMusicDevices({ refresh: forceRefresh });
             if (seq !== populateSeq) return;
             if (result?.status === 'success' && result.devices) {
-                app.deviceSelect.innerHTML = '';
                 const useFrag = typeof document.createDocumentFragment === 'function';
+                const canReplace = useFrag && typeof app.deviceSelect.replaceChildren === 'function';
+                if (!canReplace) app.deviceSelect.innerHTML = '';
                 const target = useFrag ? document.createDocumentFragment() : app.deviceSelect;
                 const defaultOption = document.createElement('option');
                 defaultOption.value = 'default';
@@ -54,7 +55,8 @@ function setupOutput(app) {
                     }
                     target.appendChild(group);
                 }
-                if (useFrag) app.deviceSelect.appendChild(target);
+                if (canReplace) app.deviceSelect.replaceChildren(target);
+                else if (useFrag) app.deviceSelect.appendChild(target);
                 // 重建选项会把选中项清回第一个：放回引擎正在用的那个，不然打开窗口总显示「默认设备」。
                 const current = app.currentDeviceId === null || app.currentDeviceId === undefined ? 'default' : String(app.currentDeviceId);
                 let known = false;

@@ -103,7 +103,18 @@
         const list = Array.isArray(tracks) ? tracks : [];
         if (!list.length) return [];
         const { preds, text } = parse(q);
-        const terms = text ? norm(text).split(WS_SPLIT_RE).filter(Boolean) : [];
+        const terms = [];
+        if (text) {
+            const nt = norm(text);
+            if (!WHITESPACE.test(nt)) {
+                if (nt) terms.push(nt);
+            } else {
+                const rawTerms = nt.split(WS_SPLIT_RE);
+                for (let i = 0; i < rawTerms.length; i += 1) {
+                    if (rawTerms[i]) terms.push(rawTerms[i]);
+                }
+            }
+        }
         const evalCtx = ctx && ctx.now ? ctx : { ...ctx, now: Date.now() };
         const predLen = preds.length;
         const termLen = terms.length;
@@ -188,7 +199,14 @@
         };
         // 听歌记录、喜欢变了就重算（攒一下，播放中途不频繁写盘；没有智能歌单时不排空定时器）
         let timer = null;
-        const hasSmart = () => lists().some((pl) => pl && pl.smart && typeof pl.smart.query === 'string');
+        const hasSmart = () => {
+            const listArr = lists();
+            for (let i = 0; i < listArr.length; i += 1) {
+                const pl = listArr[i];
+                if (pl && pl.smart && typeof pl.smart.query === 'string') return true;
+            }
+            return false;
+        };
         const later = () => { if (timer || !hasSmart()) return; timer = global.setTimeout(() => { timer = null; app.refreshSmartPlaylists(); }, 4000); };
         global.document?.addEventListener?.('music-stats-change', later);
         global.document?.addEventListener?.('music-like-change', later);
