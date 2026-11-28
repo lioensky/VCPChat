@@ -535,3 +535,108 @@ test('Batch 131: releaseWebGLContext defers loseContext until GPU fence signals 
 
     dom.window.close();
 });
+
+test('Batch 135: compilePasses queues parallel passes together, settlePrograms defers unready programs, and 3D stages wire async warm-up & atlas cache', async () => {
+    const dom = createDom();
+    const win = loadStage(dom);
+    const U = win.MusicStageModeUtils;
+    const R = win.MusicStageRuntime;
+
+    // 1. Parallel compilePasses queues every pass before polling isReady()
+    const events = [];
+    let readyCount = 0;
+    const matA = { id: 'A' };
+    const matB = { id: 'B' };
+    const targets = [];
+    const prevTarget = { id: 'prev' };
+    let curTarget = prevTarget;
+    const parallelRenderer = {
+        extensions: { has: (name) => name === 'KHR_parallel_shader_compile' },
+        getRenderTarget: () => curTarget,
+        setRenderTarget: (t) => { curTarget = t; targets.push(t); },
+        compileAsync: () => {},
+        compile: (sc) => {
+            events.push(`compile:${sc.id}`);
+            return new Set([sc.mat]);
+        },
+        properties: {
+            get: (mat) => ({
+                currentProgram: {
+                    isReady: () => {
+                        events.push(`ready:${mat.id}`);
+                        readyCount += 1;
+                        return readyCount > 2;
+                    }
+                }
+            })
+        },
+        getContext: () => ({ isContextLost: () => false })
+    };
+    await U.compilePasses(parallelRenderer, [
+        { target: { id: 't1' }, scene: { id: 's1', mat: matA }, camera: {}, before: () => events.push('before:1') },
+        { target: { id: 't2' }, scene: { id: 's2', mat: matB }, camera: {}, before: () => events.push('before:2') }
+    ]);
+    assert.equal(curTarget, prevTarget, 'previous render target restored');
+    assert.ok(events.indexOf('compile:s2') < events.indexOf('ready:A'), 'all passes queued before polling readiness');
+    assert.ok(events.includes('before:1') && events.includes('before:2'));
+
+    // 2. settlePrograms checks COMPLETION_STATUS_KHR before LINK_STATUS
+    const STATUS_KHR = 0x91B1;
+    const LINK_STATUS = 0x8B82;
+    let complete = false;
+    let linkReads = 0;
+    let uniformsRead = 0;
+    let attrsRead = 0;
+    const prog = { id: 'p1' };
+    const gl = {
+        LINK_STATUS,
+        isContextLost: () => false,
+        getExtension: (n) => (n === 'KHR_parallel_shader_compile' ? { COMPLETION_STATUS_KHR: STATUS_KHR } : null),
+        getProgramParameter: (p, pname) => {
+            if (pname === STATUS_KHR) {
+                const was = complete;
+                complete = true;
+                return was;
+            }
+            if (pname === LINK_STATUS) { linkReads += 1; return true; }
+            return true;
+        }
+    };
+    await R.settlePrograms({
+        getContext: () => gl,
+        info: {
+            programs: [{
+                program: prog,
+                getUniforms: () => { uniformsRead += 1; },
+                getAttributes: () => { attrsRead += 1; }
+            }]
+        }
+    });
+    assert.equal(complete, true);
+    assert.equal(linkReads, 1, 'LINK_STATUS queried once after COMPLETION_STATUS_KHR turns true');
+    assert.equal(uniformsRead, 1);
+    assert.equal(attrsRead, 1);
+
+    // 3. Structural wiring checks for Tunnel, Diorama, Kowloon, and Tempera
+    const tunnelSrc = read('Musicmodules/music-stage/modes/tunnel-manager.js');
+    assert.match(tunnelSrc, /uniform int uOctaves;/);
+    assert.match(tunnelSrc, /world\.beginPrepare\(\)/);
+    assert.match(tunnelSrc, /extraPasses:\s*\[skyJob\.pass\]/);
+
+    const dioramaWorldSrc = read('Musicmodules/music-stage/modes/diorama-world.js');
+    const dioramaMgrSrc = read('Musicmodules/music-stage/modes/diorama-manager.js');
+    assert.match(dioramaWorldSrc, /prepareEnvironmentAsync/);
+    assert.match(dioramaMgrSrc, /world\.prepareEnvironmentAsync/);
+
+    const kowloonMgrSrc = read('Musicmodules/music-stage/modes/kowloon-manager.js');
+    const kowloonSignsSrc = read('Musicmodules/music-stage/modes/kowloon-signs.js');
+    assert.match(kowloonMgrSrc, /ctx\.asyncPaint\s*=\s*true/);
+    assert.match(kowloonMgrSrc, /await signs\.paintAsync/);
+    assert.equal((kowloonSignsSrc.match(/addMesh\(hw,\s*hardwareMat/g) || []).length, 1, 'hardware mesh built once');
+    assert.match(kowloonSignsSrc, /clearParkedAtlas/);
+
+    const temperaSrc = read('Musicmodules/music-stage/modes/tempera-pixi-core.js');
+    assert.match(temperaSrc, /warmPrograms\?\.\(this\.app\.renderer\.gl,\s*\[this\.postProcess\.glProgram\]/);
+
+    dom.window.close();
+});
