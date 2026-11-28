@@ -2418,3 +2418,23 @@ test('Batch 89: edge spectrum skips sub-threshold work, reuses accentRef, releas
         dom.window.close();
     }
 });
+
+test('Batch 90: paused stage CSS halts Starborn cue pulse and Diorama HUD spin animations', () => {
+    const coreCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-core-modes.css'), 'utf8');
+    const pixi3dCss = fs.readFileSync(path.join(__dirname, '..', 'Musicmodules/music-stage/music-stage-pixi-3d.css'), 'utf8');
+    assert.match(
+        coreCss,
+        /\.music-stage:not\(\.is-playing\)\s+\.starborn-director-cue:not\(\.is-switching\)\s*\{[^}]*animation-play-state:\s*paused/,
+        'paused stage halts Starborn cue pulse without blocking switching cue'
+    );
+    assert.match(
+        pixi3dCss,
+        /\.music-stage:not\(\.is-playing\)\s+\.diorama-hud-circle-dashed\s*\{[^}]*animation-play-state:\s*paused/,
+        'paused stage halts Diorama HUD ring spin'
+    );
+    assert.match(
+        pixi3dCss,
+        /body\.music-reduce-motion\s+\.music-stage-mode-diorama\s+\.diorama-hud-circle-dashed\s*\{[^}]*animation:\s*none/,
+        'reduce-motion disables Diorama HUD ring spin'
+    );
+});

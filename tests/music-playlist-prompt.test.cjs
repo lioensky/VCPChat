@@ -38,3 +38,63 @@ test('5000 tracks: bounded size; the file is read again only after it changes', 
     fs.unlinkSync(file);
     assert.equal(await playlistPrompt(file), '');
 });
+
+test('Batch 90: playlist prompt caps shown list while preserving total count, and M3U/library-watch helpers match exact output', async () => {
+    const m3u = require('../modules/ipc/musicM3u');
+    const { changedSince, createLibraryWatch } = require('../modules/musicLibraryWatch');
+
+    // formatPlaylistPrompt skips building full titles array beyond cap while still reporting deduplicated total
+    const bulk = Array.from({ length: 120 }, (_, i) => ({ title: `  Song   ${i % 40}.mp3` }));
+    const out = formatPlaylistPrompt(bulk, 3);
+    assert.equal(out, '[播放列表——\nSong 0\nSong 1\nSong 2\n（曲库共 40 首，这里只列出前 3 首；不在列表里的歌也可以直接按歌名点）\n]');
+
+    // M3U build / parse / safeFileName preserve formatting & Windows path normalization
+    const text = m3u.buildM3u('  Night\nMix  ', [
+        { path: 'C:\\Music\\a.flac', artist: 'Artist', title: 'Track', duration: 205.6 },
+        { path: 'C:\\Music\\b.mp3', artist: '', title: 'Solo', duration: 0 },
+        { path: 'C:\\Music\\c.mp3', artist: 'OnlyArtist', title: '', duration: -1 }
+    ]);
+    assert.match(text, /#PLAYLIST:Night Mix\r\n/);
+    assert.match(text, /#EXTINF:206,Artist - Track\r\nC:\\Music\\a\.flac\r\n/);
+    assert.match(text, /#EXTINF:-1,Solo\r\nC:\\Music\\b\.mp3\r\n/);
+    assert.match(text, /#EXTINF:-1,OnlyArtist\r\nC:\\Music\\c\.mp3\r\n/);
+    const parsed = m3u.parseM3u('file:///C:/My%20Songs/a.flac\n', { platform: 'win32' });
+    assert.deepEqual(parsed.entries, [{ path: 'C:\\My Songs\\a.flac', title: '', duration: 0 }]);
+    assert.equal(m3u.safeFileName('..con:bad/name.  '), 'con_bad_name');
+    assert.equal(m3u.safeFileName('..con.txt  '), '_con.txt');
+
+    // LibraryWatch changedSince & update-only Map/Set scan path
+    assert.equal(changedSince(
+        [{ path: 'C:\\Lib\\a.mp3', size: 10, mtimeMs: 100 }],
+        [{ path: 'C:\\Lib\\a.mp3', size: 10, mtimeMs: 100.5 }],
+        'C:\\Lib\\'
+    ), false);
+    assert.equal(changedSince(
+        [{ path: 'C:\\Lib\\a.mp3', size: 10, mtimeMs: 100 }],
+        [{ path: 'C:\\Lib\\a.mp3', size: 10, mtimeMs: 100, albumArt: 'C:\\Lib\\cover.jpg' }],
+        'C:\\Lib\\'
+    ), true);
+
+    const sent = [];
+    const timers = [];
+    let known = [{ path: 'C:\\Loose\\x.mp3', size: 10, mtimeMs: 100 }];
+    const watcher = createLibraryWatch({
+        scan: async () => ({ tracks: [{ path: 'C:\\Loose\\x.mp3', size: 20, mtimeMs: 200 }, { path: 'C:\\Loose\\new.mp3', size: 5, mtimeMs: 5 }], stats: { total: 2, failed: 0 } }),
+        readKnown: async () => known,
+        readFolders: async () => [],
+        writeFolders: async () => {},
+        send: (ch, payload) => sent.push({ ch, payload }),
+        exists: async () => true,
+        watch: () => ({ close() {} }),
+        setTimer: (fn) => { timers.push(fn); return timers.length; },
+        clearTimer: () => {},
+        log: {}
+    });
+    watcher.start();
+    await timers[0]();
+    await new Promise((r) => setTimeout(r, 15));
+    watcher.stop();
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].payload.folderPath, null);
+    assert.deepEqual(sent[0].payload.tracks.map((t) => t.path), ['C:\\Loose\\x.mp3']);
+});
