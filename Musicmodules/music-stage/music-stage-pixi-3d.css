@@ -738,8 +738,9 @@ body.music-reduce-motion .music-stage-edge-flow-light {
 }
 
 /* Nothing on a paused stage moves, so nothing should ask for frames: the flow
-   ring holds its place, and the settings dot only pulses while it is shown. */
-.music-stage:not(.is-playing) .music-stage-edge-flow {
+   ring and HUD ornaments hold their place, and the settings dot only pulses while it is shown. */
+.music-stage:not(.is-playing) .music-stage-edge-flow,
+.music-stage:not(.is-playing) .diorama-hud-circle-dashed {
     animation-play-state: paused;
 }
 .music-stage-settings-toggle-pulse {
@@ -795,6 +796,13 @@ body.music-fl-low .diorama-vector-decor {
 
 body.music-fl-low .tempera-shot.is-entering,
 body.music-fl-low .sonnet-scene.is-entering,
-body.music-fl-low .music-stage-mode-diorama .diorama-hud-circle-dashed {
+body.music-fl-low .music-stage-mode-diorama .diorama-hud-circle-dashed,
+body.music-reduce-motion .music-stage-mode-diorama .diorama-hud-circle-dashed {
     animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .music-stage-mode-diorama .diorama-hud-circle-dashed {
+        animation: none;
+    }
 }

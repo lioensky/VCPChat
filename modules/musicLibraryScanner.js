@@ -77,6 +77,7 @@ const exists = (file) => fsp.access(file).then(() => true, () => false);
 const FOLDER_COVER_RANK = [/^cover\.(jpe?g|png|webp)$/i, /^folder\.(jpe?g|png|webp)$/i, /^front\.(jpe?g|png|webp)$/i, /^albumart.*\.(jpe?g|png)$/i];
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
 const DISC_DIR_RE = /^(?:cd|disc|disk|碟)\s*[-_]?\s*\d{1,2}\b/i;
+const TRAIL_SEP_RE = /[\\/]+$/;
 function pickFolderCover(names) {
     if (!names || !names.length) return null;
     for (let r = 0; r < FOLDER_COVER_RANK.length; r += 1) {
@@ -180,7 +181,7 @@ async function scanFolder(options) {
     const keptFromUnreadable = () => {
         if (!unreadable.length) return [];
         const bases = unreadable.map((dir) => {
-            const trimmed = dir.replace(/[\\/]+$/, '');
+            const trimmed = dir.replace(TRAIL_SEP_RE, '');
             return { len: trimmed.length, target: isWin ? trimmed.toLowerCase() : trimmed };
         });
         const listed = new Set(files);

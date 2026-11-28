@@ -5,6 +5,7 @@
 const fs = require('fs-extra');
 
 const AUDIO_EXT = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i;
+const WS_RE = /\s+/g;
 const DEFAULT_LIMIT = 1500;
 let cache = null; // { file, mtimeMs, size, limit, text }
 
@@ -12,17 +13,17 @@ function formatPlaylistPrompt(tracks, limit = DEFAULT_LIMIT) {
     if (!Array.isArray(tracks)) return '';
     const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_LIMIT;
     const seen = new Set();
-    const titles = [];
+    const shown = [];
     for (const track of tracks) {
-        const title = String(track?.title || '').replace(AUDIO_EXT, '').replace(/\s+/g, ' ').trim();
+        const title = String(track?.title || '').replace(AUDIO_EXT, '').replace(WS_RE, ' ').trim();
         if (!title || seen.has(title)) continue;
         seen.add(title);
-        titles.push(title);
+        if (shown.length < cap) shown.push(title);
     }
-    if (!titles.length) return '';
-    const shown = titles.slice(0, cap);
-    const more = titles.length > shown.length
-        ? `\n（曲库共 ${titles.length} 首，这里只列出前 ${shown.length} 首；不在列表里的歌也可以直接按歌名点）`
+    if (!shown.length) return '';
+    const total = seen.size;
+    const more = total > shown.length
+        ? `\n（曲库共 ${total} 首，这里只列出前 ${shown.length} 首；不在列表里的歌也可以直接按歌名点）`
         : '';
     return `[播放列表——\n${shown.join('\n')}${more}\n]`;
 }

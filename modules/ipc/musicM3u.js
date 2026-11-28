@@ -29,6 +29,11 @@ const PLAYLIST_RE = /^#PLAYLIST:/i;
 const FILE_URL_RE = /^file:\/\//i;
 const SCHEME_URL_RE = /^[a-z][a-z0-9+.-]+:\/\//i;
 const ONE_LINE_RE = /[\r\n]+/g;
+const SLASH_RE = /\//g;
+const WIN_DRIVE_RE = /^\/([a-zA-Z]:)/;
+const SAFE_BAD_RE = /[\\/:*?"<>|\x00-\x1f]+/g;
+const LEAD_DOTS_RE = /^\.+/;
+const TRAIL_DOT_SPACE_RE = /[. ]+$/;
 
 const looksUtf8 = (buf) => {
     try { UTF8_FATAL.decode(buf); return true; } catch (e) { return false; }
@@ -59,8 +64,8 @@ function fileUrlToPath(url, platform) {
     try { rest = decodeURIComponent(m[2] || ''); } catch (e) { return ''; }
     const host = m[1] && m[1].toLowerCase() !== 'localhost' ? m[1] : '';
     if (platform !== 'win32') return host ? '' : rest;
-    if (host) return '\\\\' + host + rest.replace(/\//g, '\\');
-    return rest.replace(/^\/([a-zA-Z]:)/, '$1').replace(/\//g, '\\');
+    if (host) return '\\\\' + host + rest.replace(SLASH_RE, '\\');
+    return rest.replace(WIN_DRIVE_RE, '$1').replace(SLASH_RE, '\\');
 }
 
 // 解析成 { name, entries: [{ path, title, duration }], skipped }；skipped 是网络地址之类没法收进曲库的行数。
@@ -92,7 +97,7 @@ function parseM3u(text, { baseDir = '', platform = process.platform } = {}) {
         } else if (SCHEME_URL_RE.test(file)) {
             skipped++; pending = null; continue;
         }
-        if (platform === 'win32') file = file.replace(/\//g, '\\');
+        if (platform === 'win32') file = file.replace(SLASH_RE, '\\');
         if (!p.isAbsolute(file)) {
             if (!baseDir) { skipped++; pending = null; continue; }
             file = p.resolve(baseDir, file);
@@ -110,10 +115,13 @@ const oneLine = (s) => String(s || '').replace(ONE_LINE_RE, ' ').trim();
 // tracks: [{ path, title, artist, duration }]（duration 秒，可缺）
 function buildM3u(name, tracks) {
     const out = ['#EXTM3U'];
-    if (oneLine(name)) out.push('#PLAYLIST:' + oneLine(name));
+    const playlistName = oneLine(name);
+    if (playlistName) out.push('#PLAYLIST:' + playlistName);
     for (const t of tracks || []) {
         if (!t || typeof t.path !== 'string' || !t.path) continue;
-        const label = [oneLine(t.artist), oneLine(t.title)].filter(Boolean).join(' - ');
+        const artist = oneLine(t.artist);
+        const title = oneLine(t.title);
+        const label = artist && title ? `${artist} - ${title}` : (artist || title);
         const d = Math.round(Number(t.duration) || 0);
         if (label || d > 0) out.push(`#EXTINF:${d > 0 ? d : -1},${label}`);
         out.push(oneLine(t.path));
@@ -126,11 +134,11 @@ const WIN_RESERVED_RE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 // 文件名里不能有的字符换掉，给保存对话框当默认名
 const safeFileName = (name) => {
     let clean = oneLine(name)
-        .replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_')
-        .replace(/^\.+/, '')
-        .replace(/[. ]+$/, '')
+        .replace(SAFE_BAD_RE, '_')
+        .replace(LEAD_DOTS_RE, '')
+        .replace(TRAIL_DOT_SPACE_RE, '')
         .slice(0, 120)
-        .replace(/[. ]+$/, '');
+        .replace(TRAIL_DOT_SPACE_RE, '');
     if (!clean) return '歌单';
     if (WIN_RESERVED_RE.test(clean)) clean = '_' + clean;
     return clean;

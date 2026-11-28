@@ -651,6 +651,10 @@
     animation: starborn-cue-pulse 4.8s ease-in-out infinite;
 }
 
+.music-stage:not(.is-playing) .starborn-director-cue:not(.is-switching) {
+    animation-play-state: paused;
+}
+
 .music-stage-mode-starborn > .starborn-star {
     position: absolute;
     top: 12%;

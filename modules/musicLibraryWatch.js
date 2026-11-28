@@ -17,7 +17,8 @@ const MAX_WATCHED = 32;
 const DEBOUNCE_MS = 5000;
 const START_DELAY_MS = 4000;
 
-const norm = (p) => path.resolve(String(p)).replace(/[\\/]+$/, '').toLowerCase();
+const TRAIL_SEP_RE = /[\\/]+$/;
+const norm = (p) => path.resolve(String(p)).replace(TRAIL_SEP_RE, '').toLowerCase();
 const SEP_LOWER = path.sep.toLowerCase();
 const isUnderNorm = (c, p) => c === p || c.startsWith(p + SEP_LOWER) || c.startsWith(p + '/') || c.startsWith(p + '\\');
 const isUnder = (child, parent) => isUnderNorm(norm(child), norm(parent));
@@ -61,7 +62,7 @@ function inferredDirs(tracks) {
 // 这次扫到的和上次存的比，有没有变化（新增、删除、文件改过）
 function changedSince(known, scanned, root) {
     const p = norm(root);
-    const pSep = p + path.sep.toLowerCase();
+    const pSep = p + SEP_LOWER;
     const pSlash = p + '/';
     const pBack = p + '\\';
     const before = new Map();
@@ -141,14 +142,23 @@ function createLibraryWatch({
                 const rootNorm = norm(root);
                 const full = rememberedNow.some((r) => norm(r) === rootNorm);
                 if (!full) {
-                    const byPath = new Map(known.map((t) => [t && t.path, t]));
+                    const byPath = new Map();
+                    for (let i = 0; i < known.length; i += 1) {
+                        const t = known[i];
+                        if (t && t.path) byPath.set(t.path, t);
+                    }
                     tracks = tracks.filter((t) => {
                         const k = byPath.get(t.path);
                         return k && (Number(k.size) !== Number(t.size) || Math.abs((Number(k.mtimeMs) || 0) - (Number(t.mtimeMs) || 0)) > 1 || (!k.albumArt && t.albumArt));
                     });
                     if (!tracks.length) continue;
                     // 扫的这段时间里用户可能把其中一些移出了曲库（整理重复的歌）：按最新的曲库再筛一遍，不把它们加回去
-                    const latest = new Set(((await readKnown().catch(() => [])) || []).map((t) => t && t.path));
+                    const latestList = (await readKnown().catch(() => [])) || [];
+                    const latest = new Set();
+                    for (let i = 0; i < latestList.length; i += 1) {
+                        const p = latestList[i] && latestList[i].path;
+                        if (p) latest.add(p);
+                    }
                     tracks = tracks.filter((t) => latest.has(t.path));
                     if (!tracks.length || gen !== generation) continue;
                 } else {

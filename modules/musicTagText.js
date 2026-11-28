@@ -4,9 +4,12 @@
 // 只在看得出是这种情况时才改：字符全在 0x00–0xFF 之内，高位字节全部两两成对且落在 GBK 区间，
 // 按 GB18030 解出来有汉字、没有替换符。像「Beyoncé」「Sigur Rós」这种单个重音字母不会被误改。
 const CJK = /[぀-ヿ㐀-鿿가-힯豈-﫿]/;
+const HIGH_LATIN1_RE = /[\u0080-\u00ff]/;
+const NON_LATIN1_RE = /[^\u0000-\u00ff]/;
+const TAG_KEYS = ['title', 'artist', 'album'];
 
 function looksLikeGbkAsLatin1(text) {
-    if (typeof text !== 'string' || !/[\u0080-ÿ]/.test(text) || /[^\u0000-ÿ]/.test(text)) return false;
+    if (typeof text !== 'string' || !HIGH_LATIN1_RE.test(text) || NON_LATIN1_RE.test(text)) return false;
     for (let i = 0; i < text.length; i++) {
         const lead = text.charCodeAt(i);
         if (lead < 0x80) continue;
@@ -44,7 +47,8 @@ function repairTagText(text) {
 function repairTrackTags(track) {
     if (!track || typeof track !== 'object') return track;
     let out = track;
-    for (const key of ['title', 'artist', 'album']) {
+    for (let i = 0; i < TAG_KEYS.length; i += 1) {
+        const key = TAG_KEYS[i];
         const fixed = repairTagText(track[key]);
         if (fixed !== track[key]) {
             if (out === track) out = { ...track };

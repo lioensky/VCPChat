@@ -31,6 +31,8 @@ const AUDIO_READ_EXT_RE = /\.(flac|mp3|wav|m4a|aac|ogg|opus|wv|aiff?|alac|ape|ds
 const M3U_LEGACY_EXT_RE = /\.m3u$/i;
 const M3U_ANY_EXT_RE = /\.m3u8?$/i;
 const HTTP_URL_RE = /^https?:\/\//i;
+const BSLASH_RE = /\\/g;
+const TRAIL_SEP_RE = /[\\/]+$/;
 let jsonTmpSeq = 0;
 
 let musicWindow = null;
@@ -320,7 +322,7 @@ function createOrFocusMusicWindow() {
         // 从资源管理器把歌曲或图片拖进窗口时，Chromium 默认会跳转去打开那个文件，整个播放器被换掉、
         // 播放状态全丢。音乐窗口只该停在自己的页面上（含旧版界面）。
         musicWindow.webContents.on('will-navigate', (event, url) => {
-            if (!MUSIC_PAGE_URL_RE.test(String(url).replace(/\\/g, '/'))) event.preventDefault();
+            if (!MUSIC_PAGE_URL_RE.test(String(url).replace(BSLASH_RE, '/'))) event.preventDefault();
         });
         musicWindow.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }));
 
@@ -388,7 +390,7 @@ const runningFolderScans = new Map();
 function runLibraryScan(event, options = {}) {
     const folderPath = options.folderPath || null;
     if (!folderPath) return scanLibrary(event, options);
-    const key = `${event.sender?.id ?? ''}|${path.resolve(folderPath).replace(/[\\/]+$/, '').toLowerCase()}`;
+    const key = `${event.sender?.id ?? ''}|${path.resolve(folderPath).replace(TRAIL_SEP_RE, '').toLowerCase()}`;
     const running = runningFolderScans.get(key);
     if (running) return running;
     const scan = scanLibrary(event, options).finally(() => runningFolderScans.delete(key));
