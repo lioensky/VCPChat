@@ -76,6 +76,84 @@
         const r = {};
         el.querySelectorAll('[data-y]').forEach((n) => { r[n.dataset.y] = n; });
 
+        /*
+         * 手动调宽度（和左侧目录、右侧设置抽屉一样）：左边缘拖柄，往左拖变宽，松手记住，双击恢复默认。
+         * 范围 300..720 且不超过首页宽度 45%；改宽时发 resize，阵列 / 封面墙 / 底栏跟着让位（它们都量歌词栏的位置）。
+         * 上下叠放（tiny）时不生效、拖柄也藏起来（CSS）。
+         */
+        const WIDTH_KEY = 'musicArchiveLyricsWidth';
+        const W_MIN = 300, W_MAX = 720;
+        const grip = document.createElement('div');
+        grip.className = 'archive-lyrics-grip';
+        grip.tabIndex = 0;
+        grip.setAttribute('role', 'separator');
+        grip.setAttribute('aria-orientation', 'vertical');
+        grip.setAttribute('aria-label', '调整歌词栏宽度');
+        grip.title = '拖动调整歌词栏宽度，双击恢复默认';
+        el.appendChild(grip);
+        // 上限按歌词栏的定位容器量（CSS 里 max-width: 45% 也是相对它），存下的就是实际宽度
+        const hostWidth = () => el.offsetParent?.clientWidth || host.clientWidth || global.innerWidth || 1280;
+        const clampW = (w) => Math.round(Math.max(W_MIN, Math.min(W_MAX, hostWidth() * 0.45, w)));
+        let relayoutRaf = 0;
+        const relayout = () => {
+            if (relayoutRaf) return;
+            relayoutRaf = requestAnimationFrame(() => { relayoutRaf = 0; global.dispatchEvent(new Event('resize')); });
+        };
+        const applyWidth = (w, { save = false } = {}) => {
+            if (w == null) {
+                el.classList.remove('user-w');
+                el.style.removeProperty('--lyrics-w-user');
+                if (save) { try { localStorage.removeItem(WIDTH_KEY); } catch (_) { /* 存不了就只管这次 */ } }
+            } else {
+                const v = clampW(w);
+                el.classList.add('user-w');
+                el.style.setProperty('--lyrics-w-user', v + 'px');
+                grip.setAttribute('aria-valuenow', String(v));
+                if (save) { try { localStorage.setItem(WIDTH_KEY, String(v)); } catch (_) { /* 同上 */ } }
+            }
+            relayout();
+        };
+        try {
+            const saved = Number(localStorage.getItem(WIDTH_KEY));
+            if (saved > 0) applyWidth(saved);
+        } catch (_) { /* 读不到就用默认宽度 */ }
+        grip.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = el.getBoundingClientRect();
+            const scale = el.offsetWidth ? rect.width / el.offsetWidth : 1; // 首页整体可能被缩放
+            const startX = e.clientX, startW = el.offsetWidth;
+            grip.setPointerCapture?.(e.pointerId);
+            el.classList.add('resizing');
+            // 歌词栏贴右边：往左拖变宽
+            const move = (ev) => applyWidth(startW + (startX - ev.clientX) / (scale || 1));
+            const up = () => {
+                grip.removeEventListener('pointermove', move);
+                grip.removeEventListener('pointerup', up);
+                grip.removeEventListener('pointercancel', up);
+                el.classList.remove('resizing');
+                applyWidth(el.offsetWidth, { save: true });
+            };
+            grip.addEventListener('pointermove', move);
+            grip.addEventListener('pointerup', up);
+            grip.addEventListener('pointercancel', up);
+        });
+        grip.addEventListener('dblclick', (e) => { e.stopPropagation(); applyWidth(null, { save: true }); });
+        grip.addEventListener('keydown', (e) => {
+            const step = e.shiftKey ? 48 : 16;
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                e.stopPropagation(); // 别再被底栏当成切歌/快进
+                applyWidth(el.offsetWidth + (e.key === 'ArrowLeft' ? step : -step), { save: true });
+            } else if (e.key === 'Home' || e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                applyWidth(null, { save: true });
+            }
+        });
+        for (const t of ['click', 'contextmenu', 'wheel']) grip.addEventListener(t, (e) => e.stopPropagation());
+
         const state = { source: null, lines: [], offsets: [], index: -2, shown: false, allowed: true, timer: 0, path: null, none: false, nonePath: null, nonePending: null, noneTimer: 0, shift: 0, manual: 0, manualTimer: 0, words: null };
 
         const tracks = () => (Array.isArray(app.playlist) ? app.playlist : []);
@@ -610,6 +688,7 @@
                 document.removeEventListener('music-lyrics-offset', onLyricsMutated);
                 document.removeEventListener('music-lyrics-translation', onLyricsMutated);
                 clearTimeout(deskInitTimer);
+                cancelAnimationFrame(relayoutRaf);
                 resizeObserver.disconnect();
                 cancelAnimationFrame(fitRaf);
                 if (state.timer) clearInterval(state.timer);

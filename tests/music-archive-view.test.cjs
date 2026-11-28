@@ -2725,3 +2725,19 @@ test('底栏「主题」选了自定义主题时，首页强调色跟着那份�
     assert.equal(root.style.getPropertyValue('--ar-accent'), '');
     f.close();
 });
+
+test('歌词栏左边缘可以拖宽：有上下限、记住宽度、双击恢复默认', () => {
+    const f = fixture();
+    const lyr = f.w.document.querySelector('.archive-lyrics');
+    const grip = lyr.querySelector('.archive-lyrics-grip');
+    assert.ok(grip, '歌词栏有拖柄');
+    assert.equal(grip.getAttribute('aria-label'), '调整歌词栏宽度');
+    grip.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    assert.ok(lyr.classList.contains('user-w'));
+    assert.equal(lyr.style.getPropertyValue('--lyrics-w-user'), '300px', '不会窄过 300');
+    assert.equal(f.w.localStorage.getItem('musicArchiveLyricsWidth'), '300');
+    grip.dispatchEvent(new f.w.MouseEvent('dblclick', { bubbles: true }));
+    assert.ok(!lyr.classList.contains('user-w'));
+    assert.equal(f.w.localStorage.getItem('musicArchiveLyricsWidth'), null);
+    f.close();
+});

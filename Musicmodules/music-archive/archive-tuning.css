@@ -503,3 +503,12 @@ body.music-reduce-motion .archive-list-kinds > button:active { transform: none; 
 .archive-list.slim .archive-list-kinds { letter-spacing: 0; }
 .archive-list.slim .archive-list-kinds > button + button { margin-left: 9px; }
 .archive-list.slim .archive-list-kinds > button + button::before { display: none; }
+
+/* 歌词栏左边缘的拖柄（archive-lyrics.js）：拖过才有 .user-w，宽度用 --lyrics-w-user；上下叠放（tiny）时不生效、拖柄藏起来。 */
+.archive-hud:not(.tiny) .archive-lyrics.user-w.user-w { width: var(--lyrics-w-user); max-width: 45%; }
+.archive-lyrics-grip { position: absolute; z-index: 8; top: 0; bottom: 0; left: -14px; width: 10px; cursor: col-resize; touch-action: none; outline: none; pointer-events: auto; }
+.archive-lyrics-grip::after { content: ""; position: absolute; top: 8%; bottom: 8%; left: 50%; width: 1px; margin-left: -.5px; background: var(--ar-ink); opacity: 0; transition: opacity .16s, width .12s, margin-left .12s; }
+.archive-lyrics-grip:hover::after, .archive-lyrics-grip:focus-visible::after { opacity: .28; }
+.archive-lyrics.resizing .archive-lyrics-grip::after { opacity: .9; width: 2px; margin-left: -1px; background: var(--ar-accent); }
+.archive-lyrics.resizing { user-select: none; }
+.archive-hud.tiny .archive-lyrics-grip, .archive-lyrics.none .archive-lyrics-grip { display: none; }
