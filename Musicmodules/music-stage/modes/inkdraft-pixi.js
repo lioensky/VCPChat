@@ -38,6 +38,7 @@
 
     // 每个渲染器一张噪声图、一张纸纹；渲染器停放后再被拿去用时不用重传
     const sharedTextures = new WeakMap();
+    const warmedRenderers = new WeakSet();
     const programs = new WeakMap();
 
     const create = (PIXI, app, spec) => {
@@ -178,6 +179,15 @@
             glyphUniforms: glyphGroup.uniforms,
             get width() { return app.canvas.width; },
             get height() { return app.canvas.height; },
+            // 后台并行预热三套着色器，让首次 Pixi 渲染命中驱动缓存而不阻塞主线程
+            async warm(isAlive = () => true) {
+                if (destroyed || warmedRenderers.has(renderer)) return false;
+                const ok = await global.MusicStageRuntime?.warmPrograms?.(
+                    gl, [cache.glyph, cache.smooth, cache.main], () => !destroyed && isAlive()
+                );
+                if (ok) warmedRenderers.add(renderer);
+                return Boolean(ok);
+            },
             // 画布的 CSS 大小 w×h、每个 CSS 像素 scale 个缓冲像素
             resize(w, h, scale) {
                 if (renderer.resolution === scale && renderer.screen.width === w && renderer.screen.height === h) return false;

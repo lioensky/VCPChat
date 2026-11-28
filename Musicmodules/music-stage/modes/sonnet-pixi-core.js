@@ -94,6 +94,10 @@
 
             this.postProcess = Effects.createPostProcess(PIXI, this.app.stage, { canvasAntialias: this.canvasAntialias });
             this.retirement = Effects.createRetirement(PIXI, this.app.stage, { dissolve: true });
+            if (this.postProcess?.glProgram && this.app.renderer?.gl) {
+                await global.MusicStageRuntime?.warmPrograms?.(this.app.renderer.gl, [this.postProcess.glProgram], () => !this.destroyed);
+                if (this.destroyed) return;
+            }
             this.initialized = true;
             this.resize();
             if (this.pendingShot) this.buildShot(...this.pendingShot);

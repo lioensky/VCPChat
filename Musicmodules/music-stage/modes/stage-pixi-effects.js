@@ -154,6 +154,7 @@ void main() {
                     u.uPaper[2] = (n & 255) / 255;
                 }
             },
+            glProgram: filter.glProgram,
             destroy() { stage.filters = null; applied = null; filter.destroy(); copy?.destroy(); }
         };
     };

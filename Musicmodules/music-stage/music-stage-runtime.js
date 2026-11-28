@@ -1197,6 +1197,76 @@
         }
         return false;
     };
+    const warmedSpecsByGl = new WeakMap();
+    const warmPrograms = (gl, programs, isAlive = () => true) => {
+        if (!gl || !Array.isArray(programs) || !programs.length) return Promise.resolve(false);
+        try { if (gl.isContextLost?.()) return Promise.resolve(false); } catch (_) { return Promise.resolve(false); }
+        let ext = null;
+        try { ext = gl.getExtension?.('KHR_parallel_shader_compile') || null; } catch (_) {}
+        if (!ext || typeof ext.COMPLETION_STATUS_KHR !== 'number') return Promise.resolve(false);
+        let seen = warmedSpecsByGl.get(gl);
+        if (!seen) { seen = new WeakSet(); warmedSpecsByGl.set(gl, seen); }
+        const pending = [];
+        for (let i = 0; i < programs.length; i += 1) {
+            const spec = programs[i];
+            if (!spec?.vertex || !spec?.fragment || seen.has(spec)) continue;
+            try {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, spec.vertex);
+                gl.compileShader(vs);
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, spec.fragment);
+                gl.compileShader(fs);
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                pending.push({ prog, vs, fs, spec });
+            } catch (_) {}
+        }
+        if (!pending.length) return Promise.resolve(true);
+        const cleanupItem = (item, commit) => {
+            try {
+                if (commit && !gl.isContextLost?.()) {
+                    gl.getProgramParameter(item.prog, gl.LINK_STATUS);
+                    seen.add(item.spec);
+                }
+            } catch (_) {}
+            try { if (item.vs) { gl.deleteShader(item.vs); item.vs = null; } } catch (_) {}
+            try { if (item.fs) { gl.deleteShader(item.fs); item.fs = null; } } catch (_) {}
+            try { if (item.prog) { gl.deleteProgram(item.prog); item.prog = null; } } catch (_) {}
+        };
+        const cleanupAll = (commit) => {
+            for (let i = 0; i < pending.length; i += 1) cleanupItem(pending[i], commit);
+            pending.length = 0;
+        };
+        const statusEnum = ext.COMPLETION_STATUS_KHR;
+        return new Promise((resolve) => {
+            const step = () => {
+                if (!isAlive()) { cleanupAll(false); resolve(false); return; }
+                try { if (gl.isContextLost?.()) { cleanupAll(false); resolve(false); return; } } catch (_) { cleanupAll(false); resolve(false); return; }
+                let write = 0;
+                for (let i = 0; i < pending.length; i += 1) {
+                    const item = pending[i];
+                    let done = true;
+                    try { done = Boolean(gl.getProgramParameter(item.prog, statusEnum)); } catch (_) { done = true; }
+                    if (done) cleanupItem(item, true);
+                    else pending[write++] = item;
+                }
+                pending.length = write;
+                if (!write) { resolve(true); return; }
+                if (!global.document?.hidden && typeof global.requestAnimationFrame === 'function') {
+                    global.requestAnimationFrame(step);
+                } else if (typeof global.setTimeout === 'function') {
+                    global.setTimeout(step, 16);
+                } else {
+                    cleanupAll(false);
+                    resolve(false);
+                }
+            };
+            step();
+        });
+    };
 
     // Call after intentional in-place lyric edits; normal source replacement is
     // already tracked by array identity without hashing the whole song per frame.
@@ -1210,6 +1280,7 @@
         compileProgram,
         programsReady,
         cancelPrograms,
+        warmPrograms,
         invalidateLines,
         isReducedMotion,
         finiteNumber,

@@ -2495,6 +2495,10 @@ void main() {
                     paperTile: { size: PAPER_TILE, data: getPaperTile() }
                 });
                 if (!made) { Effects.releaseApplication(app); fail(); return; }
+                if (typeof made.warm === 'function') {
+                    await made.warm(() => !mode.destroyed);
+                    if (mode.destroyed) { made.destroy(); Effects.releaseApplication(app); return; }
+                }
                 pixiApp = app;
                 glState = made;
                 made.canvas.className = 'inkdraft-canvas';
