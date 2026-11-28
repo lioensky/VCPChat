@@ -12,6 +12,7 @@
     if (!document) return;
 
     const GROUPS = [
+        ['archive-pick'],
         ['play', 'play-next', 'add-to-queue'],
         ['add-to-playlist', 'create-playlist-add', 'toggle-like'],
         ['start-radio', 'goto-artist', 'goto-album'],

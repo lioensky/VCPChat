@@ -289,21 +289,50 @@ function setupSidebar(app) {
 
     app.hidePlaylistDialog = () => { app.playlistDialog.classList.remove('visible'); app.pendingAddToPlaylist = null; };
 
+    // 从按钮打开（首页顶栏「操作」）时：菜单从按钮那边展开，按钮在菜单开着时保持点亮（aria-expanded）；再点一下按钮是收起。
+    // 打开前把按钮挂在菜单的 __mfAnchor 上（不走参数：showContextMenu 外面还包着几层，只传 x, y）。
+    let menuAnchor = null;
+    const watchMenuClose = () => {
+        const menu = app.contextMenu;
+        if (!menu || menu.__mfCloseWatch || typeof MutationObserver !== 'function') return;
+        menu.__mfCloseWatch = true;
+        let wasOpen = menu.classList.contains('visible');
+        new MutationObserver(() => {
+            const open = menu.classList.contains('visible');
+            if (open === wasOpen) return;
+            wasOpen = open;
+            if (open || !menuAnchor) return;
+            const anchor = menuAnchor;
+            menuAnchor = null;
+            anchor.setAttribute('aria-expanded', 'false');
+        }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+    };
+
     let ctxMenuRaf = 0;
     window.addEventListener?.('beforeunload', () => {
         if (ctxMenuRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(ctxMenuRaf); ctxMenuRaf = 0; }
     }, { once: true });
 
     app.showContextMenu = (x, y) => {
+        watchMenuClose();
+        const anchor = app.contextMenu.__mfAnchor || null;
+        app.contextMenu.__mfAnchor = null;
+        if (menuAnchor && menuAnchor !== anchor) menuAnchor.setAttribute('aria-expanded', 'false');
+        menuAnchor = anchor;
+        if (anchor) anchor.setAttribute('aria-expanded', 'true');
         app.updatePlaylistSubmenu();
         const sub = app.contextMenu.querySelector('.context-submenu');
         if (sub && sub.style.maxWidth) sub.style.maxWidth = '';
         app.contextMenu.style.left = `${x}px`; app.contextMenu.style.top = `${y}px`;
-        app.contextMenu.classList.add('visible');
+        // 下一帧量好位置再一起展开；这一帧先别露出来，免得整块先闪一下
+        app.contextMenu.classList.add('mf-opening', 'visible');
         if (ctxMenuRaf && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(ctxMenuRaf); ctxMenuRaf = 0; }
         ctxMenuRaf = requestAnimationFrame(() => {
             ctxMenuRaf = 0;
-            if (!app.contextMenu || !app.contextMenu.classList.contains('visible')) return;
+            if (!app.contextMenu || !app.contextMenu.classList.contains('visible')) {
+                app.contextMenu?.classList.remove('mf-opening');
+                return;
+            }
             // 先一次性读完几何信息，再写样式，避免单帧多次强制回流
             const rect = app.contextMenu.getBoundingClientRect();
             const subWidth = sub ? Math.max(sub.offsetWidth, 160) : 160;
@@ -327,7 +356,8 @@ function setupSidebar(app) {
             const room = Math.floor(left ? roomLeft : roomRight);
             if (sub && subWidth > room) sub.style.maxWidth = `${Math.max(room, 120)}px`;
             // 从按下右键的那一点长出来
-            window.MusicFluid?.bud(app.contextMenu, { x, y });
+            app.contextMenu.classList.remove('mf-opening');
+            window.MusicFluid?.bud(app.contextMenu, anchor && anchor.isConnected ? anchor : { x, y });
         });
     };
 

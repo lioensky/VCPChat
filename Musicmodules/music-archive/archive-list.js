@@ -1714,8 +1714,11 @@
                 + (typeof app.queueAdd === 'function' ? item('queue', '加入队列') : '')
                 + (typeof app.queuePlayNext === 'function' || typeof app.queueAdd === 'function' ? '<hr>' : '')
                 + (typeof app.toggleLike === 'function' ? item('like', indices.every((i) => app.isLiked(tracks()[i])) ? '取消喜欢' : '喜欢') : '')
-                + playlists().map((p, order) => item('pl', '加入「' + (p.name || '未命名歌单') + '」', '', ` data-id="${esc(p.id ?? order)}"`)).join('')
-                + item('pl-new', '新建歌单并加入')
+                // 有歌单选择器时只放一项「加入歌单…」，点开再挑（歌单多了菜单不会被撑得很长）；没有时退回逐个列出
+                + (global.MusicPlaylistPicker
+                    ? item('pl-pick', '加入歌单…')
+                    : playlists().map((p, order) => item('pl', '加入「' + (p.name || '未命名歌单') + '」', '', ` data-id="${esc(p.id ?? order)}"`)).join('')
+                        + item('pl-new', '新建歌单并加入'))
                 + '<hr>'
                 + item('remove', scope ? '从歌单「' + scope.name + '」移除' : '从曲库列表移除');
             document.body.appendChild(menu);
@@ -1732,7 +1735,17 @@
                     b.querySelector('span').textContent = `再点一次，移除这 ${indices.length} 首`;
                     return;
                 }
+                const at = b.getBoundingClientRect();
                 closeBatchMenu({ focus: true });
+                if (act === 'pl-pick') {
+                    const paths = indices.map((i) => (tracks()[i] || {}).path).filter(Boolean);
+                    global.MusicPlaylistPicker.open({
+                        app, paths, anchor: { x: at.left, y: at.top }, restore: r.viewport,
+                        label: title ? `${title} · ${paths.length} 首` : `已选 ${paths.length} 首`,
+                        onChange: () => (opts.onPlaylistsChanged ? opts.onPlaylistsChanged() : rebuild())
+                    });
+                    return;
+                }
                 if (act === 'play') {
                     // 播放所选：只放这几首，按目录里的顺序，队列名叫「所选 N 首」
                     const k = groupFirst >= 0 ? groupFirst : findRow(indices[0], null);
