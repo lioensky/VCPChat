@@ -402,3 +402,70 @@ test('MusicStageModeUtils.noiseTexture avoids per-frame gl.isTexture IPC and reb
     assert.notStrictEqual(t3, t1, 'rebuilds noise texture after webglcontextlost');
     assert.equal(createCalls, 2);
 });
+
+test('MusicStageRuntime.warmPrograms compiles in parallel, deduplicates per context, and cleans up on abort', async () => {
+    const R = window.MusicStageRuntime;
+    const KHR = 0x91B1;
+    let complete = false;
+    let linked = 0, deletedShaders = 0, deletedPrograms = 0, linkStatusReads = 0;
+    const rafQueue = [];
+    const prevRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = (fn) => { rafQueue.push(fn); return rafQueue.length; };
+    const makeGl = (withKhr) => ({
+        VERTEX_SHADER: 0x8B31, FRAGMENT_SHADER: 0x8B30, LINK_STATUS: 0x8B82,
+        isContextLost: () => false,
+        getExtension: (n) => (withKhr && n === 'KHR_parallel_shader_compile' ? { COMPLETION_STATUS_KHR: KHR } : null),
+        createShader: () => ({}),
+        shaderSource: () => {},
+        compileShader: () => {},
+        createProgram: () => ({}),
+        attachShader: () => {},
+        linkProgram: () => { linked += 1; },
+        deleteShader: () => { deletedShaders += 1; },
+        deleteProgram: () => { deletedPrograms += 1; },
+        getProgramParameter: (_p, pname) => {
+            if (pname === KHR) return complete;
+            if (pname === 0x8B82) { linkStatusReads += 1; return true; }
+            return 0;
+        }
+    });
+    try {
+        const specA = { vertex: 'va', fragment: 'fa' };
+        const specB = { vertex: 'vb', fragment: 'fb' };
+
+        // 1. Without KHR extension: returns false immediately with zero GL calls
+        assert.equal(await R.warmPrograms(makeGl(false), [specA]), false);
+        assert.equal(linked, 0);
+
+        // 2. With KHR: links all programs in parallel, polls non-blocking, commits LINK_STATUS and cleans up
+        const gl = makeGl(true);
+        const p1 = R.warmPrograms(gl, [specA, specB]);
+        assert.equal(linked, 2, 'kicks off both programs in parallel');
+        assert.equal(linkStatusReads, 0, 'does not block on LINK_STATUS while pending');
+        assert.equal(rafQueue.length, 1);
+
+        complete = true;
+        rafQueue.shift()();
+        assert.equal(await p1, true);
+        assert.equal(linkStatusReads, 2);
+        assert.equal(deletedShaders, 4);
+        assert.equal(deletedPrograms, 2);
+
+        // 3. Per-context dedup skips already-warmed specs
+        assert.equal(await R.warmPrograms(gl, [specA, specB]), true);
+        assert.equal(linked, 2, 'reused context skips duplicate pre-warm');
+
+        // 4. Abort via isAlive() cleans up temp shaders and programs without blocking
+        complete = false;
+        let alive = true;
+        const gl2 = makeGl(true);
+        const p2 = R.warmPrograms(gl2, [specA], () => alive);
+        alive = false;
+        rafQueue.shift()();
+        assert.equal(await p2, false);
+        assert.equal(deletedShaders, 6);
+        assert.equal(deletedPrograms, 3);
+    } finally {
+        if (prevRaf === undefined) delete window.requestAnimationFrame; else window.requestAnimationFrame = prevRaf;
+    }
+});
