@@ -25,7 +25,21 @@ const LYRIC_QUALITY_BONUS = Object.freeze({
 });
 const manualCandidateCache = new Map();
 const ILLEGAL_FILE_CHARS_RE = /[\\/:"*?<>|]/g;
+const QRC_TIMED_LINE_RE = /\[\d+,\d+\]/;
 let atomicTmpSeq = 0;
+
+function scanLyricFlags(lines) {
+    let hasTranslation = false;
+    let hasRomanization = false;
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        if (!line) continue;
+        if (!hasTranslation && line.translation) hasTranslation = true;
+        if (!hasRomanization && line.romanization) hasRomanization = true;
+        if (hasTranslation && hasRomanization) break;
+    }
+    return { hasTranslation, hasRomanization };
+}
 
 function sanitizeFilePart(str) {
     return String(str ?? '').replace(ILLEGAL_FILE_CHARS_RE, '_').trim();
@@ -245,7 +259,7 @@ async function fetchQQLyric(songCandidate) {
         const decryptedTrans = encryptedTransHex ? await qrcDecrypt(encryptedTransHex) : '';
         const decryptedRoma = encryptedRomanHex ? await qrcDecrypt(encryptedRomanHex) : '';
 
-        const isQrc = decryptedLyric.includes('(') && decryptedLyric.includes(')') && /\[\d+,\d+\]/.test(decryptedLyric);
+        const isQrc = decryptedLyric.includes('(') && decryptedLyric.includes(')') && QRC_TIMED_LINE_RE.test(decryptedLyric);
         const parsed = isQrc
             ? parseQRC(decryptedLyric, decryptedTrans, decryptedRoma)
             : parseLRC(decryptedLyric, decryptedTrans, decryptedRoma);
@@ -440,11 +454,14 @@ function createCandidateSummary(candidate, result) {
         sourceId: result.id || candidate.id
     });
 
-    const preview = lyrics.lines
-        .slice(0, 3)
-        .map(line => line.fullText)
-        .filter(Boolean)
-        .join(' / ');
+    const lines = lyrics.lines;
+    let preview = '';
+    const previewCap = Math.min(3, lines.length);
+    for (let i = 0; i < previewCap; i += 1) {
+        const text = lines[i]?.fullText;
+        if (text) preview = preview ? `${preview} / ${text}` : text;
+    }
+    const { hasTranslation, hasRomanization } = scanLyricFlags(lines);
 
     return {
         candidateKey,
@@ -457,9 +474,9 @@ function createCandidateSummary(candidate, result) {
         durationMs: candidate.durationMs || 0,
         matchScore: Math.round(candidate.matchScore || 0),
         isWordByWord: Boolean(lyrics.isWordByWord),
-        hasTranslation: lyrics.lines.some(line => Boolean(line.translation)),
-        hasRomanization: lyrics.lines.some(line => Boolean(line.romanization)),
-        lineCount: lyrics.lines.length,
+        hasTranslation,
+        hasRomanization,
+        lineCount: lines.length,
         preview
     };
 }
@@ -569,11 +586,12 @@ async function saveSelectedLyrics({ candidateKey, artist, title, lyricDir }) {
 function getLyricFeatureFlags(result) {
     const lyrics = result?.lyrics;
     const lines = Array.isArray(lyrics?.lines) ? lyrics.lines : [];
+    const { hasTranslation, hasRomanization } = scanLyricFlags(lines);
     return {
         valid: lines.length > 0,
         isWordByWord: Boolean(lyrics?.isWordByWord),
-        hasTranslation: lines.some(line => Boolean(line?.translation)),
-        hasRomanization: lines.some(line => Boolean(line?.romanization))
+        hasTranslation,
+        hasRomanization
     };
 }
 

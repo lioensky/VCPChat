@@ -15,12 +15,13 @@ const lyricApiUrl = 'https://music.163.com/api/song/lyric';
 const searchApiUrl = 'https://music.163.com/api/search/get/';
 const LRC_TIMESTAMP_LINE_RE = /\[(\d{2}:\d{2}[.:]\d{2,3})\](.*)/;
 const ILLEGAL_FILE_CHARS_RE = /[\\/:"*?<>|]/g;
+const SLASH_RE = /\//g;
 let legacyTmpSeq = 0;
 
 async function searchSongId(title, artist) {
     if (!title) return null;
     try {
-        const cleanedArtist = artist ? artist.replace(/\//g, ' ') : '';
+        const cleanedArtist = artist ? artist.replace(SLASH_RE, ' ') : '';
         const response = await axios.get(searchApiUrl, {
             params: {
                 s: `${title} ${cleanedArtist}`.trim(),
@@ -159,8 +160,16 @@ function getBestMatch(songs, artist) {
         return (matches / shorter.length + matches / longer.length + (matches - transpositions) / matches) / 3;
     };
 
-    for (const song of songs) {
-        const songArtists = (song?.artists || []).map(a => a?.name || '').filter(Boolean).join(' ');
+    for (let i = 0; i < songs.length; i += 1) {
+        const song = songs[i];
+        const artists = song?.artists;
+        let songArtists = '';
+        if (Array.isArray(artists)) {
+            for (let j = 0; j < artists.length; j += 1) {
+                const name = artists[j]?.name;
+                if (name) songArtists = songArtists ? `${songArtists} ${name}` : name;
+            }
+        }
         const score = calculateSimilarity(artist, songArtists);
 
         if (score > maxScore) {

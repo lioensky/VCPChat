@@ -68,22 +68,54 @@
         };
         // like 不传：单首时取反；多首时只要有一首没喜欢就全部设为喜欢（和多选「全部标记」的习惯一致）
         app.toggleLike = (input, { like, quiet = false } = {}) => {
-            const tracks = (Array.isArray(input) ? input : [input]).filter((t) => t && t.path);
+            const tracks = [];
+            if (Array.isArray(input)) {
+                for (let i = 0; i < input.length; i += 1) {
+                    const t = input[i];
+                    if (t && t.path) tracks.push(t);
+                }
+            } else if (input && input.path) {
+                tracks.push(input);
+            }
             if (!tracks.length) return null;
             const pl = ensure();
             const existing = new Set(pl.tracks);
-            const target = typeof like === 'boolean' ? like : !tracks.every((t) => existing.has(t.path));
+            let target;
+            if (typeof like === 'boolean') {
+                target = like;
+            } else {
+                target = false;
+                for (let i = 0; i < tracks.length; i += 1) {
+                    if (!existing.has(tracks[i].path)) { target = true; break; }
+                }
+            }
             const changed = [];
             if (target) {
-                for (const t of tracks) {
-                    if (!existing.has(t.path)) { existing.add(t.path); pl.tracks.unshift(t.path); changed.push(t); } // 最近喜欢的在最前
+                const added = [];
+                for (let i = 0; i < tracks.length; i += 1) {
+                    const t = tracks[i];
+                    if (!existing.has(t.path)) { existing.add(t.path); added.push(t.path); changed.push(t); } // 最近喜欢的在最前
+                }
+                if (added.length === 1) {
+                    pl.tracks.unshift(added[0]);
+                } else if (added.length > 1) {
+                    added.reverse();
+                    pl.tracks = added.concat(pl.tracks);
                 }
             } else {
                 const toRemove = new Set();
-                for (const t of tracks) {
+                for (let i = 0; i < tracks.length; i += 1) {
+                    const t = tracks[i];
                     if (existing.has(t.path) && !toRemove.has(t.path)) { toRemove.add(t.path); changed.push(t); }
                 }
-                if (toRemove.size) pl.tracks = pl.tracks.filter((p) => !toRemove.has(p));
+                if (toRemove.size) {
+                    const kept = [];
+                    const prev = pl.tracks;
+                    for (let i = 0; i < prev.length; i += 1) {
+                        if (!toRemove.has(prev[i])) kept.push(prev[i]);
+                    }
+                    pl.tracks = kept;
+                }
             }
             if (!changed.length) return target;
             invalidateLikedCache();

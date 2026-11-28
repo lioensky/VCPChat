@@ -48,15 +48,25 @@ function collapseRoots(dirs) {
 // 已有曲目所在的文件夹（本机文件），按曲目数从多到少
 function inferredDirs(tracks) {
     const count = new Map();
-    for (const t of tracks || []) {
+    const dirNormCache = new Map();
+    const list = tracks || [];
+    for (let i = 0; i < list.length; i += 1) {
+        const t = list[i];
         const p = t && t.path;
-        if (typeof p !== 'string' || URL_SCHEME_RE.test(p) || t.isRemote) continue;
+        if (typeof p !== 'string' || t.isRemote || URL_SCHEME_RE.test(p)) continue;
         const d = path.dirname(p);
-        const k = norm(d);
+        let k = dirNormCache.get(d);
+        if (k === undefined) {
+            k = norm(d);
+            dirNormCache.set(d, k);
+        }
         const had = count.get(k);
         if (had) had.n++; else count.set(k, { dir: d, n: 1 });
     }
-    return [...count.values()].sort((a, b) => b.n - a.n).map((e) => e.dir);
+    const entries = [...count.values()].sort((a, b) => b.n - a.n);
+    const out = new Array(entries.length);
+    for (let i = 0; i < entries.length; i += 1) out[i] = entries[i].dir;
+    return out;
 }
 
 // 这次扫到的和上次存的比，有没有变化（新增、删除、文件改过）
@@ -66,16 +76,31 @@ function changedSince(known, scanned, root) {
     const pSlash = p + '/';
     const pBack = p + '\\';
     const before = new Map();
-    for (const t of known || []) {
-        if (!t || typeof t.path !== 'string' || t.isRemote || URL_SCHEME_RE.test(t.path)) continue;
-        const c = norm(t.path);
-        if (c === p || c.startsWith(pSep) || c.startsWith(pSlash) || c.startsWith(pBack)) {
-            before.set(t.path, t);
+    const dirUnderCache = new Map();
+    const knownList = known || [];
+    for (let i = 0; i < knownList.length; i += 1) {
+        const t = knownList[i];
+        const tp = t && t.path;
+        if (typeof tp !== 'string' || t.isRemote || URL_SCHEME_RE.test(tp)) continue;
+        let under;
+        if (!tp.includes('..')) {
+            const d = path.dirname(tp);
+            under = dirUnderCache.get(d);
+            if (under === undefined) {
+                const dn = norm(d);
+                under = dn === p || dn.startsWith(pSep) || dn.startsWith(pSlash) || dn.startsWith(pBack);
+                dirUnderCache.set(d, under);
+            }
+        } else {
+            const c = norm(tp);
+            under = c === p || c.startsWith(pSep) || c.startsWith(pSlash) || c.startsWith(pBack);
         }
+        if (under) before.set(tp, t);
     }
     const after = scanned || [];
     if (after.length !== before.size) return true;
-    for (const t of after) {
+    for (let i = 0; i < after.length; i += 1) {
+        const t = after[i];
         const k = before.get(t.path);
         if (!k) return true;
         if (Number(k.size) !== Number(t.size) || Math.abs((Number(k.mtimeMs) || 0) - (Number(t.mtimeMs) || 0)) > 1) return true;
@@ -119,9 +144,20 @@ function createLibraryWatch({
     // 加过的文件夹在前；推出来的文件夹去掉被加过的文件夹包含的，也去掉包含加过的文件夹的（太宽）
     const roots = async () => {
         const remembered = collapseRoots((await readFolders().catch(() => [])) || []);
+        const rememberedNorms = remembered.map(norm);
         const known = (await readKnown().catch(() => [])) || [];
-        const inferred = collapseRoots(inferredDirs(known))
-            .filter((d) => !remembered.some((r) => isUnder(d, r) || isUnder(r, d)));
+        const candidates = collapseRoots(inferredDirs(known));
+        const inferred = [];
+        for (let i = 0; i < candidates.length; i += 1) {
+            const d = candidates[i];
+            const dn = norm(d);
+            let overlaps = false;
+            for (let j = 0; j < rememberedNorms.length; j += 1) {
+                const rn = rememberedNorms[j];
+                if (isUnderNorm(dn, rn) || isUnderNorm(rn, dn)) { overlaps = true; break; }
+            }
+            if (!overlaps) inferred.push(d);
+        }
         return { list: [...remembered, ...inferred], remembered, known };
     };
     let rememberedNow = [];
@@ -278,19 +314,21 @@ function createLibraryWatch({
     const folders = async () => collapseRoots((await readFolders().catch(() => [])) || []);
     const forgetFolder = async (dir) => {
         if (!dir) return false;
+        const dirNorm = norm(dir);
+        const underDir = (candidate) => isUnderNorm(norm(candidate), dirNorm);
         const list = (await readFolders().catch(() => [])) || [];
-        const kept = list.filter((d) => !isUnder(d, dir));
+        const kept = list.filter((d) => !underDir(d));
         if (kept.length !== list.length) await writeFolders(kept);
-        rememberedNow = rememberedNow.filter((d) => !isUnder(d, dir));
-        queue = queue.filter((d) => !isUnder(d, dir));
+        rememberedNow = rememberedNow.filter((d) => !underDir(d));
+        queue = queue.filter((d) => !underDir(d));
         for (const [rootKey, timerId] of timers) {
-            if (rootKey !== 'start' && isUnder(rootKey, dir)) {
+            if (rootKey !== 'start' && underDir(rootKey)) {
                 clearTimer(timerId);
                 timers.delete(rootKey);
             }
         }
         for (let i = watchers.length - 1; i >= 0; i--) {
-            if (isUnder(watchers[i].root, dir)) {
+            if (underDir(watchers[i].root)) {
                 try { watchers[i].w.close(); } catch (e) { /* 已关 */ }
                 watchers.splice(i, 1);
             }

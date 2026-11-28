@@ -31,7 +31,15 @@
         const cached = wordsCache.get(line);
         if (cached && cached.check === check && cached.raw === raw && cached.len === len) return cached.packed;
         const words = check(line);
-        const packed = words ? words.map((w) => ({ text: w.text, s: Number(w.startTime), e: Number(w.endTime) })) : null;
+        let packed = null;
+        if (words) {
+            const wLen = words.length;
+            packed = new Array(wLen);
+            for (let i = 0; i < wLen; i += 1) {
+                const w = words[i];
+                packed[i] = { text: w.text, s: Number(w.startTime), e: Number(w.endTime) };
+            }
+        }
         wordsCache.set(line, { check, raw, len, packed });
         return packed;
     };
@@ -50,8 +58,12 @@
         if (all === cachedLyricsSrc && all.length === cachedLyricsLen) return cachedLyricsLines;
         cachedLyricsSrc = all;
         cachedLyricsLen = all.length;
-        cachedLyricsLines = all.filter((l) => textOf(l));
-        return cachedLyricsLines;
+        const out = [];
+        for (let i = 0; i < all.length; i += 1) {
+            if (textOf(all[i])) out.push(all[i]);
+        }
+        cachedLyricsLines = out;
+        return out;
     };
 
     // 唱到第几行、这一行和下一行（空行跳过，间奏时显示下一句）
@@ -88,7 +100,7 @@
         const announce = () => {
             try { global.document?.dispatchEvent?.(new CustomEvent('music-desktop-lyrics-change', { detail: { on: state.on } })); } catch (e) { /* 旧内核 */ }
         };
-        const key = (s) => [s.path, s.index, s.playing, s.hasLyrics, s.line && s.line.text, s.line && s.line.tr, s.next && s.next.text, s.next && s.next.tr].join('\u0001');
+        const key = (s) => `${s.path ?? ''}\u0001${s.index}\u0001${s.playing ? 1 : 0}\u0001${s.hasLyrics ? 1 : 0}\u0001${(s.line && s.line.text) || ''}\u0001${(s.line && s.line.tr) || ''}\u0001${(s.next && s.next.text) || ''}\u0001${(s.next && s.next.tr) || ''}`;
         const publish = (force = false, fromEvent = false) => {
             if (!state.on || !api?.publishDesktopLyrics) return;
             // 暂停且歌曲/歌词/译文开关/进度均无变化时，定时轮询直接短路，避免每秒 4 次构造 snapshot 与逐字数组

@@ -31,12 +31,13 @@ function setupOutput(app) {
                 if (preferred.length > 0) {
                     const group = document.createElement('optgroup');
                     group.label = result.devices.preferred_name || '推荐设备';
-                    preferred.forEach(d => {
+                    for (let i = 0; i < preferred.length; i += 1) {
+                        const d = preferred[i];
                         const opt = document.createElement('option');
                         opt.value = d.id;
                         opt.textContent = d.name;
                         group.appendChild(opt);
-                    });
+                    }
                     target.appendChild(group);
                 }
 
@@ -44,12 +45,13 @@ function setupOutput(app) {
                 if (other.length > 0) {
                     const group = document.createElement('optgroup');
                     group.label = '其他设备';
-                    other.forEach(d => {
+                    for (let i = 0; i < other.length; i += 1) {
+                        const d = other[i];
                         const opt = document.createElement('option');
                         opt.value = d.id;
                         opt.textContent = d.name;
                         group.appendChild(opt);
-                    });
+                    }
                     target.appendChild(group);
                 }
                 if (useFrag) app.deviceSelect.appendChild(target);
@@ -81,12 +83,15 @@ function setupOutput(app) {
         if (!note) return;
         // 独占这句只在开关还开着时说；用户已经关掉独占就不用提了。
         let text = '';
-        if (state.output_fallback.length > 0) {
-            const lines = state.output_fallback
-                .filter((k) => k !== 'exclusive' || app.wasapiSwitch?.checked)
-                .map((k) => FALLBACK_TEXT[k])
-                .filter(Boolean);
-            text = lines.join(' ');
+        const list = state.output_fallback;
+        if (list.length > 0) {
+            const wasapiOn = Boolean(app.wasapiSwitch?.checked);
+            for (let i = 0; i < list.length; i += 1) {
+                const k = list[i];
+                if (k === 'exclusive' && !wasapiOn) continue;
+                const msg = FALLBACK_TEXT[k];
+                if (msg) text = text ? `${text} ${msg}` : msg;
+            }
         }
         const hidden = text.length === 0;
         if (note.textContent !== text) note.textContent = text;

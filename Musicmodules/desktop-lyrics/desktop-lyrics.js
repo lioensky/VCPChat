@@ -56,7 +56,7 @@
         }
 
         const line = snap && snap.line;
-        const key = snap ? [snap.path, snap.index, line && line.text].join('\u0001') : '';
+        const key = snap ? `${snap.path ?? ''}\u0001${snap.index}\u0001${(line && line.text) || ''}` : '';
         if (key !== lineKey) {
             lineKey = key;
             cur.textContent = '';
@@ -66,11 +66,15 @@
             if (line && line.text) {
                 if (Array.isArray(line.words) && line.words.length) {
                     const frag = document.createDocumentFragment();
-                    words = line.words.map((w) => {
+                    const srcWords = line.words;
+                    const len = srcWords.length;
+                    words = new Array(len);
+                    for (let i = 0; i < len; i += 1) {
+                        const w = srcWords[i];
                         const el = wordSpan(w.text);
                         frag.appendChild(el);
-                        return { el, s: w.s, e: w.e, last: '' };
-                    });
+                        words[i] = { el, s: w.s, e: w.e, last: '' };
+                    }
                     cur.appendChild(frag);
                 } else {
                     // 整句按到下一句的时间填（最长 8 秒，免得长间奏前的一句填得太慢）
