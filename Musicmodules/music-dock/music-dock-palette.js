@@ -34,10 +34,14 @@
     /* 把输入拆成自由文字和 --过滤。"夜 --歌手 远舟" → { text: '夜', artist: '远舟' }。 */
     const parseQuery = (raw) => {
         const out = { text: '', artist: '', album: '', title: '', pendingFlag: null };
-        const tokens = String(raw || '').split(WS_SPLIT_RE).filter(Boolean);
+        const parts = String(raw || '').split(WS_SPLIT_RE);
         const free = [];
         let current = null;
-        for (const token of tokens) {
+        let last = '';
+        for (let i = 0; i < parts.length; i += 1) {
+            const token = parts[i];
+            if (!token) continue;
+            last = token;
             // 「歌手:周杰伦」「专辑：叶惠美」这种写法和 --歌手 一样（冒号后面可以空一格再写名字）
             const colon = COLON_RE.exec(token);
             const colonKey = colon && (FLAG_LOOKUP.get(colon[1]) || FLAG_LOOKUP.get(lower(colon[1])));
@@ -58,7 +62,6 @@
             else free.push(token);
         }
         out.text = free.join(' ');
-        const last = tokens[tokens.length - 1] || '';
         if (TRAIL_WS_RE.test(raw || '') === false && last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2))) {
             out.pendingFlag = last.slice(2);
         }
@@ -67,12 +70,19 @@
 
     const hasSongFilter = (q) => Boolean(q.text || q.artist || q.album || q.title);
 
-    const compileQuery = (q) => ({
-        artist: q.artist ? lower(q.artist) : '',
-        album: q.album ? lower(q.album) : '',
-        title: q.title ? lower(q.title) : '',
-        words: q.text ? lower(q.text).split(WS_SPLIT_RE).filter(Boolean) : []
-    });
+    const compileQuery = (q) => {
+        const words = [];
+        if (q.text) {
+            const parts = lower(q.text).split(WS_SPLIT_RE);
+            for (let i = 0; i < parts.length; i += 1) if (parts[i]) words.push(parts[i]);
+        }
+        return {
+            artist: q.artist ? lower(q.artist) : '',
+            album: q.album ? lower(q.album) : '',
+            title: q.title ? lower(q.title) : '',
+            words
+        };
+    };
 
     /* 歌是否匹配：自由文字在标题/歌手/专辑里找，过滤只在对应字段里找；越靠前的命中分越高。 */
     const scoreTrackCompiled = (track, cq, stripExtension) => {
@@ -817,10 +827,12 @@
                         : '<span>输入歌名、歌手或专辑</span><span class="md-cmd-tip">只找某个歌手或专辑：写「歌手:周杰伦」「专辑:叶惠美」</span><span class="md-cmd-tip">也可以直接输入「暂停」「音量 50」这样的指令</span>';
                 }
                 if (list.childNodes.length !== 1 || list.firstChild !== emptyEl) list.replaceChildren(emptyEl);
+                list.classList.remove('md-has-drop');
                 setActiveMeta('', true);
                 return;
             }
             const drop = ensureDrop();
+            list.classList.toggle('md-has-drop', Boolean(drop));
             // 列表是倒着排的（column-reverse），所以每组的标题写在这组最后一项后面，显示出来就在上方。
             // 就地对齐列表子节点，保留已在 DOM 中的行按钮避免每次按键全量拆装触发 800+ 节点样式重算。
             const desired = [];
@@ -879,6 +891,7 @@
                 const height = pre ? pre.height : row.offsetHeight;
                 const drop = ensureDrop();
                 if (drop && !drop.isConnected) list.appendChild(drop);
+                list.classList.toggle('md-has-drop', Boolean(drop));
                 if (drop) global.MusicFluid.slide(drop, { top, height }, { key: 'md-cmd', axis: 'y', lead: 140, trail: 300 });
             }
             if (scroll) row.scrollIntoView?.({ block: 'nearest' });

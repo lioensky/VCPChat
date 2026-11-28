@@ -405,6 +405,7 @@
         const activeMenuTrails = new Set();
         const activeBtnByDrop = new WeakMap();
         const dropByRow = new WeakMap();
+        const rowByDrop = new WeakMap();
         const trailForRow = (row) => {
             for (let i = 0; i < TRAILS.length; i += 1) {
                 if (row.matches(TRAILS[i].row)) return TRAILS[i];
@@ -415,17 +416,21 @@
             let drop = dropByRow.get(row);
             if (drop && drop.parentElement === row) return drop;
             drop = row.querySelector(':scope > .mf-trail');
-            if (drop) dropByRow.set(row, drop);
+            if (drop) { dropByRow.set(row, drop); rowByDrop.set(drop, row); }
             return drop;
         };
         const setTrailOn = (drop, on, isMenu) => {
             if (!drop) return;
+            const row = drop.parentElement || rowByDrop.get(drop);
+            if (row) rowByDrop.set(drop, row);
             if (on) {
                 drop.classList.add('mf-on');
+                row?.classList.add('mf-trail-on');
                 activeTrails.add(drop);
                 if (isMenu) activeMenuTrails.add(drop);
             } else {
                 drop.classList.remove('mf-on');
+                row?.classList.remove('mf-trail-on');
                 activeTrails.delete(drop);
                 activeMenuTrails.delete(drop);
                 activeBtnByDrop.delete(drop);
@@ -439,6 +444,7 @@
                 drop.setAttribute('aria-hidden', 'true');
                 row.append(drop);
                 dropByRow.set(row, drop);
+                rowByDrop.set(drop, row);
             }
             return drop;
         };

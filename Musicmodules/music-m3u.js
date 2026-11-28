@@ -40,14 +40,16 @@
     };
 
     const uniqueId = (lists) => {
-        const taken = new Set((lists || []).map((p) => String(p && p.id || '')));
+        const taken = new Set();
+        for (let i = 0; lists && i < lists.length; i += 1) taken.add(String(lists[i] && lists[i].id || ''));
         let id = Date.now();
         while (taken.has(String(id))) id += 1;
         return String(id);
     };
     const uniqueName = (name, lists) => {
         const base = String(name || '').trim() || '导入的歌单';
-        const taken = new Set((lists || []).map((p) => String(p && p.name || '')));
+        const taken = new Set();
+        for (let i = 0; lists && i < lists.length; i += 1) taken.add(String(lists[i] && lists[i].name || ''));
         if (!taken.has(base)) return base;
         for (let n = 2; ; n++) if (!taken.has(`${base} (${n})`)) return `${base} (${n})`;
     };
@@ -100,10 +102,15 @@
                 const key = norm(t.path);
                 if (!byNorm.has(key)) byNorm.set(key, t);
             }
-            const tracks = (pl.tracks || []).map((p) => {
+            const rawTracks = pl.tracks || [];
+            const tracks = [];
+            for (let i = 0; i < rawTracks.length; i += 1) {
+                const p = rawTracks[i];
                 const t = byNorm.get(norm(p));
-                return t ? { path: t.path, title: t.title || '', artist: t.artist || '', duration: Number(t.duration) || 0 } : { path: p };
-            }).filter((t) => typeof t.path === 'string' && !SCHEME_RE.test(t.path)); // 云端（WebDAV）的歌别的播放器打不开
+                const path = t ? t.path : p;
+                if (typeof path !== 'string' || SCHEME_RE.test(path)) continue; // 云端（WebDAV）的歌别的播放器打不开
+                tracks.push(t ? { path, title: t.title || '', artist: t.artist || '', duration: Number(t.duration) || 0 } : { path });
+            }
             if (!tracks.length) { toast(`「${pl.name}」里没有本机的歌，没什么可导出的`, { kind: 'error' }); return null; }
             let res;
             try { res = await api().exportMusicM3u({ name: pl.name || '', tracks }); } catch (e) { res = { ok: false, message: String(e && e.message || e) }; }
@@ -120,24 +127,43 @@
             return res.file;
         };
 
-        const commands = () => [
-            { id: 'm3u-import', group: '歌单', icon: 'list-music', title: '导入歌单（.m3u8 / .m3u）', desc: '把别的播放器导出的歌单变成这里的歌单；也可以直接把文件拖进窗口', words: 'import m3u m3u8 playlist 导入 歌单 daoru gedan', run: () => importFile() },
-            ...lists().filter((pl) => pl && (pl.tracks || []).length).map((pl) => ({
-                id: `m3u-export:${pl.id}`, group: '歌单', icon: 'list-music', title: `导出歌单「${pl.name || '未命名歌单'}」`,
-                desc: `${pl.tracks.length} 首，存成 .m3u8，别的播放器也能打开`, words: `export m3u m3u8 playlist 导出 歌单 daochu gedan ${pl.name || ''}`,
-                run: () => exportPlaylist(pl)
-            }))
-        ];
+        const commands = () => {
+            const out = [
+                { id: 'm3u-import', group: '歌单', icon: 'list-music', title: '导入歌单（.m3u8 / .m3u）', desc: '把别的播放器导出的歌单变成这里的歌单；也可以直接把文件拖进窗口', words: 'import m3u m3u8 playlist 导入 歌单 daoru gedan', run: () => importFile() }
+            ];
+            const pls = lists();
+            for (let i = 0; i < pls.length; i += 1) {
+                const pl = pls[i];
+                if (!pl || !pl.tracks || !pl.tracks.length) continue;
+                out.push({
+                    id: `m3u-export:${pl.id}`, group: '歌单', icon: 'list-music', title: `导出歌单「${pl.name || '未命名歌单'}」`,
+                    desc: `${pl.tracks.length} 首，存成 .m3u8，别的播放器也能打开`, words: `export m3u m3u8 playlist 导出 歌单 daochu gedan ${pl.name || ''}`,
+                    run: () => exportPlaylist(pl)
+                });
+            }
+            return out;
+        };
 
         // 拖进来的文件里有曲库收不了的格式（.ape、.wma、图片、压缩包…）时说一声：以前松手后什么也不发生，不知道是没加上还是还在扫
         const noteUnsupported = (files, dirs = 0) => {
-            const odd = files.filter((f) => { const ext = extOf(f.name); return ext && !SUPPORTED.has(ext) && !M3U_EXT_RE.test(ext); });
-            if (!odd.length) return;
-            const kinds = [...new Set(odd.map((f) => extOf(f.name).toUpperCase()))].slice(0, 4).join('、');
-            const all = odd.length === files.length && !dirs;
+            let oddCount = 0;
+            const kindList = [];
+            const seenKinds = new Set();
+            for (let i = 0; i < files.length; i += 1) {
+                const ext = extOf(files[i].name);
+                if (!ext || SUPPORTED.has(ext) || M3U_EXT_RE.test(ext)) continue;
+                oddCount += 1;
+                if (kindList.length < 4) {
+                    const up = ext.toUpperCase();
+                    if (!seenKinds.has(up)) { seenKinds.add(up); kindList.push(up); }
+                }
+            }
+            if (!oddCount) return;
+            const kinds = kindList.join('、');
+            const all = oddCount === files.length && !dirs;
             toast(all
-                ? `拖进来的${odd.length > 1 ? ` ${odd.length} 个` : ''}文件曲库收不了（${kinds}）。能加的格式：FLAC、MP3、WAV、OGG、M4A，或者整个文件夹`
-                : `有 ${odd.length} 个文件曲库收不了（${kinds}），跳过了；其余的正在加进曲库`, { kind: all ? 'error' : 'info', duration: 6000 });
+                ? `拖进来的${oddCount > 1 ? ` ${oddCount} 个` : ''}文件曲库收不了（${kinds}）。能加的格式：FLAC、MP3、WAV、OGG、M4A，或者整个文件夹`
+                : `有 ${oddCount} 个文件曲库收不了（${kinds}），跳过了；其余的正在加进曲库`, { kind: all ? 'error' : 'info', duration: 6000 });
         };
 
         // 拖进来的 .m3u / .m3u8：当歌单导入（music.js 那边把音频文件加进曲库，歌单文件它会忽略）
@@ -188,17 +214,30 @@
             const onDragLeave = (event) => { if (!isFileDrag(event)) return; depth = Math.max(0, depth - 1); if (!depth) hideHint(); };
             const onDrop = (event) => {
                 // 文件夹名也可能带点（「Vol.1」）：用 webkitGetAsEntry 认出文件夹，只看真正的文件
+                const dt = event.dataTransfer;
+                const rawFiles = dt?.files;
                 if (isFileDrag(event)) {
-                    const items = Array.from(event.dataTransfer?.items || []);
-                    const plain = items.length
-                        ? items.map((it) => { let e = null; try { e = it.webkitGetAsEntry?.(); } catch (x) { e = null; } return e && e.isDirectory ? null : it.getAsFile?.(); }).filter(Boolean)
-                        : Array.from(event.dataTransfer?.files || []);
-                    const dirs = items.length - plain.length;
+                    const items = dt?.items;
+                    const plain = [];
+                    let dirs = 0;
+                    if (items && items.length) {
+                        for (let i = 0; i < items.length; i += 1) {
+                            const it = items[i];
+                            let entry = null;
+                            try { entry = it.webkitGetAsEntry?.(); } catch (x) { entry = null; }
+                            if (entry && entry.isDirectory) { dirs += 1; continue; }
+                            const f = it.getAsFile?.();
+                            if (f) plain.push(f);
+                        }
+                    } else if (rawFiles) {
+                        for (let i = 0; i < rawFiles.length; i += 1) plain.push(rawFiles[i]);
+                    }
                     noteUnsupported(plain, dirs);
                 }
-                const files = Array.from(event.dataTransfer?.files || []).filter((f) => M3U_NAME_RE.test(f.name || ''));
-                if (!files.length) return;
-                for (const f of files) {
+                if (!rawFiles || !rawFiles.length) return;
+                for (let i = 0; i < rawFiles.length; i += 1) {
+                    const f = rawFiles[i];
+                    if (!f || !M3U_NAME_RE.test(f.name || '')) continue;
                     let p = '';
                     try { p = api().getPathForFile(f); } catch (e) { p = ''; }
                     if (p) importFile(p);

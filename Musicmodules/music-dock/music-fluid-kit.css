@@ -502,7 +502,7 @@ body.music-fl-low #music-dock-root .md-keys-box { -webkit-backdrop-filter: none;
     radial-gradient(80% 140% at 0% 50%, color-mix(in srgb, var(--mf-tint) 20%, transparent), transparent 70%),
     var(--mf-hover);
 }
-#music-dock-root .md-cmd-list:has(> .md-cmd-drop) .md-cmd-row.md-act { background: none; }
+#music-dock-root .md-cmd-list.md-has-drop .md-cmd-row.md-act { background: none; }
 
 /* ───────── 按下的手感统一：压扁一点，松手时鼓过头再回来 ─────────
  * 抽屉里的圆形小按钮、弹窗按钮、提示条上的按钮都用同一条回弹曲线；按下时快、松手时慢。
@@ -723,8 +723,8 @@ body.music-reduce-motion .mf-trail { transition: opacity .12s; transform: none; 
   transform: scale(.96, .7);
 }
 #music-dock-root .md-ql > .mf-trail.mf-on { transform: none; }
-#music-dock-root .md-ql:has(> .mf-trail.mf-on) .md-qi:not(.md-cur):hover { background: none; }
-#music-dock-root .md-ql:has(.md-qdrag) > .mf-trail { opacity: 0; }
+#music-dock-root .md-ql.mf-trail-on .md-qi:not(.md-cur):hover { background: none; }
+#music-dock-root .md-ql.md-qdragging > .mf-trail { opacity: 0; }
 /* 右键菜单、子菜单、档案的批量菜单和排序菜单：那一汪在菜单项之间竖着流；有它时菜单项本身不再换底色 */
 :is(.context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) { isolation: isolate; }
 :is(.context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) > .mf-trail {
@@ -741,8 +741,8 @@ body.music-reduce-motion .mf-trail { transition: opacity .12s; transform: none; 
     var(--mf-hover);
 }
 :is(.context-menu, .context-submenu, .archive-batch-menu, .archive-list-sort-menu) > .mf-trail.mf-on { transform: none; }
-:is(.context-menu, .context-submenu):has(> .mf-trail.mf-on) :is(.context-menu-item, .submenu-item):hover,
-:is(.archive-batch-menu, .archive-list-sort-menu):has(> .mf-trail.mf-on) > button:is(:hover, :focus-visible) { background: none; }
+:is(.context-menu, .context-submenu).mf-trail-on :is(.context-menu-item, .submenu-item):hover,
+:is(.archive-batch-menu, .archive-list-sort-menu).mf-trail-on > button:is(:hover, :focus-visible) { background: none; }
 /* 键盘移到菜单项上：不要全局那圈硬描边，换成和输入框一样的一圈强调色细光 */
 :is(.archive-batch-menu, .archive-list-sort-menu) > button:focus-visible:not(#messageInput) {
   outline: none;
@@ -760,7 +760,7 @@ body.music-reduce-motion .mf-trail { transition: opacity .12s; transform: none; 
   transform: scale(.5);
 }
 #music-dock-root :is(.md-quick-g, .md-slots) > .mf-trail.mf-on { transform: none; }
-#music-dock-root :is(.md-quick-g, .md-slots):has(> .mf-trail.mf-on) > .md-slot:hover { background: none; }
+#music-dock-root :is(.md-quick-g, .md-slots).mf-trail-on > .md-slot:hover { background: none; }
 
 /* ───────── 弹窗里的列表（歌单编辑的歌曲、云端导入的服务器和文件）：手底下那一汪竖着流 ─────────
  * 有它时行本身不再换悬停底色；已在歌单里、已选中的行保留自己的强调色光。 */
@@ -773,14 +773,14 @@ body.music-reduce-motion .mf-trail { transition: opacity .12s; transform: none; 
   transform: scale(.96, .7);
 }
 :is(#modal-song-list, .webdav-file-list, .webdav-server-list) > .mf-trail.mf-on { transform: none; }
-#modal-song-list:has(> .mf-trail.mf-on) > .music-modal-song-item:not(.in-playlist):hover,
-.webdav-file-list:has(> .mf-trail.mf-on) > .webdav-file-item:hover,
-.webdav-server-list:has(> .mf-trail.mf-on) > .webdav-server-item:not(.active):hover { background: none; }
+#modal-song-list.mf-trail-on > .music-modal-song-item:not(.in-playlist):hover,
+.webdav-file-list.mf-trail-on > .webdav-file-item:hover,
+.webdav-server-list.mf-trail-on > .webdav-server-item:not(.active):hover { background: none; }
 /* 键盘焦点：那一汪跟着焦点走时，焦点提示画在它身上（一圈强调色细光），不再在按钮外面另套一个方框 */
 :is(.archive-nav, .archive-empty):has(> button:focus-visible) > .mf-trail.mf-on {
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--mf-tint) 60%, transparent);
 }
-#music-archive-view :is(.archive-nav, .archive-empty):has(> .mf-trail.mf-on) > button:focus-visible:not(#messageInput) { outline: none; }
+#music-archive-view :is(.archive-nav, .archive-empty).mf-trail-on > button:focus-visible:not(#messageInput) { outline: none; }
 
 /* ───────── 弹窗里的滚动条 ─────────
  * 全局滚动条是 6px、强调色的滑块（themes.css，带 !important），在玻璃弹窗里太跳。

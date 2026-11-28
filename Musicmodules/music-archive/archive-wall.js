@@ -375,7 +375,7 @@
     };
     const SPRING_ENTER = springEase(360, 24);
     const SPRING_FLOW = springEase(300, 34);
-    const hueOf = (str) => { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
+    const hueOf = (str) => { const s = String(str); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 360; };
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -530,10 +530,7 @@
             if (reduced()) return;
             st.enterUntil = performance.now() + 340 + (SPRING_ENTER.ms || 600);
         };
-        /*
-         * 换一组之前，旧的那面墙先整体抬起、缩小、淡出（同样从左上往右下一波），
-         * 拿一层快照盖在上面跑，底下立刻换成新的一组接着落下来。
-         */
+        // 换组前用快照盖在上面淡出，底下立刻切到新组落位
         const TRANSLATE_RE = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/;
         let ghostEl = null;
         let ghostTimer = 0;
@@ -711,7 +708,7 @@
             const isNow = p.index === i && p.active;
             const isCur = p.index === i;
             const canTransport = isCur && typeof opts.transport === 'function';
-            const subText = [m.artist, m.album].filter(Boolean).join(' · ');
+            const subText = m.artist ? (m.album ? `${m.artist} · ${m.album}` : m.artist) : (m.album || '');
             const key = `${i}|${m.code || ''}|${m.duration || ''}|${m.title}|${subText}|${isNow ? 1 : 0}|${isCur ? 1 : 0}|${canTransport ? 1 : 0}`;
             if (key !== panelStateKey) {
                 panelStateKey = key;
@@ -741,10 +738,7 @@
             if (!opts.progress || !panel.parentNode || !st.expanded) return false;
             return opts.playing().index === Number(panel.dataset.item);
         };
-        /*
-         * 卡里的歌词：展开的是正在播放的那首、而且有带时间的词时，大卡上半部分滚三四行，
-         * 当前这行亮、前后几行淡；换行时整卷往上推一行。
-         */
+        // 展开的是当前播放曲目且有带时间歌词时，大卡上半部滚显并高亮当前行
         const lyricEl = panel.querySelector('.aw-lyric');
         const lyricRoll = lyricEl.firstChild;
         let lyricSrc = null, lyricTimed = false, lyricAt = -2;
@@ -752,10 +746,16 @@
             const lines = opts.lyrics ? opts.lyrics() : [];
             if (lines !== lyricSrc) {
                 lyricSrc = lines;
-                lyricTimed = lines.length > 1 && lines.some((l) => Number(l.time) > 0);
+                lyricTimed = false;
+                for (let i = 0; lines.length > 1 && i < lines.length; i++) if (+lines[i].time > 0) { lyricTimed = true; break; }
                 lyricAt = -2;
                 if (lyricTimed) {
-                    lyricRoll.innerHTML = lines.map((l) => '<p>' + esc(l.original || l.fullText || l.text || '') + (l.translation ? '<small>' + esc(l.translation) + '</small>' : '') + '</p>').join('');
+                    let html = '';
+                    for (let i = 0; i < lines.length; i++) {
+                        const l = lines[i];
+                        html += '<p>' + esc(l.original || l.fullText || l.text || '') + (l.translation ? '<small>' + esc(l.translation) + '</small>' : '') + '</p>';
+                    }
+                    lyricRoll.innerHTML = html;
                 }
             }
             if (!lyricTimed) { lyricEl.hidden = true; return; }
@@ -1100,9 +1100,10 @@
         let pingRaf = 0;
         const tileOf = (target) => {
             const t = target && target.closest ? target.closest('.aw-tile') : null;
-            if (!t || !t.dataset.id) return null;
-            const [bc, br, slot] = t.dataset.id.split(':').map(Number);
-            return instanceAt(st.g, bc, br, slot, st.gap);
+            const id = t && t.dataset.id;
+            if (!id) return null;
+            const a = id.indexOf(':'), b = id.indexOf(':', a + 1);
+            return instanceAt(st.g, +id.slice(0, a), +id.slice(a + 1, b), +id.slice(b + 1), st.gap);
         };
         // 平放时屏幕上挪一像素，桌面上要走得更远（纵向按倒下的角度放大）
         const panK = tilt ? { x: 1.15, y: 1 / Math.cos(TILT * Math.PI / 180) } : { x: 1, y: 1 };

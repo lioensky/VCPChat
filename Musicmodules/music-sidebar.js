@@ -355,7 +355,6 @@ function setupSidebar(app) {
             sub.innerHTML = '<div class="submenu-empty">暂无歌单</div>';
             return;
         }
-        sub.innerHTML = '';
         const frag = document.createDocumentFragment();
         for (let i = 0; i < list.length; i += 1) {
             const pl = list[i];
@@ -367,7 +366,7 @@ function setupSidebar(app) {
             item.title = pl.name;
             frag.appendChild(item);
         }
-        sub.appendChild(frag);
+        sub.replaceChildren(frag);
     };
 
     app.addSelectedTracksToPlaylist = (playlistId) => {
@@ -387,6 +386,7 @@ function setupSidebar(app) {
         const pl = app.customPlaylists.find(p => p.id === id); if (!pl) return;
         app.editingPlaylistId = id; app.modalSearchQuery = ''; app.lastModalClickIndex = -1;
         app.modalSearchInput.value = ''; app.modalPlaylistTitle.textContent = `编辑歌单「${pl.name}」`;
+        app.playlistEditModal._returnFocus = document.activeElement;
         app.renderModalSongList(); app.playlistEditModal.classList.add('visible');
     };
 
@@ -453,7 +453,13 @@ function setupSidebar(app) {
                 if (targetState && !inList.has(path)) { pl.tracks.push(path); inList.add(path); changedTracks.push(rows[j]); }
                 else if (!targetState && inList.has(path)) { inList.delete(path); changedTracks.push(rows[j]); }
             }
-            if (!targetState) { const keep = pl.tracks.filter((p) => inList.has(p)); pl.tracks.length = 0; pl.tracks.push(...keep); }
+            if (!targetState) {
+                let w = 0;
+                for (let k = 0; k < pl.tracks.length; k += 1) {
+                    if (inList.has(pl.tracks[k])) pl.tracks[w++] = pl.tracks[k];
+                }
+                pl.tracks.length = w;
+            }
             for (let j = s; j <= eIdx; j++) paint(j, inList.has(rows[j].path));
         } else {
             const idx = pl.tracks.indexOf(t.path);

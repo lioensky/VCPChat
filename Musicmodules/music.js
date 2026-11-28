@@ -1105,7 +1105,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const closePlaylistEditModal = () => {
             if (modalSearchTimer) { clearTimeout(modalSearchTimer); modalSearchTimer = null; }
-            app.playlistEditModal.classList.remove('visible');
+            const modal = app.playlistEditModal;
+            const ret = modal?._returnFocus;
+            if (modal) modal._returnFocus = null;
+            if (ret && ret !== document.body && ret.isConnected && !modal.contains(ret)) ret.focus?.({ preventScroll: true });
+            else if (modal?.contains(document.activeElement)) document.activeElement?.blur?.();
+            modal.classList.remove('visible');
             if (app.currentSidebarView === 'playlists') app.renderSidebarContent('playlists');
         };
         app.modalCloseBtn.onclick = app.modalDoneBtn.onclick = closePlaylistEditModal;
@@ -1138,8 +1143,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (source?.type === 'playlist') {
                 // 语义搜索等别的入口不会清掉旧的歌单来源：显示的歌不全在这个歌单里，就不算歌单视图。
                 const pl = app.customPlaylists.find(p => p.id === source.id);
-                const paths = new Set(pl ? pl.tracks : []);
-                if (!pl || !filtered.every(t => paths.has(t.path))) source = { type: 'filter' };
+                let allIn = Boolean(pl);
+                if (allIn) {
+                    const paths = new Set(pl.tracks);
+                    for (let i = 0; i < filtered.length; i += 1) {
+                        if (!paths.has(filtered[i].path)) { allIn = false; break; }
+                    }
+                }
+                if (!allIn) source = { type: 'filter' };
             }
             app.playlistViewSource = source;
             const result = renderPlaylistBase(filtered);
@@ -1370,54 +1381,45 @@ document.addEventListener('DOMContentLoaded', () => {
             const label = `正在扫描: ${data.current} / ${data.total}`;
             if (label !== lastScanLabel) { lastScanLabel = label; app.scanProgressLabel.textContent = label; }
         }));
-        // 扫描途中先把新读到的曲目接到列表末尾，不用等整个文件夹读完才看得到歌；
-        // 列表最多每 400 毫秒重排一次。扫描结束时下面的 complete 再按磁盘顺序整理并保存。
-        let scanBatchTimer = 0;
+        // 扫描途中节流追加曲目（400ms 重排一次），结束时在 complete 里恢复磁盘顺序并存盘
+        let scanBatchTimer = 0, scanKnownPaths = null, scanAddedPaths = null;
         disposers.push(() => { if (scanBatchTimer) { clearTimeout(scanBatchTimer); scanBatchTimer = 0; } });
-        let scanKnownPaths = null;
-        let scanAddedPaths = null;
-        const flushScanBatches = () => {
-            scanBatchTimer = 0;
-            app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
-        };
+        const flushScanBatches = () => { scanBatchTimer = 0; app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView); };
         trackIpc(app.api.onMusicScanBatch?.((data) => {
-            const incoming = data && Array.isArray(data.tracks) ? data.tracks : [];
-            if (!scanKnownPaths) scanKnownPaths = new Set(app.playlist.map(t => t.path));
-            const fresh = incoming.filter(t => t && t.path && !scanKnownPaths.has(t.path));
+            const inc = data && Array.isArray(data.tracks) ? data.tracks : [];
+            if (!scanKnownPaths) {
+                scanKnownPaths = new Set();
+                for (let i = 0; i < app.playlist.length; i++) scanKnownPaths.add(app.playlist[i].path);
+            }
+            const fresh = [];
+            for (let i = 0; i < inc.length; i++) {
+                const t = inc[i];
+                if (t && t.path && !scanKnownPaths.has(t.path)) {
+                    scanKnownPaths.add(t.path);
+                    (scanAddedPaths || (scanAddedPaths = new Set())).add(t.path);
+                    fresh.push(t);
+                }
+            }
             if (!fresh.length) return;
-            if (!scanAddedPaths) scanAddedPaths = new Set();
-            fresh.forEach(t => { scanKnownPaths.add(t.path); scanAddedPaths.add(t.path); });
-            // 换一个新数组：各视图靠数组身份判断曲库变了没有。
             app.playlist = app.playlist.concat(fresh);
             if (!scanBatchTimer) scanBatchTimer = setTimeout(flushScanBatches, 400);
         }));
         trackIpc(app.api.onMusicScanComplete((data) => {
             clearTimeout(scanBatchTimer); scanBatchTimer = 0; scanKnownPaths = null;
-            // 途中先接上去的曲目按读完的先后排着，这里让它们回到磁盘顺序。
             const addedDuringScan = scanAddedPaths;
             const playingPath = app.playlist[app.currentTrackIndex]?.path;
             activeScans = Math.max(0, activeScans - 1);
             if (!activeScans) app.loadingIndicator.style.display = 'none';
-            // data may be { tracks, folderPath } (new format) or plain array (legacy)
             const newPlaylist = Array.isArray(data) ? data : (data.tracks || []);
             const folderPath = Array.isArray(data) ? null : (data.folderPath || null);
-
-            // Build a map of newly scanned tracks by path for quick lookup
-            const scannedMap = new Map(newPlaylist.map(t => [t.path, t]));
-
-            // 只有真的在这个文件夹里面的曲目才算「这次该扫到」：D:\Music 不能把 D:\Music2 里的歌也算进来。
-            // 扫描本身失败（failed）时什么都不删，免得一次读取错误把整个文件夹从曲库里清掉。
+            const scannedMap = new Map();
+            for (let i = 0; i < newPlaylist.length; i++) scannedMap.set(newPlaylist[i].path, newPlaylist[i]);
+            // 仅移除本次扫描目录内已删除文件；扫描失败时保留原曲目
             const folderKey = folderPath && !data.failed
                 ? String(app.normalizePathForCompare(folderPath) || '').replace(/\/+$/, '') + '/'
                 : null;
             const insideFolder = (p) => Boolean(folderKey) && String(app.normalizePathForCompare(p) || '').startsWith(folderKey);
-
-            const updatedPlaylist = [];
-            const handledPaths = new Set();
-            // 这次扫描途中先接上去的曲目：先从原位置拿掉，下面按磁盘顺序放回（用同一个对象）。
-            // 同时在扫的另一个文件夹接上去的不归这次管，留在原处。
-            const appended = new Map();
-
+            const updatedPlaylist = [], handledPaths = new Set(), appended = new Map();
             for (const track of app.playlist) {
                 if (addedDuringScan?.has(track.path) && scannedMap.has(track.path)) {
                     appended.set(track.path, track);
@@ -1425,16 +1427,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     continue;
                 }
                 if (scannedMap.has(track.path)) {
-                    // 已有的曲目原地更新信息，保住对象本身：歌单视图、队列、播放历史都拿着它。
                     Object.assign(track, scannedMap.get(track.path));
                     updatedPlaylist.push(track);
                     handledPaths.add(track.path);
-                } else if (insideFolder(track.path)) {
-                    // Track belongs to the scanned folder but was NOT found in new scan
-                    // → file was deleted from disk, remove it from playlist
-                    // (skip adding it)
-                } else {
-                    // Track from a different folder/source — keep it
+                } else if (!insideFolder(track.path)) {
                     updatedPlaylist.push(track);
                 }
             }
@@ -1675,7 +1671,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (crossfadeBlock) crossfadeBlock.style.display = s.crossfade_ms === undefined ? 'none' : '';
         if (s.crossfade_ms !== undefined && app.crossfadeSelect) {
             const ms = String(s.crossfade_ms);
-            app.crossfadeSelect.value = [...app.crossfadeSelect.options].some((o) => o.value === ms) ? ms : '0';
+            const opts = app.crossfadeSelect.options;
+            let found = false;
+            for (let i = 0; i < opts.length; i += 1) if (opts[i].value === ms) { found = true; break; }
+            app.crossfadeSelect.value = found ? ms : '0';
         }
     };
 

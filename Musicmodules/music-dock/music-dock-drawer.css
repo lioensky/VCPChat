@@ -18,6 +18,7 @@
   -webkit-backdrop-filter: none;
   transform: translateX(56px);
   transform-origin: right center;
+  contain: layout style;
   transition: opacity .22s var(--mt-ease, ease), transform .26s var(--mt-ease, ease), visibility 0s linear .26s;
 }
 .md-pnl.md-open { transition: opacity .32s var(--mt-ease, ease), transform .42s var(--mt-ease, ease), visibility 0s; }
@@ -173,6 +174,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 12px;
+  row-gap: 2px;
   min-height: 36px;
   margin: 0 !important;
   padding: 4px 0 !important;
@@ -191,7 +193,6 @@
 }
 #music-dock-root .md-fx-sc .setting-row.full-width { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
 /* 滑条和控制页一样排：名字在左、数值在同一行右边，滑条在下面占满一整行 */
-#music-dock-root .md-fx-sc .setting-item:has(.slider-with-value) { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
 #music-dock-root .md-fx-sc .slider-with-value { display: contents; }
 #music-dock-root .md-fx-sc .slider-with-value input[type="range"] { grid-column: 1 / -1; grid-row: 2; width: 100%; margin: 0; }
 #music-dock-root .md-fx-sc .slider-with-value span,
