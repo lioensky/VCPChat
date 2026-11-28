@@ -1188,3 +1188,9 @@ test('Agent 主语言与副语言音色选择由 selectProjection 挂载并保�
     }
 });
 
+test('typed-field-owners 在遭遇非重叠 SETTINGS_CONFLICT 时透传 settings 并自动以最新 revision 重试落盘', async () => {
+    const ownerSource = read(typedOwners);
+    assert.match(ownerSource, /\.\.\.\(result\?\.settings !== undefined \? \{ settings: result\.settings \} : \{\}\)/);
+    assert.match(ownerSource, /coordinator\?\.clearConflict\?\.\(\)/);
+});
+

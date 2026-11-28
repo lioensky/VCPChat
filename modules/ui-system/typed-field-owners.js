@@ -290,7 +290,15 @@ function ensureTypedSettingsService() {
                     }
                     return { success: true, status: 'success', operationId, currentRevision: typedSettingsRevision };
                 }
-                return { success: false, status, operationId, code: result?.code, error: result?.error || '设置保存失败', currentRevision: result?.currentRevision };
+                return {
+                    success: false,
+                    status,
+                    operationId,
+                    code: result?.code,
+                    error: result?.error || '设置保存失败',
+                    currentRevision: result?.currentRevision,
+                    ...(result?.settings !== undefined ? { settings: result.settings } : {}),
+                };
             };
             const result = typedSettingsSaveChain.then(run, run);
             typedSettingsSaveChain = result.catch(() => {});
@@ -903,12 +911,13 @@ function mountTypedFieldOwner(root, form) {
                         coordinator?.setDurableBase?.(typedSettingsBase, typedSettingsRevision);
                         typedSettingsConflict = null;
                         delete form.dataset.vcpSettingsConflict;
+                        coordinator?.clearConflict?.();
                         // Settle the superseded operation before scheduling the
                         // rebased patch; otherwise coordinator.flush() would
                         // wait forever on the original conflict operation.
                         publish(false, '已基于最新设置重放草稿', 'stale', operationId);
                         setStatus('dirty', { dirty: true, operationId });
-                        if (!state.timer) schedule();
+                        if (!state.timer) schedule(0);
                         return;
                     }
                     typedSettingsConflict = { external: result.settings, revision: result.currentRevision, overlap: true };
