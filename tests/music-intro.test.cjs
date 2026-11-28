@@ -402,3 +402,34 @@ test('Batch 84: music-intro deduplicates steady scan SVG writes and clears snap 
     assert.deepEqual(t2.leftovers(), CLEAN);
     t2.close();
 });
+
+test('Batch 108: music-intro caches scan text without per-frame DOM reads and quantizes wipe updates', async () => {
+    const t = setup();
+    t.app.playlist = Array.from({ length: 10 }, (_, i) => ({ title: `S${i}` }));
+    t.intro.playShort();
+    const root = t.doc.querySelector('.music-intro');
+    assert.ok(root);
+    const texts = [...root.querySelectorAll('svg text')];
+    let textReads = 0;
+    const desc = Object.getOwnPropertyDescriptor(t.window.Node.prototype, 'textContent');
+    for (const node of texts) {
+        Object.defineProperty(node, 'textContent', {
+            configurable: true,
+            get() { textReads += 1; return desc.get.call(this); },
+            set(v) { return desc.set.call(this, v); }
+        });
+    }
+    let clipWrites = 0;
+    const clipDesc = Object.getOwnPropertyDescriptor(t.window.CSSStyleDeclaration.prototype, 'clipPath');
+    Object.defineProperty(root.style, 'clipPath', {
+        configurable: true,
+        get() { return clipDesc ? clipDesc.get.call(this) : ''; },
+        set(v) { clipWrites += 1; return clipDesc ? clipDesc.set.call(this, v) : undefined; }
+    });
+    await t.advance(1600); // before wipe starts at 1.8s (100 frames)
+    assert.equal(textReads, 0, 'renderScan never reads DOM textContent per frame');
+    assert.ok(clipWrites <= 1, `applyWipe writes clipPath at most once while wipe===0, got ${clipWrites}`);
+    await t.advance(1200);
+    assert.deepEqual(t.leftovers(), CLEAN);
+    t.close();
+});

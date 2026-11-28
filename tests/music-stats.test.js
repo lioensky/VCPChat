@@ -817,3 +817,76 @@ test('Batch 101: dupes/track-file/folders/stats-view restore opener focus before
         dom.window.close();
     }
 });
+
+test('Batch 108: parent-disc fast gate, cross-hour stats cache, detached cover fallback guard, and folderRooms merging', () => {
+    const Order = require(path.join(__dirname, '../Musicmodules/music-track-order.js'));
+    assert.deepEqual(Order.numberOf({ path: 'C:\\Music\\Album\\CD2\\Song.flac' }), { disc: 2, no: 0 });
+    assert.deepEqual(Order.numberOf({ path: 'C:\\Music\\Album\\Disc 3\\04 Track.flac' }), { disc: 3, no: 4 });
+    assert.deepEqual(Order.numberOf({ path: 'C:\\Music\\Album\\DISK 1\\Song.flac' }), { disc: 1, no: 0 });
+    assert.deepEqual(Order.numberOf({ path: 'C:\\Music\\Album\\碟 2\\Song.flac' }), { disc: 2, no: 0 });
+    assert.deepEqual(Order.numberOf({ path: 'C:\\Music\\PlainAlbum\\Song.flac' }), { disc: 0, no: 0 });
+    assert.deepEqual(Order.numberOf({ path: 'C:\\Music\\Acoustic\\Song.flac' }), { disc: 0, no: 0 });
+
+    // Cross-hour stats logging without object allocation drift
+    let t = new Date(2026, 4, 10, 10, 59, 58).getTime();
+    const store = new Map();
+    const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+    globalThis.document = { dispatchEvent() {} };
+    globalThis.CustomEvent = class { constructor(type, init) { this.detail = init?.detail; } };
+    const app = {
+        playlist: [{ path: 'C:\\Music\\X.flac', duration: 200 }],
+        currentTrackIndex: 0, isPlaying: true, isTrackLoading: false, lastKnownDuration: 200, pos: 0,
+        playedSeconds: () => app.pos
+    };
+    const stats = setupMusicStats(app, { now: () => t, storage, setTimer: () => 1, clearTimer() {}, observe: false });
+    stats.tick();
+    t += 1000; app.pos += 1; stats.tick(); // 10:59:59 -> hour 10
+    t += 2000; app.pos += 2; stats.tick(); // 11:00:01 -> hour 11
+    const sum = stats.summary({ days: 0 });
+    assert.equal(sum.hours[10], 1);
+    assert.equal(sum.hours[11], 2);
+
+    // MusicFolders.folderRows merges sibling directories and absorbs nested entries into outermost ancestor
+    const Folders = require(path.join(__dirname, '../Musicmodules/music-folders.js'));
+    const rows = Folders.folderRows([], [
+        { path: 'D:\\Audio\\ArtistA\\01.flac' },
+        { path: 'D:\\Audio\\ArtistB\\02.flac' },
+        { path: 'D:\\Audio\\ArtistC\\Sub\\03.flac' },
+        { path: 'D:\\Solo\\Only\\04.flac' }
+    ]);
+    assert.equal(rows[0].path, 'D:\\Audio');
+    assert.equal(rows[0].count, 3);
+    assert.equal(rows[1].path, 'D:\\Solo\\Only');
+    assert.equal(rows[1].count, 1);
+
+    // MusicStatsView detached cover img.onerror exits without trying fallback URLs
+    const fs = require('node:fs');
+    const { JSDOM } = require('jsdom');
+    const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+    try {
+        const { window } = dom;
+        window.requestAnimationFrame = (fn) => { fn(0); return 1; };
+        window.eval(fs.readFileSync(path.join(__dirname, '../Musicmodules/music-stats-view.js'), 'utf8'));
+        const viewApp = {
+            playlist: [{ path: 'C:\\Music\\Art\\A.flac', title: 'A', artist: 'Singer', album: 'Alb', albumArt: 'C:\\Music\\Art\\embedded.jpg' }],
+            musicStats: {
+                summary: () => ({
+                    plays: 3, seconds: 300, activeDays: 1,
+                    hours: Array.from({ length: 24 }, (_, h) => (h === 9 ? 300 : 0)),
+                    tracks: [{ path: 'C:\\Music\\Art\\A.flac', plays: 3, last: 1000 }],
+                    daily: { '2026-05-10': 300 }
+                })
+            }
+        };
+        window.MusicStatsView.open(viewApp);
+        const img = window.document.querySelector('.mstats-art img');
+        assert.ok(img, 'stats ranking renders cover img');
+        const initialSrc = img.src;
+        viewApp.closeStatsView(true);
+        assert.equal(img.isConnected, false);
+        img.onerror();
+        assert.equal(img.src, initialSrc, 'detached cover img skips fallback src reassignment on late error');
+    } finally {
+        dom.window.close();
+    }
+});

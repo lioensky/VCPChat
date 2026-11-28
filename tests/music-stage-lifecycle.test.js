@@ -2724,3 +2724,66 @@ test('Batch 103: stage host marks non-range tuning rows with .is-value-hidden wi
         dom.window.close();
     }
 });
+
+test('Batch 108: stage-edge strips cloned canvas id & caches default accent, and stage-runtime buildGlyphTimeline aligns syllables/punctuation', () => {
+    const dom = createStageDom();
+    try {
+        installCanvasStub(dom.window);
+        runScript(dom, 'Musicmodules/music-stage/music-stage-runtime.js');
+        runScript(dom, 'Musicmodules/music-stage/modes/stage-mode-utils.js');
+        runScript(dom, 'Musicmodules/music-stage/music-stage-edge.js');
+
+        const root = dom.window.document.getElementById('music-stage');
+        Object.defineProperty(root, 'clientWidth', { value: 1200, configurable: true });
+        Object.defineProperty(root, 'clientHeight', { value: 800, configurable: true });
+        const edgeSpectrum = root.querySelector('.music-stage-edge-spectrum');
+        const edgeCanvas = root.querySelector('.music-stage-edge-spectrum-canvas');
+        edgeCanvas.id = 'edge-strip-main';
+
+        let resolveAccentCalls = 0;
+        const origUtils = dom.window.MusicStageModeUtils;
+        dom.window.MusicStageModeUtils = { ...origUtils, resolveAccent: (a) => { resolveAccentCalls += 1; return origUtils.resolveAccent(a); } };
+
+        const app = {}; // neither stagePalette nor visualizerColor -> default accent
+        const state = { config: { edgeSpectrum: true, quality: 'energy-saving' } };
+        const scope = new dom.window.MusicStageRuntime.DisposableScope();
+        const edge = dom.window.MusicStageEdge.create({
+            app, root, elements: { edgeSpectrum, edgeCanvas }, state, scope,
+            clamp: dom.window.MusicStageRuntime.clamp
+        });
+        const canvases = [...edgeSpectrum.querySelectorAll('canvas')];
+        assert.equal(canvases.length, 4);
+        assert.equal(edgeSpectrum.querySelectorAll('#edge-strip-main').length, 1, 'cloned edge canvases strip duplicate id');
+
+        const activeSpec = new Float32Array(64).fill(0.5);
+        edge.draw({ now: 1000, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.5, spectrum: activeSpec } });
+        assert.equal(resolveAccentCalls, 1, 'initial frame resolves default accent once');
+        edge.draw({ now: 1200, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.6, spectrum: activeSpec } });
+        edge.draw({ now: 1400, isPlaying: true, viewport: { dpr: 1 }, audio: { power: 0.4, spectrum: activeSpec } });
+        assert.equal(resolveAccentCalls, 1, 'subsequent frames without stagePalette/visualizerColor reuse cached default accent');
+        edge.release();
+        scope.destroy();
+
+        // Runtime: normalizeLines + buildGlyphTimeline with syllables and untimed spaces/punctuation
+        const R = dom.window.MusicStageRuntime;
+        const lines = R.normalizeLines([{
+            time: 10,
+            endTime: 14,
+            fullText: 'Hi, world!',
+            words: [
+                { text: 'Hi', startTime: 10, endTime: 11, syllables: [{ text: 'H', startTime: 10, endTime: 10.4 }, { text: 'i', startTime: 10.4, endTime: 11 }] },
+                { text: 'world', startTime: 12, endTime: 13.5 }
+            ]
+        }]);
+        const glyphs = R.buildGlyphTimeline(lines[0]);
+        assert.equal(glyphs.map((g) => g.text).join(''), 'Hi, world!');
+        assert.equal(glyphs[0].syllableIndex, 0);
+        assert.equal(glyphs[1].syllableIndex, 1);
+        assert.equal(glyphs[2].text, ',');
+        assert.equal(glyphs[2].startTime, 12, 'punctuation between words aligns to next word startTime');
+        assert.equal(glyphs[glyphs.length - 1].text, '!');
+        assert.equal(glyphs[glyphs.length - 1].startTime, 13.5, 'trailing punctuation aligns to last glyph endTime');
+    } finally {
+        dom.window.close();
+    }
+});
