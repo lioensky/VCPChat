@@ -373,11 +373,15 @@
         bodyObs = new MutationObserver((records) => {
             let lastTgt = null;
             let lastSkipped = false;
-            for (const r of records) {
+            for (let ri = 0; ri < records.length; ri += 1) {
+                const r = records[ri];
+                const tgt = r.target;
+                if (tgt === lastTgt && lastSkipped) continue;
                 const added = r.addedNodes;
-                if (!added.length) continue;
+                const aLen = added.length;
+                if (!aLen) continue;
                 let checkedTgt = false;
-                for (let i = 0; i < added.length; i += 1) {
+                for (let i = 0; i < aLen; i += 1) {
                     const n = added[i];
                     if (n.nodeType !== 1) continue;
                     const tag = n.tagName;
@@ -386,11 +390,10 @@
                     if (ncl && (ncl.contains('mfs-trigger') || ncl.contains('mfs-menu') || ncl.contains('md-ql') || ncl.contains('md-ql-sizer') || ncl.contains('md-qh') || ncl.contains('md-qi') || ncl.contains('md-qhd') || ncl.contains('md-cmd-list') || ncl.contains('md-cmd-row') || ncl.contains('md-cmd-sec') || ncl.contains('mtst-layer'))) continue;
                     if (!checkedTgt) {
                         checkedTgt = true;
-                        const tgt = r.target;
                         if (tgt && tgt.nodeType === 1) {
                             if (tgt !== lastTgt) {
                                 lastTgt = tgt;
-                                lastSkipped = Boolean(tgt.closest?.(SKIP_SUBTREE_SEL));
+                                lastSkipped = tgt.id === 'playlist' || Boolean(tgt.closest?.(SKIP_SUBTREE_SEL));
                             }
                             if (lastSkipped) break;
                         }

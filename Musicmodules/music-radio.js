@@ -37,7 +37,14 @@
         return out;
     };
 
-    const norm = (s) => String(s || '').trim().toLowerCase();
+    const norm = (s) => {
+        if (!s) return '';
+        const str = typeof s === 'string' ? s : String(s);
+        const len = str.length;
+        if (!len) return '';
+        const trimmed = (str.charCodeAt(0) > 32 && str.charCodeAt(len - 1) > 32) ? str : str.trim();
+        return trimmed ? trimmed.toLowerCase() : '';
+    };
     const ARTIST_SPLIT = /\s*(?:\/|,|，|、|&|;|feat\.?|ft\.)\s*/;
     const artistsOf = (t) => norm(t && t.artist).split(ARTIST_SPLIT).filter(Boolean);
 
@@ -313,27 +320,44 @@
         };
 
         // ---- 同一首的另一份文件（这份放不了时顶上）：同录音里挑 versionRank 最高、这次没放失败过的 ----
+        const stripTitleExt = (raw) => {
+            if (!raw) return '';
+            const s = typeof raw === 'string' ? raw : String(raw);
+            if (typeof app.stripAudioExtension === 'function') return app.stripAudioExtension(s);
+            const len = s.length;
+            const lo = len > 5 ? len - 5 : 0;
+            for (let i = len - 1; i >= lo; i -= 1) {
+                if (s.charCodeAt(i) === 46) return s.replace(AUDIO_EXT, '');
+            }
+            return s;
+        };
         app.alternateCopy = (track) => {
             const wantArtist = norm(track && track.artist);
-            const rawWantTitle = String((track && track.title) || '');
-            const wantTitle = norm(rawWantTitle.lastIndexOf('.') >= 0 ? rawWantTitle.replace(AUDIO_EXT, '') : rawWantTitle);
+            const wantTitle = norm(stripTitleExt(track && track.title));
             if (!wantArtist || !wantTitle) return null;
             const artistMatch = new Map();
+            let lastArtistRaw = '';
+            let lastArtistOk = false;
             let best = null;
             let bestRank = -1;
             const lib = app.playlist || [];
             for (let i = 0; i < lib.length; i += 1) {
                 const t = lib[i];
                 if (!t || t === track || !t.path || t.path === track.path || !t.artist || !t.title) continue;
-                let okArtist = artistMatch.get(t.artist);
-                if (okArtist === undefined) {
-                    okArtist = norm(t.artist) === wantArtist;
-                    artistMatch.set(t.artist, okArtist);
+                let okArtist;
+                if (t.artist === lastArtistRaw) {
+                    okArtist = lastArtistOk;
+                } else {
+                    okArtist = artistMatch.get(t.artist);
+                    if (okArtist === undefined) {
+                        okArtist = norm(t.artist) === wantArtist;
+                        artistMatch.set(t.artist, okArtist);
+                    }
+                    lastArtistRaw = t.artist;
+                    lastArtistOk = okArtist;
                 }
                 if (!okArtist || !playable(t)) continue;
-                const rawTitle = String(t.title);
-                const stripped = rawTitle.lastIndexOf('.') >= 0 ? rawTitle.replace(AUDIO_EXT, '') : rawTitle;
-                if (norm(stripped) !== wantTitle) continue;
+                if (norm(stripTitleExt(t.title)) !== wantTitle) continue;
                 const r = versionRank(t);
                 if (!best || r > bestRank) { best = t; bestRank = r; }
             }

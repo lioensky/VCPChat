@@ -22,7 +22,9 @@
     const EMPTY_SPEC_FIELDS = ['format', 'sample-rate', 'bit-depth', 'bitrate', 'specs'];
 
     const extensionOf = (track) => {
-        const match = EXT_RE.exec(String(track?.path || ''));
+        const p = String(track?.path || '');
+        if (!p || p.indexOf('.') === -1) return '';
+        const match = EXT_RE.exec(p);
         return match ? match[1].toUpperCase() : '';
     };
 
@@ -286,6 +288,11 @@
     // 原 <select> 保留并继续接收值和 change 事件，舞台代码不需要知道有这一层。
     const SEGMENT_MAX_OPTIONS = 4;
     const SEGMENT_MAX_CHARS = 18;
+    const SELECT_PROTO_DESCS = (typeof HTMLSelectElement !== 'undefined' && HTMLSelectElement.prototype)
+        ? ['value', 'selectedIndex']
+            .map((key) => [key, Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, key)])
+            .filter((entry) => entry[1] && entry[1].set)
+        : [];
     // 用 WeakSet 记住检查过但不能拆成分段按钮的 <select>（不写 dataset.segmented，免得 music-fluid-select 误以为已替换）
     const checkedSelects = new WeakSet();
     const enhanceSelect = (select) => {
@@ -360,16 +367,13 @@
             next.click();
         });
         // 程序里直接给 value / selectedIndex 赋值（如恢复默认设置）不会发 change，拦截下来同步分段高亮。
-        if (typeof HTMLSelectElement !== 'undefined' && HTMLSelectElement.prototype) {
-            for (const key of ['value', 'selectedIndex']) {
-                const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, key);
-                if (!proto?.set) continue;
-                Object.defineProperty(select, key, {
-                    configurable: true,
-                    get() { return proto.get.call(this); },
-                    set(v) { proto.set.call(this, v); sync(); }
-                });
-            }
+        for (let i = 0; i < SELECT_PROTO_DESCS.length; i += 1) {
+            const [key, proto] = SELECT_PROTO_DESCS[i];
+            Object.defineProperty(select, key, {
+                configurable: true,
+                get() { return proto.get.call(this); },
+                set(v) { proto.set.call(this, v); sync(); }
+            });
         }
         select.addEventListener('input', sync);
         select.addEventListener('change', sync);

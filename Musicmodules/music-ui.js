@@ -144,19 +144,54 @@ function setupUI(app) {
     };
     const ROW_POOL_MAX = 160;
     const rowPool = [];
+    let topSpacerEl = null;
+    let topSpacerVal = '';
+    let bottomSpacerEl = null;
+    let bottomSpacerVal = '';
+    const applySpacers = (firstEl, topVal, lastEl, botVal) => {
+        if (topSpacerEl && topSpacerEl !== firstEl) {
+            topSpacerEl.style.marginTop = '';
+            topSpacerVal = '';
+        }
+        if (bottomSpacerEl && bottomSpacerEl !== lastEl) {
+            bottomSpacerEl.style.marginBottom = '';
+            bottomSpacerVal = '';
+        }
+        if (firstEl) {
+            if (topSpacerEl !== firstEl || topSpacerVal !== topVal) {
+                firstEl.style.marginTop = topVal;
+                topSpacerVal = topVal;
+            }
+        } else {
+            topSpacerVal = '';
+        }
+        if (lastEl) {
+            if (bottomSpacerEl !== lastEl || bottomSpacerVal !== botVal) {
+                lastEl.style.marginBottom = botVal;
+                bottomSpacerVal = botVal;
+            }
+        } else {
+            bottomSpacerVal = '';
+        }
+        topSpacerEl = firstEl || null;
+        bottomSpacerEl = lastEl || null;
+    };
     const hydrateRow = (li, t) => {
         const titleText = app.stripAudioExtension(t.title) || '未知标题';
         const index = libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
-        const indexStr = String(index);
-        if (li._idxStr !== indexStr) { li._idxStr = indexStr; li.dataset.index = indexStr; }
+        if (li._idx !== index) {
+            li._idx = index;
+            const indexStr = String(index);
+            li._idxStr = indexStr;
+            li.dataset.index = indexStr;
+        }
         const isActive = index === app.currentTrackIndex;
         if (li._active !== isActive) { li._active = isActive; li.classList.toggle('active', isActive); }
         li._track = t;
-        if (li._cl && typeof app.decorateClassicRow === 'function') {
-            app.decorateClassicRow(li, true, titleText);
-        } else {
-            if (li.textContent !== titleText) li.textContent = titleText;
-            app.decorateClassicRow?.(li, false, titleText);
+        if (typeof app.decorateClassicRow === 'function') {
+            app.decorateClassicRow(li, Boolean(li._cl), titleText, t);
+        } else if (li.textContent !== titleText) {
+            li.textContent = titleText;
         }
         return li;
     };
@@ -197,7 +232,8 @@ function setupUI(app) {
             const li = existingKids[i];
             const t = li._track;
             const idx = t && libraryIndexOf.has(t) ? libraryIndexOf.get(t) : -1;
-            if (t && !keep.has(t) && li.dataset.index === String(idx)) keep.set(t, li);
+            const idxMatch = li._idx !== undefined ? li._idx === idx : li.dataset.index === String(idx);
+            if (t && !keep.has(t) && idxMatch) keep.set(t, li);
             else unused.push(li);
         }
         const count = to - from;
@@ -209,27 +245,23 @@ function setupUI(app) {
             if (li) {
                 keep.delete(t);
                 keptCount += 1;
-                if (li.style.marginTop) li.style.marginTop = '';
-                if (li.style.marginBottom) li.style.marginBottom = '';
                 rows[i - from] = li;
             }
         }
         for (const li of keep.values()) unused.push(li);
-        // FIFO 复用旧 DOM 行：排序/筛选无重叠曲目时保持原 DOM 节点顺序原地更新，零节点摘挂；
-        // 有重叠曲目（增量滚动）时先摘除少数滑出视口的旧节点，让留下的行保持原地不动。
+        // FIFO 复用旧 DOM 行：低重叠（排序/搜索）保持复用行原地更新，高重叠（增量滚动）摘除少数滑出视口的旧节点让留下的行不动。
         let uHead = 0;
         const uLen = unused.length;
+        const detachUnused = keptCount > 0 && keptCount >= uLen;
         for (let i = from; i < to; i += 1) {
             let li = rows[i - from];
             if (!li) {
                 if (uHead < uLen) {
                     li = unused[uHead++];
-                    if (keptCount > 0 && li.parentNode === list) li.remove();
+                    if (detachUnused && li.parentNode === list) li.remove();
                 } else {
                     li = rowPool.length ? rowPool.pop() : document.createElement('li');
                 }
-                if (li.style.marginTop) li.style.marginTop = '';
-                if (li.style.marginBottom) li.style.marginBottom = '';
                 hydrateRow(li, shownSongs[i]);
                 rows[i - from] = li;
             }
@@ -262,7 +294,10 @@ function setupUI(app) {
         }
         windowStart = from;
         windowEnd = to;
-        if (!rowPitch) measurePitch(list);
+        if (!rowPitch) {
+            applySpacers(null, '', null, '');
+            measurePitch(list);
+        }
         const p = rowPitch;
         // 第一次量到行高时按已读的 view/scrollTop 校准视口：若新范围落在已渲染前缀内直接裁尾复用，免去二次重建与强制回流
         if (!pitch && p > 0 && view > 0) {
@@ -279,8 +314,9 @@ function setupUI(app) {
                 to = nextTo;
                 windowEnd = to;
                 if (rows.length) {
-                    rows[0].style.marginTop = `${from * p}px`;
-                    rows[rows.length - 1].style.marginBottom = `${(total - to) * p}px`;
+                    applySpacers(rows[0], `${from * p}px`, rows[rows.length - 1], `${(total - to) * p}px`);
+                } else {
+                    applySpacers(null, '', null, '');
                 }
                 return;
             }
@@ -290,8 +326,9 @@ function setupUI(app) {
             }
         }
         if (rows.length && p > 0) {
-            rows[0].style.marginTop = `${from * p}px`;
-            rows[rows.length - 1].style.marginBottom = `${(total - to) * p}px`;
+            applySpacers(rows[0], `${from * p}px`, rows[rows.length - 1], `${(total - to) * p}px`);
+        } else {
+            applySpacers(null, '', null, '');
         }
     };
     let windowQueued = 0;
@@ -396,6 +433,10 @@ function setupUI(app) {
             app.playlistEl?.removeEventListener('scroll', onListScroll);
             window.removeEventListener('resize', onListWindowResize);
             rowPool.length = 0;
+            topSpacerEl = null;
+            topSpacerVal = '';
+            bottomSpacerEl = null;
+            bottomSpacerVal = '';
         }, { once: true });
     }
     // 列表空着时那句话（样式表里 #playlist:empty::after 显示它）：
@@ -456,7 +497,7 @@ function setupUI(app) {
             const kids = app.playlistEl.children;
             for (let i = 0; i < kids.length; i += 1) {
                 const li = kids[i];
-                const isActive = Number(li.dataset.index) === cur;
+                const isActive = (li._idx !== undefined ? li._idx : Number(li.dataset.index)) === cur;
                 if (li._active !== isActive || li.classList.contains('active') !== isActive) {
                     li._active = isActive;
                     li.classList.toggle('active', isActive);

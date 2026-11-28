@@ -178,9 +178,17 @@ function setupVisualizer(app) {
     // --- WebSocket for Visualization ---
     app.visualizerDestroyed = false;
     app.visualizerReconnectTimer = null;
+    app._visualizerReconnectOnVisible = null;
+    const clearReconnectOnVisible = () => {
+        if (app._visualizerReconnectOnVisible) {
+            document.removeEventListener('visibilitychange', app._visualizerReconnectOnVisible);
+            app._visualizerReconnectOnVisible = null;
+        }
+    };
 
     app.connectWebSocket = () => {
         if (app.visualizerDestroyed) return;
+        clearReconnectOnVisible();
         if (app.visualizerReconnectTimer) {
             clearTimeout(app.visualizerReconnectTimer);
             app.visualizerReconnectTimer = null;
@@ -299,19 +307,32 @@ function setupVisualizer(app) {
                 }
                 app.handleEngineDisconnected?.();
             }
-            if (app.visualizerDestroyed || app.visualizerReconnectTimer) return;
+            if (app.visualizerDestroyed || app.visualizerReconnectTimer || app._visualizerReconnectOnVisible) return;
             // 切歌、播完这些事件都走这条连接（引擎会攒着，连上再发），断开期间一首歌放完就会静音到重连为止。
-            // 所以先快后慢：0.5、1、2、4 秒，之后每 5 秒一次；连上就归零。
+            // 所以先快后慢：0.5、1、2、4 秒，之后每 5 秒一次；连上就归零。窗口隐藏且未在播时暂缓重连，重新可见再连。
             const attempt = app.visualizerReconnectAttempts || 0;
             app.visualizerReconnectAttempts = attempt + 1;
             app.visualizerReconnectTimer = setTimeout(() => {
                 app.visualizerReconnectTimer = null;
+                if (app.visualizerDestroyed) return;
+                if (document.hidden && !app.isPlaying) {
+                    app._visualizerReconnectOnVisible = () => {
+                        if (document.hidden || app.visualizerDestroyed) return;
+                        clearReconnectOnVisible();
+                        app.connectWebSocket();
+                    };
+                    document.addEventListener('visibilitychange', app._visualizerReconnectOnVisible);
+                    return;
+                }
                 app.connectWebSocket();
             }, Math.min(5000, 500 * 2 ** attempt));
         };
 
         socket.onerror = (err) => {
-            if (!app.visualizerDestroyed) console.error('[Music.js] WebSocket error:', err);
+            const attempt = app.visualizerReconnectAttempts || 0;
+            if (!app.visualizerDestroyed && (attempt === 0 || attempt % 12 === 0)) {
+                console.error('[Music.js] WebSocket error:', err);
+            }
             socket.close();
         };
     };
@@ -340,6 +361,7 @@ function setupVisualizer(app) {
             app._lastGroovePlaying = false;
             app.api?.publishMusicGroove?.({ playing: false });
         }
+        clearReconnectOnVisible();
         if (app.visualizerReconnectTimer) {
             clearTimeout(app.visualizerReconnectTimer);
             app.visualizerReconnectTimer = null;

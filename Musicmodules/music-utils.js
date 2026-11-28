@@ -5,6 +5,7 @@ function setupUtils(app) {
     const api = app.api || window.utilityAPI || window.electronAPI;
 
     const AUDIO_EXT_RE = /\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff?|opus|wv)$/i;
+    const AUDIO_EXTS = new Set(['mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac', 'wma', 'ape', 'dsf', 'dff', 'alac', 'aif', 'aiff', 'opus', 'wv']);
     const HEX_RE = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i;
     const PATH_MATCH_RE = /\[路径: (.*?)\]/;
     const LINE_SPLIT_RE = /[\r\n]+/;
@@ -18,21 +19,34 @@ function setupUtils(app) {
     const SEM_ERR_AUTH_RE = /status: (401|403)/;
     const TXT_EXT_RE = /\.txt$/;
 
-    // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
+    // 去除标题尾部的音频文件扩展名（仅检查末 5 字符的 '.' 并查 Set，跳过全串扫描与正则替换）
     app.stripAudioExtension = (title) => {
         if (!title || typeof title !== 'string') return title;
-        const dot = title.lastIndexOf('.');
-        if (dot === -1 || title.length - dot > 5) return title;
-        return title.replace(AUDIO_EXT_RE, '');
+        const len = title.length;
+        const lo = len > 5 ? len - 5 : 0;
+        let dot = -1;
+        for (let i = len - 1; i >= lo; i -= 1) {
+            if (title.charCodeAt(i) === 46) { dot = i; break; }
+        }
+        if (dot === -1 || dot === len - 1) return title;
+        return AUDIO_EXTS.has(title.slice(dot + 1).toLowerCase()) ? title.slice(0, dot) : title;
     };
 
     // 列表搜索框和歌单编辑框共用的匹配：全角半角、大小写、合字统一（NFKC），标题去掉扩展名，
     // 歌手和专辑也算；空格分开的几个词都要命中（顺序不限）。
     // ASCII、常用汉字（U+4E00–U+9FFF）和基础平假名（U+3041–U+3096）均为 NFKC 不变量，跳过昂贵的 ICU normalize('NFKC')。
-    const NEEDS_NFKC_RE = /[^\x00-\x7f\u4e00-\u9fff\u3041-\u3096]/;
+    const needsNfkc = (s) => {
+        for (let i = 0, n = s.length; i < n; i += 1) {
+            const c = s.charCodeAt(i);
+            if (c <= 0x7f || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3041 && c <= 0x3096)) continue;
+            return true;
+        }
+        return false;
+    };
     const searchKey = (text) => {
-        const s = String(text || '');
-        return NEEDS_NFKC_RE.test(s) ? s.normalize('NFKC').toLowerCase() : s.toLowerCase();
+        if (!text) return '';
+        const s = typeof text === 'string' ? text : String(text);
+        return needsNfkc(s) ? s.normalize('NFKC').toLowerCase() : s.toLowerCase();
     };
     const searchFieldCache = new Map();
     const cachedFieldKey = (raw) => {
@@ -45,6 +59,10 @@ function setupUtils(app) {
         }
         return hit;
     };
+    let lastArtistRaw = '';
+    let lastArtistKey = '';
+    let lastAlbumRaw = '';
+    let lastAlbumKey = '';
     const searchHayCache = new WeakMap();
     const hayOfTrack = (t) => {
         const title = t.title || '';
@@ -52,7 +70,17 @@ function setupUtils(app) {
         const album = t.album || '';
         const hit = searchHayCache.get(t);
         if (hit && hit.title === title && hit.artist === artist && hit.album === album) return hit.hay;
-        const hay = `${searchKey(app.stripAudioExtension(title))}\n${cachedFieldKey(artist)}\n${cachedFieldKey(album)}`;
+        let aKey = '';
+        if (artist) {
+            if (artist === lastArtistRaw) aKey = lastArtistKey;
+            else { aKey = cachedFieldKey(artist); lastArtistRaw = artist; lastArtistKey = aKey; }
+        }
+        let alKey = '';
+        if (album) {
+            if (album === lastAlbumRaw) alKey = lastAlbumKey;
+            else { alKey = cachedFieldKey(album); lastAlbumRaw = album; lastAlbumKey = alKey; }
+        }
+        const hay = `${searchKey(app.stripAudioExtension(title))}\n${aKey}\n${alKey}`;
         searchHayCache.set(t, { title, artist, album, hay });
         return hay;
     };
@@ -149,10 +177,16 @@ function setupUtils(app) {
     // 和列表、档案页一样：一小时以上写成 1:02:03（以前写 62:03）；引擎还没报时长（undefined）时写 0:00，不是 NaN:NaN
     app.formatTime = (seconds) => {
         const total = Math.max(0, Math.floor(Number(seconds) || 0));
-        const h = Math.floor(total / 3600);
-        const m = Math.floor((total % 3600) / 60);
-        const secs = String(total % 60).padStart(2, '0');
-        return h ? `${h}:${String(m).padStart(2, '0')}:${secs}` : `${m}:${secs}`;
+        if (total < 3600) {
+            const m = (total / 60) | 0;
+            const secs = total - m * 60;
+            return `${m}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+        const h = (total / 3600) | 0;
+        const rem = total - h * 3600;
+        const m = (rem / 60) | 0;
+        const secs = rem - m * 60;
+        return `${h}:${m < 10 ? '0' : ''}${m}:${secs < 10 ? '0' : ''}${secs}`;
     };
 
     app.normalizePathForCompare = (inputPath) => {

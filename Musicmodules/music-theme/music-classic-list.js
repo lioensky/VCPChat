@@ -16,10 +16,25 @@
         const s = Number(seconds);
         if (!(s > 0) || !Number.isFinite(s)) return '';
         const total = Math.round(s);
-        const h = Math.floor(total / 3600);
-        const m = Math.floor((total % 3600) / 60);
-        const sec = String(total % 60).padStart(2, '0');
-        return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+        if (total < 3600) {
+            const m = (total / 60) | 0;
+            const sec = total - m * 60;
+            return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+        const h = (total / 3600) | 0;
+        const rem = total - h * 3600;
+        const m = (rem / 60) | 0;
+        const sec = rem - m * 60;
+        return `${h}:${m < 10 ? '0' : ''}${m}:${sec < 10 ? '0' : ''}${sec}`;
+    };
+
+    const hasTailDot = (s) => {
+        const len = s.length;
+        const lo = len > 5 ? len - 5 : 0;
+        for (let i = len - 1; i >= lo; i -= 1) {
+            if (s.charCodeAt(i) === 46) return true;
+        }
+        return false;
     };
 
     const collator = typeof Intl !== 'undefined' && Intl.Collator
@@ -40,17 +55,12 @@
         const titleOf = (t) => {
             if (!t || typeof t !== 'object') return '';
             const raw = t.title || '';
-            if (!raw || raw.indexOf('.') === -1) return raw;
+            if (!raw || !hasTailDot(raw)) return raw;
             const cached = strippedTitles.get(t);
             if (cached && cached.raw === raw) return cached.clean;
             const clean = (app.stripAudioExtension ? app.stripAudioExtension(raw) : raw) || '';
             strippedTitles.set(t, { raw, clean });
             return clean;
-        };
-        const value = {
-            title: (t) => titleOf(t),
-            artist: (t) => String(t?.artist || ''),
-            duration: (t) => Number(t?.duration) || 0
         };
 
         let orderCacheList = null;
@@ -108,7 +118,7 @@
                 if (extra >= 0x4e00 && extra <= 0x9fff) return true;
                 if (extra === 32 && k + 1 < longer.length) {
                     const next = longer.charCodeAt(k + 1);
-                    if ((next >= 49 && next <= 57) || (next >= 65 && next <= 90) || (next >= 97 && next <= 122) || (next >= 0x4e00 && next <= 0x9fff)) return true;
+                    if ((next >= 49 && next <= 57) || (next >= 65 && next <= 90) || (next >= 97 && next <= 122) || (next >= 0x4e00 && next <= 0x9fff) || next === 40 || next === 91 || next === 45) return true;
                 }
                 return false;
             }
@@ -122,10 +132,17 @@
                 const n2 = k + 1 < bl ? b.charCodeAt(k + 1) : 0;
                 if (n1 < 0x80 && n2 < 0x80) return true;
             }
-            if (c1 >= 49 && c1 <= 57 && c2 >= 49 && c2 <= 57) return true;
-            if (c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57 && k > 0) {
-                const prev = a.charCodeAt(k - 1);
-                if (prev >= 49 && prev <= 57) return true;
+            if (c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57) {
+                if (c1 !== 48 && c2 !== 48) return true;
+                // 若 '0' 后无紧跟数字或同段数字前已有非零位，则不可能是前导零，数值必然不等
+                const zStr = c1 === 48 ? a : b;
+                const zNext = k + 1 < zStr.length ? zStr.charCodeAt(k + 1) : 0;
+                if (zNext < 48 || zNext > 57) return true;
+                for (let j = k - 1; j >= 0; j -= 1) {
+                    const p = a.charCodeAt(j);
+                    if (p < 48 || p > 57) break;
+                    if (p >= 49) return true;
+                }
             }
             return false;
         };
@@ -192,30 +209,67 @@
                 if (len > 32) sortCache.byKey.set('added', { desc: rev });
                 return rev;
             }
-            const get = value[sort.key];
+            const sortKey = sort.key;
             const isFull = songs === pl;
             const order = isFull ? null : getOrderMap();
-            const isNum = sort.key === 'duration';
-            // 预先拆出空项并扁平提取排序键与下标数组，避免为每首歌分配包装对象与在 O(N log N) 比较里重复判空
+            const isNum = sortKey === 'duration';
+            // 预先拆出空项并按列特化提取排序键与下标数组，避免多态回调与 O(N log N) 比较里重复判空
             const nonEmptyTracks = [];
             const nonEmptyVals = [];
             const nonEmptyOrds = isFull ? null : [];
             const empty = [];
             let ordsMonotonic = true;
             let prevOrd = -1;
-            for (let i = 0; i < len; i += 1) {
-                const t = songs[i];
-                const v = get(t);
-                if (v === '' || v === 0) {
-                    empty.push(t);
-                } else {
-                    nonEmptyTracks.push(t);
-                    nonEmptyVals.push(v);
-                    if (!isFull) {
-                        const ord = order.get(t) ?? 0;
-                        nonEmptyOrds.push(ord);
-                        if (ord < prevOrd) ordsMonotonic = false;
-                        prevOrd = ord;
+            if (sortKey === 'title') {
+                for (let i = 0; i < len; i += 1) {
+                    const t = songs[i];
+                    const v = titleOf(t);
+                    if (v === '') {
+                        empty.push(t);
+                    } else {
+                        nonEmptyTracks.push(t);
+                        nonEmptyVals.push(v);
+                        if (!isFull) {
+                            const ord = order.get(t) ?? 0;
+                            nonEmptyOrds.push(ord);
+                            if (ord < prevOrd) ordsMonotonic = false;
+                            prevOrd = ord;
+                        }
+                    }
+                }
+            } else if (sortKey === 'artist') {
+                for (let i = 0; i < len; i += 1) {
+                    const t = songs[i];
+                    const raw = t && t.artist;
+                    const v = raw ? (typeof raw === 'string' ? raw : String(raw)) : '';
+                    if (v === '') {
+                        empty.push(t);
+                    } else {
+                        nonEmptyTracks.push(t);
+                        nonEmptyVals.push(v);
+                        if (!isFull) {
+                            const ord = order.get(t) ?? 0;
+                            nonEmptyOrds.push(ord);
+                            if (ord < prevOrd) ordsMonotonic = false;
+                            prevOrd = ord;
+                        }
+                    }
+                }
+            } else {
+                for (let i = 0; i < len; i += 1) {
+                    const t = songs[i];
+                    const v = Number(t && t.duration) || 0;
+                    if (v === 0) {
+                        empty.push(t);
+                    } else {
+                        nonEmptyTracks.push(t);
+                        nonEmptyVals.push(v);
+                        if (!isFull) {
+                            const ord = order.get(t) ?? 0;
+                            nonEmptyOrds.push(ord);
+                            if (ord < prevOrd) ordsMonotonic = false;
+                            prevOrd = ord;
+                        }
                     }
                 }
             }
@@ -335,7 +389,7 @@
             e.stopPropagation();
             e.preventDefault();
             const li = button.closest('li');
-            const track = li && app.playlist[Number(li.dataset.index)];
+            const track = li && (li._track || app.playlist[Number(li.dataset.index)]);
             if (track) app.toggleLike(track);
         };
         const onLikeDblClick = (e) => { if (e.target.closest?.('.cl-like')) { e.stopPropagation(); e.preventDefault(); } };
@@ -364,8 +418,8 @@
             const rows = list.children;
             for (let i = 0, n = rows.length; i < n; i += 1) {
                 const li = rows[i];
-                if (li.dataset.cols !== '1') continue;
-                const track = app.playlist[Number(li.dataset.index)];
+                if (!li._cols && li.dataset.cols !== '1') continue;
+                const track = li._track || app.playlist[Number(li.dataset.index)];
                 if (hasSingle) {
                     if (!track || track.path !== singlePath) continue;
                 } else if (changed && (!track || !changed.has(track.path))) {
@@ -401,9 +455,9 @@
         };
 
         // 每行拆成标题 / 歌手 / 时长三格。原渲染只在列表内容变化时重建 <li>，已拆过的行在虚拟列表复用时就地更新字段避免重复建节点。
-        const decorateRow = (li, update = false, preTitle) => {
-            const track = app.playlist[Number(li.dataset.index)];
-            if (li.dataset.cols === '1') {
+        const decorateRow = (li, update = false, preTitle, preTrack) => {
+            const track = preTrack !== undefined ? preTrack : (li._track || app.playlist[Number(li.dataset.index)]);
+            if (li._cols || li.dataset.cols === '1') {
                 if (!update || !li._cl) return;
                 const titleText = preTitle !== undefined ? preTitle : (titleOf(track) || '未知标题');
                 const artistText = track?.artist || '';
@@ -442,6 +496,7 @@
             li.replaceChildren(frag);
             paintLike(li, track);
             li.title = tip;
+            li._cols = true;
             li.dataset.cols = '1';
         };
 
@@ -458,10 +513,11 @@
             const rows = list.children;
             const count = rows.length;
             if (!count || !shown()) return;
-            // 虚拟列表建行时已逐行拆完：纯 JS 快速扫描全部可见节点，已全拆则直接返回，避免无谓读取 offsetTop/clientHeight 触发强制布局
+            // 虚拟列表建行时已逐行拆完：纯 JS 属性快速扫描全部可见节点，免去每行 DOMStringMap 读取与无谓布局读取
             let anyUndecorated = false;
             for (let i = 0; i < count; i += 1) {
-                if (rows[i].dataset.cols !== '1') { anyUndecorated = true; break; }
+                const row = rows[i];
+                if (!row._cols && row.dataset.cols !== '1') { anyUndecorated = true; break; }
             }
             if (!anyUndecorated) {
                 hasUndecorated = false;
