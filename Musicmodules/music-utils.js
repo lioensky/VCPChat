@@ -9,6 +9,9 @@ function setupUtils(app) {
     const PATH_MATCH_RE = /\[路径: (.*?)\]/;
     const LINE_SPLIT_RE = /[\r\n]+/;
     const EXT_TRIM_RE = /\.[^.]+$/;
+    const WS_SPLIT_RE = /\s+/;
+    const FILE_BSLASH_RE = /\\/g;
+    const FILE_ENC_RE = /[?#']/g;
 
     // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
     app.stripAudioExtension = (title) => {
@@ -18,10 +21,11 @@ function setupUtils(app) {
 
     // 列表搜索框和歌单编辑框共用的匹配：全角半角、大小写、合字统一（NFKC），标题去掉扩展名，
     // 歌手和专辑也算；空格分开的几个词都要命中（顺序不限）。
-    const ASCII_ONLY = /^[\x00-\x7f]*$/;
+    // ASCII、常用汉字（U+4E00–U+9FFF）和基础平假名（U+3041–U+3096）均为 NFKC 不变量，跳过昂贵的 ICU normalize('NFKC')。
+    const NEEDS_NFKC_RE = /[^\x00-\x7f\u4e00-\u9fff\u3041-\u3096]/;
     const searchKey = (text) => {
         const s = String(text || '');
-        return ASCII_ONLY.test(s) ? s.toLowerCase() : s.normalize('NFKC').toLowerCase();
+        return NEEDS_NFKC_RE.test(s) ? s.normalize('NFKC').toLowerCase() : s.toLowerCase();
     };
     const searchHayCache = new WeakMap();
     const hayOfTrack = (t) => {
@@ -35,18 +39,30 @@ function setupUtils(app) {
         return hay;
     };
     app.searchTracks = (tracks, query) => {
-        const words = searchKey(query).split(/\s+/).filter(Boolean);
+        const words = searchKey(query).split(WS_SPLIT_RE).filter(Boolean);
         const list = Array.isArray(tracks) ? tracks : [];
-        if (!words.length) return list;
         const wLen = words.length;
-        return list.filter((t) => {
-            if (!t) return false;
-            const hay = hayOfTrack(t);
-            for (let j = 0; j < wLen; j += 1) {
-                if (!hay.includes(words[j])) return false;
+        if (!wLen) return list;
+        const out = list.slice(0, 0);
+        if (wLen === 1) {
+            const w0 = words[0];
+            for (let i = 0, n = list.length; i < n; i += 1) {
+                const t = list[i];
+                if (t && hayOfTrack(t).includes(w0)) out.push(t);
             }
-            return true;
-        });
+            return out;
+        }
+        for (let i = 0, n = list.length; i < n; i += 1) {
+            const t = list[i];
+            if (!t) continue;
+            const hay = hayOfTrack(t);
+            let ok = true;
+            for (let j = 0; j < wLen; j += 1) {
+                if (!hay.includes(words[j])) { ok = false; break; }
+            }
+            if (ok) out.push(t);
+        }
+        return out;
     };
 
     // 分享当前曲目到聊天；分享不了（远程曲目、文件已不在）时给个提示。
@@ -65,9 +81,9 @@ function setupUtils(app) {
     // 结果里没有引号，可以直接放进 CSS 的 url("...")。
     app.fileUrl = (filePath) => {
         if (!filePath) return '';
-        let p = String(filePath).replace(/\\/g, '/');
+        let p = String(filePath).replace(FILE_BSLASH_RE, '/');
         if (!p.startsWith('/')) p = '/' + p;
-        return 'file://' + encodeURI(p).replace(/[?#']/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+        return 'file://' + encodeURI(p).replace(FILE_ENC_RE, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
     };
 
     // 和列表、档案页一样：一小时以上写成 1:02:03（以前写 62:03）；引擎还没报时长（undefined）时写 0:00，不是 NaN:NaN
@@ -81,7 +97,7 @@ function setupUtils(app) {
 
     app.normalizePathForCompare = (inputPath) => {
         if (!inputPath) return null;
-        let normalized = inputPath.replace(/\\/g, '/');
+        let normalized = inputPath.replace(FILE_BSLASH_RE, '/');
         if (normalized.startsWith('//?/')) {
             normalized = normalized.substring(4);
         }

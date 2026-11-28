@@ -11,6 +11,13 @@
     const RECENT_KEY = 'musicDockRecentCommands';
     const MAX_RECENT = 10;
     const MAX_SONGS = 60;
+    const WS_SPLIT_RE = /\s+/;
+    const COLON_RE = /^([^:：\s]+)[:：](.*)$/;
+    const TRAIL_WS_RE = /\s$/;
+    const VOL_CMD_RE = /^(?:音量|vol(?:ume)?|yinliang)\s*(\d{1,3})\s*%?$/i;
+    const ASCII_WORD_RE = /^[a-z0-9]+$/;
+    const BSLASH_RE = /\\/g;
+    const END_FLAG_RE = /--\S*$/;
     const FILTERS = Object.freeze([
         { key: 'artist', flag: '歌手', aliases: ['artist', 'a'], hint: '只在歌手里找' },
         { key: 'album', flag: '专辑', aliases: ['album', 'al'], hint: '只在专辑里找' },
@@ -27,12 +34,12 @@
     /* 把输入拆成自由文字和 --过滤。"夜 --歌手 远舟" → { text: '夜', artist: '远舟' }。 */
     const parseQuery = (raw) => {
         const out = { text: '', artist: '', album: '', title: '', pendingFlag: null };
-        const tokens = String(raw || '').split(/\s+/).filter(Boolean);
+        const tokens = String(raw || '').split(WS_SPLIT_RE).filter(Boolean);
         const free = [];
         let current = null;
         for (const token of tokens) {
             // 「歌手:周杰伦」「专辑：叶惠美」这种写法和 --歌手 一样（冒号后面可以空一格再写名字）
-            const colon = /^([^:：\s]+)[:：](.*)$/.exec(token);
+            const colon = COLON_RE.exec(token);
             const colonKey = colon && (FLAG_LOOKUP.get(colon[1]) || FLAG_LOOKUP.get(lower(colon[1])));
             if (colonKey) {
                 if (colon[2]) { out[colonKey] = out[colonKey] ? `${out[colonKey]} ${colon[2]}` : colon[2]; current = colonKey; }
@@ -52,7 +59,7 @@
         }
         out.text = free.join(' ');
         const last = tokens[tokens.length - 1] || '';
-        if (/\s$/.test(raw || '') === false && last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2))) {
+        if (TRAIL_WS_RE.test(raw || '') === false && last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2))) {
             out.pendingFlag = last.slice(2);
         }
         return out;
@@ -64,7 +71,7 @@
         artist: q.artist ? lower(q.artist) : '',
         album: q.album ? lower(q.album) : '',
         title: q.title ? lower(q.title) : '',
-        words: q.text ? lower(q.text).split(/\s+/).filter(Boolean) : []
+        words: q.text ? lower(q.text).split(WS_SPLIT_RE).filter(Boolean) : []
     });
 
     /* 歌是否匹配：自由文字在标题/歌手/专辑里找，过滤只在对应字段里找；越靠前的命中分越高。 */
@@ -204,7 +211,7 @@
 
         // 「音量 40」「vol 40」这种直接给数字的。
         const volumeCommand = (text) => {
-            const m = /^(?:音量|vol(?:ume)?|yinliang)\s*(\d{1,3})\s*%?$/i.exec(String(text || '').trim());
+            const m = VOL_CMD_RE.exec(String(text || '').trim());
             if (!m) return null;
             const value = Math.min(100, Number(m[1]));
             return { id: 'volume-set', group: '音量', icon: 'volume-2', title: `把音量设为 ${value}%`, run: () => setVolume(value / 100), noRecent: true };
@@ -306,7 +313,7 @@
             return byPath;
         };
 
-        const normPath = (p) => String(p ?? '').replace(/\\/g, '/').toLowerCase();
+        const normPath = (p) => String(p ?? '').replace(BSLASH_RE, '/').toLowerCase();
         const lookupTrack = (byPath, rawPath) => {
             if (!rawPath) return null;
             const exact = byPath.get(rawPath);
@@ -423,7 +430,7 @@
                 const word = words[i];
                 if (plain.startsWith(word)) { score += 3; continue; }
                 if (plain.includes(word)) { score += 2; continue; }
-                if (/^[a-z0-9]+$/.test(word) && Lib?.romanize) {
+                if (ASCII_WORD_RE.test(word) && Lib?.romanize) {
                     romanized = romanized || getPlaylistRoman(name, Lib);
                     if (romanized.py.includes(word) || romanized.ini.includes(word)) { score += 1; continue; }
                 }
@@ -556,7 +563,7 @@
                 const qTextLower = q.text ? lower(q.text) : '';
                 let commandPrefix = false;
                 if (onlyText) {
-                    const textWords = qTextLower.split(/\s+/).filter(Boolean);
+                    const textWords = qTextLower.split(WS_SPLIT_RE).filter(Boolean);
                     getCommands()
                         .map((c) => ({ c, s: matchCommand(c, textWords) }))
                         .filter((x) => x.s > 0)
@@ -598,7 +605,7 @@
 
         let lastHintsKey = '';
         const renderHints = (raw, q) => {
-            const last = String(raw || '').split(/\s+/).pop() || '';
+            const last = String(raw || '').split(WS_SPLIT_RE).pop() || '';
             const show = last.startsWith('--') && !FLAG_LOOKUP.has(last.slice(2));
             if (!show) {
                 if (lastHintsKey !== '') {
@@ -622,38 +629,48 @@
             void q;
         };
 
-        // 复用结果行与分组标题 DOM 节点，避免每次按键经 innerHTML 拆建 60 行上千个 DOM 与 SVG 节点
+        // 复用结果行与分组标题 DOM 节点，并按整行原型单次 cloneNode 建槽（预置默认音符与回车图标），避免首次搜索建 60 行时反复 createElement 与双倍 SVG 克隆
         const rowPool = [];
         const secPool = [];
-        const createRowSlot = () => {
+        let rowProto = null;
+        const getRowProto = () => {
+            if (rowProto) return rowProto;
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.setAttribute('role', 'option');
             const ri = document.createElement('span');
             ri.className = 'md-cmd-ri';
+            cloneIconInto(ri, 'music', 16);
             const rt = document.createElement('span');
             rt.className = 'md-cmd-rt';
             const l1 = document.createElement('span');
             l1.className = 'md-cmd-l1';
             const titleEl = document.createElement('span');
             titleEl.className = 'md-cmd-title';
-            const chipEl = document.createElement('kbd');
-            chipEl.className = 'md-cmd-chip';
             const grpEl = document.createElement('span');
             grpEl.className = 'md-cmd-grp';
-            const descEl = document.createElement('span');
-            descEl.className = 'md-cmd-desc';
             const runEl = document.createElement('span');
             runEl.className = 'md-cmd-run';
             cloneIconInto(runEl, 'corner-down-left', 13);
-            const runText = document.createTextNode('');
-            runEl.appendChild(runText);
+            runEl.appendChild(document.createTextNode(''));
             l1.append(titleEl, grpEl);
             rt.appendChild(l1);
             btn.append(ri, rt, runEl);
+            rowProto = btn;
+            return rowProto;
+        };
+        const createRowSlot = () => {
+            const btn = getRowProto().cloneNode(true);
+            const ri = btn.firstChild;
+            const rt = ri.nextSibling;
+            const runEl = rt.nextSibling;
+            const l1 = rt.firstChild;
+            const titleEl = l1.firstChild;
+            const grpEl = titleEl.nextSibling;
+            const runText = runEl.lastChild;
             return {
-                btn, ri, rt, l1, titleEl, chipEl, grpEl, descEl, runText,
-                iconName: '', hasChip: false, hasDesc: false,
+                btn, ri, rt, l1, titleEl, chipEl: null, grpEl, descEl: null, runText,
+                iconName: 'music', hasChip: false, hasDesc: false,
                 lastCls: '', lastId: '', lastSel: '', lastIdx: '', lastDist: '',
                 lastTitle: null, lastHint: null, lastGrp: null, lastDesc: null, lastRun: null
             };
@@ -678,6 +695,10 @@
             const nextTitle = String(item.title ?? '');
             if (slot.lastTitle !== nextTitle) { slot.lastTitle = nextTitle; slot.titleEl.textContent = nextTitle; }
             if (item.hint) {
+                if (!slot.chipEl) {
+                    slot.chipEl = document.createElement('kbd');
+                    slot.chipEl.className = 'md-cmd-chip';
+                }
                 const nextHint = String(item.hint);
                 if (slot.lastHint !== nextHint) { slot.lastHint = nextHint; slot.chipEl.textContent = nextHint; }
                 if (!slot.hasChip) { slot.l1.insertBefore(slot.chipEl, slot.grpEl); slot.hasChip = true; }
@@ -688,6 +709,10 @@
             const nextGrp = String(item.group ?? '');
             if (slot.lastGrp !== nextGrp) { slot.lastGrp = nextGrp; slot.grpEl.textContent = nextGrp; }
             if (item.desc) {
+                if (!slot.descEl) {
+                    slot.descEl = document.createElement('span');
+                    slot.descEl.className = 'md-cmd-desc';
+                }
                 const nextDesc = String(item.desc);
                 if (slot.lastDesc !== nextDesc) { slot.lastDesc = nextDesc; slot.descEl.textContent = nextDesc; }
                 if (!slot.hasDesc) { slot.rt.appendChild(slot.descEl); slot.hasDesc = true; }
@@ -860,15 +885,19 @@
         };
 
         // ───────── 打开 / 关闭 ─────────
-        const place = () => {
+        const readCapRect = () => {
             const cap = host.querySelector('.md-cap');
             const rect = cap?.getBoundingClientRect();
             state.capRect = rect && rect.width ? rect : null;
+            return rect;
+        };
+        const applyPlace = (rect) => {
             // 搜索框从播放条上方鼓出来：底边贴着播放条上沿再留 14px，播放条本身留在原处、不被遮。
             const gap = rect && rect.height ? Math.max(12, global.innerHeight - rect.top + 14) : 110;
             root.style.setProperty('--md-cmd-bottom', `${Math.round(gap)}px`);
             if (rect && rect.width) root.style.setProperty('--md-cmd-origin-x', `${Math.round(rect.left + rect.width / 2)}px`);
         };
+        const place = () => applyPlace(readCapRect());
         function open(initial = '') {
             cachedCmdList = null;
             cachedCmdSig = '';
@@ -877,12 +906,14 @@
             state.open = true;
             state.lastFocus = document.activeElement;
             if (state.closeTimer) { clearTimeout(state.closeTimer); state.closeTimer = null; }
-            place();
+            const capRect = readCapRect();
             root.hidden = false;
-            host.classList.add('md-cmd-open');
             input.value = initial;
-            // 先在仅触及 #music-dock-root 时聚焦输入框，再挂 body 兼容类，避免 focus() 触发整页样式重算
+            // 先在仅解隐 .md-cmd（contain: layout style）且未改动 #music-dock-root / body 类名时聚焦，
+            // 避免 focus() 触发整个底栏与抽屉子树的同步样式重算。
             input.focus({ preventScroll: true });
+            applyPlace(capRect);
+            host.classList.add('md-cmd-open');
             document.body.classList.add('music-dock-cmd-open');
             build();
             if (state.slideRaf) { cancelAnimationFrame(state.slideRaf); state.slideRaf = 0; }
@@ -947,7 +978,7 @@
             } else if ((event.ctrlKey || event.metaKey) && lower(event.key) === 'k') { event.preventDefault(); toggle(); }
         });
         const acceptFlag = (flag) => {
-            input.value = input.value.replace(/--\S*$/, `--${flag} `);
+            input.value = input.value.replace(END_FLAG_RE, `--${flag} `);
             input.focus();
             build();
         };
@@ -1004,6 +1035,7 @@
                 dropEl = null;
                 rowPool.length = 0;
                 secPool.length = 0;
+                rowProto = null;
                 emptyEl = null;
                 iconCache.clear();
                 iconTplCache.clear();

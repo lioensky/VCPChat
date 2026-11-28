@@ -32,6 +32,9 @@
     const DIGIT = /[0-9]/;
     const LEADING_JUNK = /^[\s\p{P}\p{S}]+/u;
     const SKIP_NON_ASCII = /\s|\p{P}|\p{S}/u;
+    const WS_SPLIT_RE = /\s+/;
+    const ASCII_TERM_RE = /^[a-z0-9]+$/;
+    const BSLASH_RE = /\\/g;
     const PINYIN_CACHE = new WeakMap();
     const cachedPinyin = (pinyin, ch) => {
         let map = PINYIN_CACHE.get(pinyin);
@@ -302,46 +305,135 @@
                 q = smart.text;
                 if (!norm(q).trim()) return pool.slice(0, limit);
             }
-            const rawTerms = norm(q).split(/\s+/).filter(Boolean);
+            const rawTerms = norm(q).split(WS_SPLIT_RE).filter(Boolean);
             const kindCode = kind === 'artist' ? 1 : kind === 'album' ? 2 : 0;
             if (!rawTerms.length) return only ? pool.slice(0, limit) : [];
-            const terms = rawTerms.map((term) => ({ term, ascii: /^[a-z0-9]+$/.test(term) }));
+            const terms = rawTerms.map((term) => ({ term, ascii: ASCII_TERM_RE.test(term) }));
             const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : entries.length;
             if (cap === 0) return [];
             const cacheable = !only && !hasSmart;
             if (cacheable && canNarrowFrom(lastQuery, kindCode, terms)) {
                 pool = lastQuery.matchedIds;
             }
-            // 1–4 词查询时得分必落在 1..1200 的离散整数桶内，按分桶 O(N) 收集天然保序且可提前截断，免去对象分配与排序
-            if (terms.length <= 4) {
-                const buckets = new Array(terms.length * 300 + 1);
+            const scanLen = pool ? pool.length : entries.length;
+            const useFieldCache = scanLen > 64;
+            const tLen = terms.length;
+            // 1–4 词查询时得分必落在 1..1200 的离散整数桶内，按分桶 O(N) 收集天然保序且可提前截断，免去对象分配与排序；
+            // 大曲库按唯一歌手/专辑串就地记忆得分，省去 5000 首歌上重复对同一歌手/专辑跑 indexOf。
+            if (tLen <= 4) {
+                const buckets = new Array(tLen * 300 + 1);
                 let maxScore = 0;
                 let totalHits = 0;
                 const matchedIds = cacheable ? [] : null;
-                const tLen = terms.length;
                 const t0 = terms[0].term;
                 const a0 = terms[0].ascii;
-                const bucketItem = (i) => {
-                    const e = entries[i];
-                    if (!e) return;
-                    let total = scoreEntryTerm(e, kindCode, t0, a0);
-                    if (!total) return;
-                    for (let t = 1; t < tLen; t += 1) {
-                        const best = scoreEntryTerm(e, kindCode, terms[t].term, terms[t].ascii);
-                        if (!best) return;
-                        total += best;
+                if (kindCode === 1 || kindCode === 2) {
+                    const isArtist = kindCode === 1;
+                    const weight = isArtist ? 2 : 1;
+                    const totalCache = useFieldCache ? new Map() : null;
+                    for (let idxPos = 0; idxPos < scanLen; idxPos += 1) {
+                        const i = pool ? pool[idxPos] : idxPos;
+                        const e = entries[i];
+                        if (!e) continue;
+                        const fieldVal = isArtist ? e.artist : e.album;
+                        let total;
+                        if (totalCache) {
+                            total = totalCache.get(fieldVal);
+                            if (total === undefined) {
+                                const fieldPy = isArtist ? e.artistPy : e.albumPy;
+                                const fieldIni = isArtist ? e.artistIni : e.albumIni;
+                                total = scoreField(fieldVal, fieldPy, fieldIni, weight, t0, a0);
+                                if (total) {
+                                    for (let t = 1; t < tLen; t += 1) {
+                                        const best = scoreField(fieldVal, fieldPy, fieldIni, weight, terms[t].term, terms[t].ascii);
+                                        if (!best) { total = 0; break; }
+                                        total += best;
+                                    }
+                                }
+                                totalCache.set(fieldVal, total);
+                            }
+                        } else {
+                            const fieldPy = isArtist ? e.artistPy : e.albumPy;
+                            const fieldIni = isArtist ? e.artistIni : e.albumIni;
+                            total = scoreField(fieldVal, fieldPy, fieldIni, weight, t0, a0);
+                            if (total) {
+                                for (let t = 1; t < tLen; t += 1) {
+                                    const best = scoreField(fieldVal, fieldPy, fieldIni, weight, terms[t].term, terms[t].ascii);
+                                    if (!best) { total = 0; break; }
+                                    total += best;
+                                }
+                            }
+                        }
+                        if (!total) continue;
+                        let b = buckets[total];
+                        if (!b) buckets[total] = [i];
+                        else b.push(i);
+                        if (total > maxScore) maxScore = total;
+                        totalHits += 1;
+                        if (matchedIds) matchedIds.push(i);
                     }
-                    let b = buckets[total];
-                    if (!b) buckets[total] = [i];
-                    else b.push(i);
-                    if (total > maxScore) maxScore = total;
-                    totalHits += 1;
-                    if (matchedIds) matchedIds.push(i);
-                };
-                if (pool) {
-                    for (let order = 0; order < pool.length; order++) bucketItem(pool[order]);
                 } else {
-                    for (let i = 0; i < entries.length; i++) bucketItem(i);
+                    const aMaps = useFieldCache ? Array.from({ length: tLen }, () => new Map()) : null;
+                    const alMaps = useFieldCache ? Array.from({ length: tLen }, () => new Map()) : null;
+                    const aMap0 = aMaps ? aMaps[0] : null;
+                    const alMap0 = alMaps ? alMaps[0] : null;
+                    for (let idxPos = 0; idxPos < scanLen; idxPos += 1) {
+                        const i = pool ? pool[idxPos] : idxPos;
+                        const e = entries[i];
+                        if (!e) continue;
+                        let best0 = scoreField(e.title, e.titlePy, e.titleIni, 3, t0, a0);
+                        if (best0 < 200) {
+                            let sa;
+                            if (aMap0) {
+                                sa = aMap0.get(e.artist);
+                                if (sa === undefined) { sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0); aMap0.set(e.artist, sa); }
+                            } else sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, t0, a0);
+                            if (sa > best0) best0 = sa;
+                        }
+                        if (best0 < 100) {
+                            let sal;
+                            if (alMap0) {
+                                sal = alMap0.get(e.album);
+                                if (sal === undefined) { sal = scoreField(e.album, e.albumPy, e.albumIni, 1, t0, a0); alMap0.set(e.album, sal); }
+                            } else sal = scoreField(e.album, e.albumPy, e.albumIni, 1, t0, a0);
+                            if (sal > best0) best0 = sal;
+                        }
+                        if (!best0) continue;
+                        let total = best0;
+                        for (let t = 1; t < tLen; t += 1) {
+                            const termObj = terms[t];
+                            const term = termObj.term;
+                            const ascii = termObj.ascii;
+                            let best = scoreField(e.title, e.titlePy, e.titleIni, 3, term, ascii);
+                            if (best < 200) {
+                                let sa;
+                                if (aMaps) {
+                                    const am = aMaps[t];
+                                    sa = am.get(e.artist);
+                                    if (sa === undefined) { sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii); am.set(e.artist, sa); }
+                                } else sa = scoreField(e.artist, e.artistPy, e.artistIni, 2, term, ascii);
+                                if (sa > best) best = sa;
+                            }
+                            if (best < 100) {
+                                let sal;
+                                if (alMaps) {
+                                    const alm = alMaps[t];
+                                    sal = alm.get(e.album);
+                                    if (sal === undefined) { sal = scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii); alm.set(e.album, sal); }
+                                } else sal = scoreField(e.album, e.albumPy, e.albumIni, 1, term, ascii);
+                                if (sal > best) best = sal;
+                            }
+                            if (!best) { total = 0; break; }
+                            total += best;
+                        }
+                        if (!total) continue;
+                        let b = buckets[total];
+                        if (!b) buckets[total] = [i];
+                        else b.push(i);
+                        if (total > maxScore) maxScore = total;
+                        totalHits += 1;
+                        if (matchedIds) matchedIds.push(i);
+                    }
                 }
                 if (cacheable) lastQuery = { kindCode, terms, matchedIds };
                 if (!totalHits) return [];
@@ -358,22 +450,19 @@
             }
             const hits = [];
             const matchedIds = cacheable ? [] : null;
-            const scoreItem = (i, order) => {
+            for (let order = 0; order < scanLen; order += 1) {
+                const i = pool ? pool[order] : order;
                 const e = entries[i];
-                if (!e) return;
+                if (!e) continue;
                 let total = 0;
-                for (let t = 0; t < terms.length; t++) {
+                for (let t = 0; t < tLen; t += 1) {
                     const best = scoreEntryTerm(e, kindCode, terms[t].term, terms[t].ascii);
-                    if (!best) return;
+                    if (!best) { total = 0; break; }
                     total += best;
                 }
+                if (!total) continue;
                 hits.push({ i, total, order });
                 if (matchedIds) matchedIds.push(i);
-            };
-            if (pool) {
-                for (let order = 0; order < pool.length; order++) scoreItem(pool[order], order);
-            } else {
-                for (let i = 0; i < entries.length; i++) scoreItem(i, i);
             }
             if (cacheable) lastQuery = { kindCode, terms, matchedIds };
             hits.sort((a, b) => b.total - a.total || a.order - b.order);
@@ -717,7 +806,7 @@
                 const t = list[i];
                 const rawPath = t && t.path;
                 if (!rawPath) continue;
-                const k = String(rawPath).replace(/\\/g, '/').toLowerCase();
+                const k = String(rawPath).replace(BSLASH_RE, '/').toLowerCase();
                 if (k && !byPath.has(k)) byPath.set(k, i);
             }
             const qNorm = q ? norm(q) : '';
@@ -727,7 +816,7 @@
                 const tracksInPl = pl.tracks || [];
                 const items = [];
                 for (let j = 0; j < tracksInPl.length; j += 1) {
-                    const hit = byPath.get(String(tracksInPl[j] || '').replace(/\\/g, '/').toLowerCase());
+                    const hit = byPath.get(String(tracksInPl[j] || '').replace(BSLASH_RE, '/').toLowerCase());
                     if (hit !== undefined) items.push(hit);
                 }
                 const nameHit = Boolean(qNorm) && norm(pl.name).includes(qNorm);
@@ -742,59 +831,52 @@
         if (kind === 'artist' || kind === 'album') {
             const field = kind;
             const fallbackName = field === 'artist' ? '未知歌手' : '未知专辑';
+            const isAlbum = field === 'album';
             // 专辑按碟号、曲号排（排序方式是默认的「标题」时）；选了时长、加入时间就照选的排。
-            // 比较器提到分组循环外复用同一份缓存，避免 400+ 张专辑各建一遍 Map。
-            const inAlbum = !q && field === 'album' && sp.mode === 'title' && global.MusicTrackOrder
-                ? global.MusicTrackOrder.albumCompare(list, byTitle)
-                : byTitle;
-            const useOrder = !q && inAlbum === byTitle && Boolean(sp.order && sp.order.length === list.length);
+            // 若已按 sp.order 顺序入桶，则仅对含有碟号/曲号的专辑跑一次比较排序，无曲号专辑天然已是标题序。
+            const trackOrder = !q && isAlbum && sp.mode === 'title' && global.MusicTrackOrder ? global.MusicTrackOrder : null;
+            const useOrder = !q && Boolean(sp.order && sp.order.length === list.length);
             const groups = new Map();
+            const albumsToSort = useOrder && trackOrder ? new Set() : null;
+            const pushGroup = (i) => {
+                const tr = list[i];
+                const raw = tr && tr[field];
+                const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
+                let bucket = groups.get(name);
+                if (!bucket) { bucket = []; groups.set(name, bucket); }
+                bucket.push(i);
+                if (albumsToSort && !albumsToSort.has(name)) {
+                    const ordInfo = trackOrder.numberOf(tr);
+                    if (ordInfo.no > 0 || ordInfo.disc > 0) albumsToSort.add(name);
+                }
+            };
             if (q) {
                 const pool = index.query(q, { kind: field });
-                for (let k = 0; k < pool.length; k += 1) {
-                    const i = pool[k];
-                    const raw = list[i] && list[i][field];
-                    const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
-                    let bucket = groups.get(name);
-                    if (!bucket) { bucket = []; groups.set(name, bucket); }
-                    bucket.push(i);
-                }
+                for (let k = 0; k < pool.length; k += 1) pushGroup(pool[k]);
             } else if (useOrder) {
                 const ord = sp.order;
-                for (let k = 0; k < ord.length; k += 1) {
-                    const i = ord[k];
-                    const raw = list[i] && list[i][field];
-                    const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
-                    let bucket = groups.get(name);
-                    if (!bucket) { bucket = []; groups.set(name, bucket); }
-                    bucket.push(i);
-                }
+                for (let k = 0; k < ord.length; k += 1) pushGroup(ord[k]);
             } else {
-                for (let i = 0; i < list.length; i += 1) {
-                    const raw = list[i] && list[i][field];
-                    const name = (typeof raw === 'string' ? raw.trim() : String(raw || '').trim()) || fallbackName;
-                    let bucket = groups.get(name);
-                    if (!bucket) { bucket = []; groups.set(name, bucket); }
-                    bucket.push(i);
-                }
+                for (let i = 0; i < list.length; i += 1) pushGroup(i);
             }
             let ordered;
             if (q) {
                 ordered = [...groups.entries()];
             } else {
                 const keyed = [];
-                for (const [name, items] of groups) keyed.push({ name, items, key: romanize(name, null).py });
+                for (const [name, items] of groups) keyed.push({ name, items, key: cachedMetaField(name, null, false).py });
                 keyed.sort((a, b) => LOCALE_CMP(a.key, b.key));
                 ordered = keyed;
             }
-            const isAlbum = field === 'album';
+            const needInAlbum = !q && (!useOrder || (albumsToSort && albumsToSort.size > 0));
+            const inAlbum = needInAlbum ? (trackOrder ? trackOrder.albumCompare(list, byTitle) : byTitle) : null;
             const prefix = field + ':';
             for (let oi = 0; oi < ordered.length; oi += 1) {
                 const name = q ? ordered[oi][0] : ordered[oi].name;
                 const items = q ? ordered[oi][1] : ordered[oi].items;
                 const ctx = isAlbum ? 'album:' + name : null;
                 head(name, prefix + name, items.length);
-                if (!q && !useOrder && items.length > 1) items.sort(inAlbum);
+                if (inAlbum && items.length > 1 && (!useOrder || albumsToSort.has(name))) items.sort(inAlbum);
                 for (let j = 0; j < items.length; j += 1) {
                     const idx = items[j];
                     push(idx, ctx || allCtx(idx));

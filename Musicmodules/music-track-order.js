@@ -8,9 +8,10 @@
 (function (global) {
     'use strict';
 
+    const PCT_HEX_RE = /%[0-9a-f]{2}/i;
     const decodeBase = (b) => {
         if (!b || b.indexOf('%') === -1) return b;
-        try { return /%[0-9a-f]{2}/i.test(b) ? decodeURIComponent(b) : b; } catch (e) { return b; } // 云端地址是 %20 这种
+        try { return PCT_HEX_RE.test(b) ? decodeURIComponent(b) : b; } catch (e) { return b; } // 云端地址是 %20 这种
     };
     const positive = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0 && n < 1000 ? n : 0; };
 
@@ -77,32 +78,27 @@
         return v;
     };
 
+    // 将 { disc, no } 打包进正整数键（位 29 标记无曲号，使有曲号恒排在前、同组再按碟号与曲号比较；0 保留作未计算哨兵）。
+    const UNNUMBERED_BIT = 0x20000000;
+    const packOrder = (v) => (v.no > 0
+        ? (((v.disc || 1) << 10) | v.no)
+        : (UNNUMBERED_BIT | ((v.disc || 1) << 10)));
+
     // 给一组曲库下标排序用：有曲号的在前按碟、曲号；同号或都没有的按 fallback（一般是标题）
     const albumCompare = (tracks, fallback) => {
         const list = Array.isArray(tracks) ? tracks : null;
         const len = list ? list.length : 0;
-        // 仅按需缓存访问到的下标，避免 5000+ 曲库按专辑排序时预分配整表大数组引发 GC
-        const cache = len > 0 && len <= 64 ? new Array(len) : null;
-        const sparse = len > 64 ? new Map() : null;
-        const get = (i) => {
-            if (cache && i >= 0 && i < len) {
-                let v = cache[i];
-                if (v === undefined) cache[i] = v = numberOf(list[i]);
-                return v;
+        const keys = len > 0 ? new Int32Array(len) : null;
+        const keyOf = (i) => {
+            if (keys && i >= 0 && i < len) {
+                let k = keys[i];
+                if (k === 0) keys[i] = k = packOrder(numberOf(list[i]));
+                return k;
             }
-            if (sparse) {
-                let v = sparse.get(i);
-                if (v === undefined) { v = numberOf(list[i]); sparse.set(i, v); }
-                return v;
-            }
-            return numberOf(tracks && tracks[i]);
+            return packOrder(numberOf(tracks && tracks[i]));
         };
         const rest = typeof fallback === 'function' ? fallback : (a, b) => a - b;
-        return (a, b) => {
-            const x = get(a), y = get(b);
-            if (!x.no !== !y.no) return x.no ? -1 : 1;
-            return ((x.disc || 1) - (y.disc || 1)) || (x.no - y.no) || rest(a, b);
-        };
+        return (a, b) => (keyOf(a) - keyOf(b)) || rest(a, b);
     };
 
     const exported = { numberOf, albumCompare };

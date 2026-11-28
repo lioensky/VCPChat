@@ -435,29 +435,32 @@ function setupUI(app) {
     app.scrollCurrentTrackToSidebarTop = () => {
         const playlist = app.playlistEl;
         if (!playlist || playlist.style.display === 'none' || classicHidden()) return false;
-        const viewportHeight = () => playlist.clientHeight || playlist.getBoundingClientRect().height || 0;
-        const place = (desiredScrollTop) => {
-            const maxScrollTop = Math.max(0, playlist.scrollHeight - viewportHeight());
-            playlist.scrollTop = Math.min(maxScrollTop, Math.max(0, desiredScrollTop));
-        };
-
         const activeItem = playlist.querySelector('li.active');
         if (activeItem && Number(activeItem.dataset.index) === app.currentTrackIndex) {
             // Place the active row around 1/4 of the visible list instead of directly
-            // against the top edge. This leaves tolerance for restored layout/rounded
-            // panel clipping while preserving useful context above and below the track.
+            // against the top edge. Batch geometry reads before writing scrollTop and
+            // forward known viewport/scrollTop to renderWindow to avoid back-to-back reflows.
             const playlistRect = playlist.getBoundingClientRect();
             const itemRect = activeItem.getBoundingClientRect();
-            place(playlist.scrollTop + itemRect.top - playlistRect.top - viewportHeight() * 0.25);
-            renderWindow();
+            const viewH = cachedListHeight > 0 ? cachedListHeight : (playlist.clientHeight || playlistRect.height || 0);
+            const curTop = playlist.scrollTop;
+            const maxScrollTop = Math.max(0, playlist.scrollHeight - viewH);
+            const desired = curTop + itemRect.top - playlistRect.top - viewH * 0.25;
+            const nextTop = Math.min(maxScrollTop, Math.max(0, desired));
+            if (nextTop !== curTop) playlist.scrollTop = nextTop;
+            renderWindow(false, viewH, nextTop);
             return true;
         }
         // 正在放的那首不在已建的行里：按它在列表里的位置算出滚动量，再把那一段建出来
         const current = app.playlist[app.currentTrackIndex];
         const at = current ? positionOf.get(current) : undefined;
-        if (at === undefined || !(rowPitch > 0) || !(viewportHeight() > 0)) return false;
-        place(at * rowPitch - viewportHeight() * 0.25);
-        renderWindow();
+        if (at === undefined || !(rowPitch > 0)) return false;
+        const viewH = cachedListHeight > 0 ? cachedListHeight : (playlist.clientHeight || playlist.getBoundingClientRect().height || 0);
+        if (!(viewH > 0)) return false;
+        const maxScrollTop = Math.max(0, playlist.scrollHeight - viewH);
+        const nextTop = Math.min(maxScrollTop, Math.max(0, at * rowPitch - viewH * 0.25));
+        if (playlist.scrollTop !== nextTop) playlist.scrollTop = nextTop;
+        renderWindow(false, viewH, nextTop);
         return true;
     };
 
