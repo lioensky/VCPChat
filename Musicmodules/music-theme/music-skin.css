@@ -295,7 +295,6 @@ body.music-stage-active #custom-title-bar {
 
 .playlist li,
 .sidebar-playlist li {
-    counter-increment: track;
     position: relative;
     display: block;
     height: 36px;
@@ -307,6 +306,11 @@ body.music-stage-active #custom-title-bar {
     color: var(--ar-ink);
     contain-intrinsic-size: auto 36px;
     transition: background-color var(--mt-dur-1) var(--mt-ease-std);
+}
+
+.playlist li:not([data-n]),
+.sidebar-playlist li:not([data-n]) {
+    counter-increment: track;
 }
 
 .sidebar-playlist li::before {

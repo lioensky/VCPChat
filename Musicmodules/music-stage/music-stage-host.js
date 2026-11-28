@@ -723,7 +723,7 @@
             };
             (tuningDefinitions[state.modeId] || []).forEach((definition) => {
                 const value = config.modes[state.modeId]?.[definition.key];
-                const row = createElement('label', 'music-stage-tuning-row');
+                const row = createElement('label', definition.type !== 'range' ? 'music-stage-tuning-row is-value-hidden' : 'music-stage-tuning-row');
                 const header = createElement('span', 'music-stage-tuning-label');
                 const valueText = createElement('span', 'music-stage-tuning-value');
                 header.textContent = definition.label;

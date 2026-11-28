@@ -112,7 +112,12 @@
     const readRecent = () => {
         try {
             const value = JSON.parse(global.localStorage.getItem(RECENT_KEY) || '[]');
-            return Array.isArray(value) ? value.filter((id) => typeof id === 'string').slice(0, MAX_RECENT) : [];
+            if (!Array.isArray(value)) return [];
+            const out = [];
+            for (let i = 0; i < value.length && out.length < MAX_RECENT; i += 1) {
+                if (typeof value[i] === 'string') out.push(value[i]);
+            }
+            return out;
         } catch (error) { return []; }
     };
     const writeRecent = (list) => {
@@ -243,12 +248,16 @@
 
         const notify = (message) => { try { global.MusicToast?.show({ id: 'queue', kind: 'success', message }); } catch (error) {} };
         const queueTracks = (tracks, front, label) => {
-            const list = tracks.filter(Boolean);
+            const list = [];
+            for (let i = 0; tracks && i < tracks.length; i += 1) if (tracks[i]) list.push(tracks[i]);
             if (!list.length || typeof app.queueAdd !== 'function') return;
             // 「下一首播放」一组歌：倒着插到最前，放出来还是原来的顺序；批量入队合并成一次通知避免 N 倍重绘。
             const run = () => {
-                if (front) list.slice().reverse().forEach((t) => app.queuePlayNext?.(t));
-                else list.forEach((t) => app.queueAdd(t));
+                if (front) {
+                    for (let i = list.length - 1; i >= 0; i -= 1) app.queuePlayNext?.(list[i]);
+                } else {
+                    for (let i = 0; i < list.length; i += 1) app.queueAdd(list[i]);
+                }
             };
             if (list.length > 1 && typeof app.queueBatch === 'function') app.queueBatch(run); else run();
             notify(`${front ? '下一首播放' : '已加入队列'}：${label}`);
@@ -683,10 +692,22 @@
             if (key === lastHintsKey && !hints.hidden) return;
             lastHintsKey = key;
             hints.hidden = false;
-            const options = FILTERS.filter((f) => !typed || f.flag.startsWith(typed) || f.aliases.some((a) => a.startsWith(typed)));
-            hints.innerHTML = '<div class="md-cmd-hints-k">过滤</div>' + (options.length ? options : FILTERS).map((f) => (
-                `<button type="button" class="md-cmd-hint" data-flag="${f.flag}"><b>--${f.flag}</b><span>${f.hint}</span><i>${f.aliases.map((a) => `--${a}`).join(' ')}</i></button>`
-            )).join('');
+            const options = [];
+            for (let i = 0; i < FILTERS.length; i += 1) {
+                const f = FILTERS[i];
+                let hit = !typed || f.flag.startsWith(typed);
+                for (let j = 0; !hit && j < f.aliases.length; j += 1) if (f.aliases[j].startsWith(typed)) hit = true;
+                if (hit) options.push(f);
+            }
+            const showList = options.length ? options : FILTERS;
+            let html = '<div class="md-cmd-hints-k">过滤</div>';
+            for (let i = 0; i < showList.length; i += 1) {
+                const f = showList[i];
+                let aliasStr = '';
+                for (let j = 0; j < f.aliases.length; j += 1) aliasStr += (j ? ' ' : '') + `--${f.aliases[j]}`;
+                html += `<button type="button" class="md-cmd-hint" data-flag="${f.flag}"><b>--${f.flag}</b><span>${f.hint}</span><i>${aliasStr}</i></button>`;
+            }
+            hints.innerHTML = html;
             void q;
         };
 
@@ -710,12 +731,15 @@
             titleEl.className = 'md-cmd-title';
             const grpEl = document.createElement('span');
             grpEl.className = 'md-cmd-grp';
+            const descEl = document.createElement('span');
+            descEl.className = 'md-cmd-desc';
+            descEl.hidden = true;
             const runEl = document.createElement('span');
             runEl.className = 'md-cmd-run';
             cloneIconInto(runEl, 'corner-down-left', 13);
             runEl.appendChild(document.createTextNode(''));
             l1.append(titleEl, grpEl);
-            rt.appendChild(l1);
+            rt.append(l1, descEl);
             btn.append(ri, rt, runEl);
             rowProto = btn;
             return rowProto;
@@ -726,14 +750,15 @@
             const rt = ri.nextSibling;
             const runEl = rt.nextSibling;
             const l1 = rt.firstChild;
+            const descEl = l1.nextSibling;
             const titleEl = l1.firstChild;
             const grpEl = titleEl.nextSibling;
             const runText = runEl.lastChild;
             return {
-                btn, ri, rt, l1, titleEl, chipEl: null, grpEl, descEl: null, runText,
+                btn, ri, rt, l1, titleEl, chipEl: null, grpEl, descEl, runText,
                 iconName: 'music', hasChip: false, hasDesc: false,
                 lastCls: '', lastId: '', lastSel: '', lastIdx: '', lastDist: '',
-                lastTitle: null, lastHint: null, lastGrp: null, lastDesc: null, lastRun: null
+                lastTitle: null, lastHint: null, lastGrp: null, lastDesc: '', lastRun: null
             };
         };
         const hydrateRowSlot = (slot, item, i) => {
@@ -770,15 +795,11 @@
             const nextGrp = String(item.group ?? '');
             if (slot.lastGrp !== nextGrp) { slot.lastGrp = nextGrp; slot.grpEl.textContent = nextGrp; }
             if (item.desc) {
-                if (!slot.descEl) {
-                    slot.descEl = document.createElement('span');
-                    slot.descEl.className = 'md-cmd-desc';
-                }
                 const nextDesc = String(item.desc);
                 if (slot.lastDesc !== nextDesc) { slot.lastDesc = nextDesc; slot.descEl.textContent = nextDesc; }
-                if (!slot.hasDesc) { slot.rt.appendChild(slot.descEl); slot.hasDesc = true; }
+                if (!slot.hasDesc) { slot.descEl.hidden = false; slot.hasDesc = true; }
             } else if (slot.hasDesc) {
-                slot.descEl.remove();
+                slot.descEl.hidden = true;
                 slot.hasDesc = false;
             }
             const nextRun = item.queueable ? '播放' : '运行';
@@ -926,7 +947,10 @@
 
         const remember = (item) => {
             if (item.noRecent) return;
-            writeRecent([item.id, ...readRecent().filter((id) => id !== item.id)]);
+            const prev = readRecent();
+            const next = [item.id];
+            for (let i = 0; i < prev.length; i += 1) if (prev[i] !== item.id) next.push(prev[i]);
+            writeRecent(next);
         };
 
         const execute = (index, how = 'run') => {
@@ -955,8 +979,10 @@
         };
 
         // ───────── 打开 / 关闭 ─────────
+        let capEl = null;
+        const getCapEl = () => (capEl && capEl.isConnected ? capEl : (capEl = host.querySelector('.md-cap')));
         const readCapRect = () => {
-            const cap = host.querySelector('.md-cap');
+            const cap = getCapEl();
             const rect = cap?.getBoundingClientRect();
             state.capRect = rect && rect.width ? rect : null;
             return rect;
@@ -995,7 +1021,7 @@
                 const row = activeRowEl && activeRowEl.isConnected ? activeRowEl : list.querySelector(`[data-i="${state.active}"]`);
                 const pre = row && global.MusicFluid?.slide ? { row, top: row.offsetTop, height: row.offsetHeight } : null;
                 // 搜索面板从播放条顶边长出来；复用 place() 已量好的播放条位置，避免写完 md-open 立刻重排
-                const cap = state.capRect || host.querySelector('.md-cap')?.getBoundingClientRect();
+                const cap = state.capRect || getCapEl()?.getBoundingClientRect();
                 if (cap && cap.width) global.MusicFluid?.bud(box, { x: cap.left + cap.width / 2, y: cap.top + 6 });
                 root.classList.add('md-open');
                 if (pre) flushSlide(false, pre);

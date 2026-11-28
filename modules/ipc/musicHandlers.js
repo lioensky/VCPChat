@@ -74,13 +74,25 @@ const libraryWatch = typeof createLibraryWatch !== 'function'
     readFolders: async () => {
         const file = musicFoldersFile();
         if (!file) return [];
-        try { const list = await fs.readJson(file); return Array.isArray(list) ? list.filter((d) => typeof d === 'string') : []; } catch (e) { return []; }
+        try {
+            const list = await fs.readJson(file);
+            if (!Array.isArray(list)) return [];
+            const out = [];
+            for (let i = 0; i < list.length; i += 1) if (typeof list[i] === 'string') out.push(list[i]);
+            return out;
+        } catch (e) { return []; }
     },
     writeFolders: async (list) => { const file = musicFoldersFile(); if (file) await writeJsonAtomic(file, list, { spaces: 2 }); },
     readExcluded: async () => {
         const file = musicFoldersFile() && path.join(path.dirname(MUSIC_PLAYLIST_FILE), 'music_excluded.json');
         if (!file) return [];
-        try { const list = await fs.readJson(file); return Array.isArray(list) ? list.filter((d) => typeof d === 'string') : []; } catch (e) { return []; }
+        try {
+            const list = await fs.readJson(file);
+            if (!Array.isArray(list)) return [];
+            const out = [];
+            for (let i = 0; i < list.length; i += 1) if (typeof list[i] === 'string') out.push(list[i]);
+            return out;
+        } catch (e) { return []; }
     },
     writeExcluded: async (list) => { if (MUSIC_PLAYLIST_FILE) await writeJsonAtomic(path.join(path.dirname(MUSIC_PLAYLIST_FILE), 'music_excluded.json'), list); },
     send: (channel, payload) => { sendToWindow(musicWindow, channel, payload); }
@@ -370,7 +382,11 @@ async function followTrackChange(state) {
     if (typeof state.artist === 'string' || typeof state.album === 'string') {
         info = { title: state.title, artist: state.artist, album: state.album };
     } else {
-        const track = (await readPlaylistFile()).find(t => t && t.path === trackPath);
+        const pl = await readPlaylistFile();
+        let track = null;
+        for (let i = 0; i < pl.length; i += 1) {
+            if (pl[i] && pl[i].path === trackPath) { track = pl[i]; break; }
+        }
         info = track ? { title: track.title, artist: track.artist, album: track.album } : { title: state.title };
     }
     if (!musicWindow || musicCapsuleState.trackKey !== trackPath) return; // 查曲库期间又换了歌或窗口关了
@@ -956,11 +972,18 @@ function initialize(options) {
                 const dirs = new Map();
                 const dirOk = (d) => { if (!dirs.has(d)) dirs.set(d, fs.stat(d).then((s) => s.isDirectory(), () => false)); return dirs.get(d); };
                 const entries = new Array(list.length);
+                const batch = [];
                 for (let at = 0; at < list.length; at += 32) {
-                    await Promise.all(list.slice(at, at + 32).map(async (entry, k) => {
-                        const s = (await dirOk(path.dirname(entry.path))) ? await fs.stat(entry.path).catch(() => null) : null;
-                        entries[at + k] = { ...entry, exists: Boolean(s && s.isFile()) };
-                    }));
+                    batch.length = 0;
+                    const end = Math.min(list.length, at + 32);
+                    for (let idx = at; idx < end; idx += 1) {
+                        const entry = list[idx];
+                        batch.push((async (slot, ent) => {
+                            const s = (await dirOk(path.dirname(ent.path))) ? await fs.stat(ent.path).catch(() => null) : null;
+                            entries[slot] = { ...ent, exists: Boolean(s && s.isFile()) };
+                        })(idx, entry));
+                    }
+                    await Promise.all(batch);
                 }
                 return { ok: true, file, name: parsed.name || path.basename(file).replace(M3U_ANY_EXT_RE, ''), entries, skipped: parsed.skipped };
             } catch (err) {
@@ -1067,12 +1090,21 @@ function initialize(options) {
         // 拖进窗口的文件和文件夹：文件夹整个扫，单曲只读这几首。路径来自渲染端，逐个确认是本地的目录或音频文件。
         ipcMain.handle('music-add-paths', async (event, paths) => {
             if (!Array.isArray(paths)) return { added: 0 };
-            const candidates = paths.slice(0, 2000).filter((raw) => typeof raw === 'string' && path.isAbsolute(raw));
+            const candidates = [];
+            const cap = Math.min(paths.length, 2000);
+            for (let i = 0; i < cap; i += 1) {
+                const raw = paths[i];
+                if (typeof raw === 'string' && path.isAbsolute(raw)) candidates.push(raw);
+            }
             const stats = new Array(candidates.length);
+            const batch = [];
             for (let at = 0; at < candidates.length; at += 32) {
-                await Promise.all(candidates.slice(at, at + 32).map(async (raw, k) => {
-                    stats[at + k] = await fs.stat(raw).catch(() => null);
-                }));
+                batch.length = 0;
+                const end = Math.min(candidates.length, at + 32);
+                for (let idx = at; idx < end; idx += 1) {
+                    batch.push(fs.stat(candidates[idx]).catch(() => null).then((s) => { stats[idx] = s; }));
+                }
+                await Promise.all(batch);
             }
             const folders = [];
             const files = [];

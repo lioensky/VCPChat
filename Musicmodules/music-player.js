@@ -626,10 +626,7 @@ function setupPlayer(app) {
     app.queueAnchor = null; // { from: 上下文里最后放的那首, playing: 正在放的手动曲目 }
     app.preloadIssuedFor = null;
 
-    // 曲库数组被整个换掉（重新扫描文件夹、删歌、云端导入）时，新数组里是同路径的新对象。
-    // 上下文列表、手动队列、播放历史、随机顺序都按对象身份找歌，留着旧对象就会
-    // 「下一首」去加载第 -1 首、队列被当成全部失效清空。这里按路径换成新对象，曲库里没有了的去掉。
-    // 每次用到这些列表前调一次；曲库数组没换就直接返回。
+    // 曲库数组整体换新（重扫/删歌/云端导入）时按路径换回新对象并移除失效引用，未变则直接返回。
     let reconciledLibrary = app.playlist;
     let reconciledLength = Array.isArray(app.playlist) ? app.playlist.length : 0;
     const reconcileLibrary = () => {
@@ -639,7 +636,7 @@ function setupPlayer(app) {
         if (reconciledLibrary === library && app.lastShuffleList === library) { app.shuffleQueue = []; app.lastShuffleList = null; }
         reconciledLibrary = library;
         reconciledLength = library.length;
-        const live = new Set(library);
+        const live = getLibrarySet();
         const stale = (t) => Boolean(t) && !live.has(t);
         const ctx = app.currentFilteredTracks;
         const anchor = app.queueAnchor;
@@ -806,11 +803,15 @@ function setupPlayer(app) {
     // list 为空或就是整个曲库原顺序时记为 null（= 整个曲库）。origin 记下是从哪来的（如 'classic'），
     // 之后那里的排序变了可以跟着更新。
     app.playFromContext = (list, index, { source = null, origin = null, render = true, play = true } = {}) => {
-        const tracks = Array.isArray(list) ? list.filter(Boolean) : null;
-        const whole = !tracks || (tracks.length === app.playlist.length && tracks.every((t, i) => t === app.playlist[i]));
+        let tracks = null, whole = true;
+        if (Array.isArray(list)) {
+            tracks = [];
+            for (let i = 0; i < list.length; i++) if (list[i]) tracks.push(list[i]);
+            whole = tracks.length === app.playlist.length;
+            for (let i = 0; whole && i < tracks.length; i++) if (tracks[i] !== app.playlist[i]) whole = false;
+        }
         app.currentFilteredTracks = whole ? null : tracks;
         app.filteredPlaylistSource = source || null;
-        // 记下这次设的是哪一份列表：之后别处（档案页等）换了上下文，这条记录就不再算数。
         app.playbackContext = { origin: origin || null, list: app.currentFilteredTracks, source: app.filteredPlaylistSource };
         if (render) { try { app.renderPlaylist?.(app.currentFilteredTracks); } catch (error) { /* 旧列表只是同步显示 */ } }
         return app.loadTrack(index, play);
@@ -833,10 +834,15 @@ function setupPlayer(app) {
         if (origin && !app.contextFrom(origin)) return false;
         const current = app.currentFilteredTracks || app.playlist;
         if (!Array.isArray(list) || list.length !== current.length) return false;
-        const members = new Set(current);
-        if (!list.every(t => members.has(t))) return false;
-        if (list.every((t, i) => t === current[i])) return false;
-        const whole = list.every((t, i) => t === app.playlist[i]);
+        const members = current === app.playlist ? getLibrarySet() : new Set(current);
+        let sameCur = true, whole = list.length === app.playlist.length;
+        for (let i = 0; i < list.length; i++) {
+            const t = list[i];
+            if (!members.has(t)) return false;
+            if (sameCur && t !== current[i]) sameCur = false;
+            if (whole && t !== app.playlist[i]) whole = false;
+        }
+        if (sameCur) return false;
         app.currentFilteredTracks = whole ? null : list.slice();
         if (app.playbackContext) app.playbackContext.list = app.currentFilteredTracks;
         announceQueue();

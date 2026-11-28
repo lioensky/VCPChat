@@ -101,8 +101,29 @@ function setupUI(app) {
     const BUFFER = 40;
     const FALLBACK_ROWS = 2 * BUFFER; // 还量不到视口和行高（隐藏、未排版）时先建这么多行
     let shownSongs = [];               // 当前列表要显示的全部歌，按显示顺序
-    let positionOf = new Map();        // 歌 → 在 shownSongs 里的位置
+    let positionOf = null;             // 惰性构建：仅在 scrollCurrentTrackToSidebarTop 未命中可见行时生成
+    let positionOfIsLib = false;
     let libraryIndexOf = new Map();    // 歌 → 在曲库里的下标
+    const getPositionOf = () => {
+        if (positionOf) return positionOf;
+        if (positionOfIsLib) return (positionOf = libraryIndexOf);
+        const map = new Map();
+        for (let i = 0; i < shownSongs.length; i += 1) {
+            const t = shownSongs[i];
+            if (!map.has(t)) map.set(t, i);
+        }
+        positionOf = map;
+        return map;
+    };
+    let syncedScrollTop = 0;
+    let syncedScrollTopFresh = false;
+    const markScrollTopFresh = (v) => {
+        syncedScrollTop = v;
+        if (!syncedScrollTopFresh) {
+            syncedScrollTopFresh = true;
+            Promise.resolve().then(() => { syncedScrollTopFresh = false; });
+        }
+    };
     let renderedBase = null;
     let renderedBaseLength = -1;
     let renderedBaseFirst = null;
@@ -309,8 +330,12 @@ function setupUI(app) {
         cachedListHeight = 0;
         renderWindowSoon();
     };
+    const onListScroll = () => {
+        syncedScrollTopFresh = false;
+        renderWindowSoon();
+    };
     if (app.playlistEl) {
-        app.playlistEl.addEventListener('scroll', renderWindowSoon, { passive: true });
+        app.playlistEl.addEventListener('scroll', onListScroll, { passive: true });
         if (typeof ResizeObserver === 'function') {
             listResizeObserver = new ResizeObserver((entries) => {
                 const rect = entries?.[entries.length - 1]?.contentRect;
@@ -359,7 +384,7 @@ function setupUI(app) {
             if (themeRaf1 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf1); themeRaf1 = 0; }
             if (themeRaf2 && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(themeRaf2); themeRaf2 = 0; }
             if (app.backgroundTransitionTimer) { clearTimeout(app.backgroundTransitionTimer); app.backgroundTransitionTimer = null; }
-            app.playlistEl?.removeEventListener('scroll', renderWindowSoon);
+            app.playlistEl?.removeEventListener('scroll', onListScroll);
             window.removeEventListener('resize', onListWindowResize);
             rowPool.length = 0;
         }, { once: true });
@@ -381,7 +406,11 @@ function setupUI(app) {
             preView = app.playlistEl.clientHeight;
             if (preView > 0) cachedListHeight = preView;
         }
-        const preScrollTop = app.playlistEl ? app.playlistEl.scrollTop : 0;
+        let preScrollTop = 0;
+        if (app.playlistEl) {
+            if (syncedScrollTopFresh) preScrollTop = syncedScrollTop;
+            else { preScrollTop = app.playlistEl.scrollTop; markScrollTopFresh(preScrollTop); }
+        }
         if (empty) {
             if (app.playlistEl.dataset.emptyText !== empty) app.playlistEl.dataset.emptyText = empty;
         } else if ('emptyText' in app.playlistEl.dataset) {
@@ -426,17 +455,9 @@ function setupUI(app) {
         }
         shownSongs = songs.slice();
         const nextTitles = new Array(shownSongs.length);
-        if (songs === app.playlist) {
-            positionOf = libraryIndexOf;
-            for (let i = 0; i < shownSongs.length; i += 1) nextTitles[i] = shownSongs[i]?.title;
-        } else {
-            positionOf = new Map();
-            for (let i = 0; i < shownSongs.length; i += 1) {
-                const t = shownSongs[i];
-                if (!positionOf.has(t)) positionOf.set(t, i);
-                nextTitles[i] = t?.title;
-            }
-        }
+        for (let i = 0; i < shownSongs.length; i += 1) nextTitles[i] = shownSongs[i]?.title;
+        positionOf = null;
+        positionOfIsLib = songs === app.playlist;
         renderedBase = app.playlist;
         renderedBaseLength = plLen;
         renderedBaseFirst = plFirst;
@@ -465,12 +486,13 @@ function setupUI(app) {
             const desired = curTop + itemRect.top - playlistRect.top - viewH * 0.25;
             const nextTop = Math.min(maxScrollTop, Math.max(0, desired));
             if (nextTop !== curTop) playlist.scrollTop = nextTop;
+            markScrollTopFresh(nextTop);
             renderWindow(false, viewH, nextTop);
             return true;
         }
         // 正在放的那首不在已建的行里：按它在列表里的位置算出滚动量，再把那一段建出来
         const current = app.playlist[app.currentTrackIndex];
-        const at = current ? positionOf.get(current) : undefined;
+        const at = current ? getPositionOf().get(current) : undefined;
         if (at === undefined || !(rowPitch > 0)) return false;
         const viewH = cachedListHeight > 0 ? cachedListHeight : (playlist.clientHeight || playlist.getBoundingClientRect().height || 0);
         if (viewH > 0 && cachedListHeight <= 0) cachedListHeight = viewH;
@@ -478,6 +500,7 @@ function setupUI(app) {
         const maxScrollTop = Math.max(0, playlist.scrollHeight - viewH);
         const nextTop = Math.min(maxScrollTop, Math.max(0, at * rowPitch - viewH * 0.25));
         if (playlist.scrollTop !== nextTop) playlist.scrollTop = nextTop;
+        markScrollTopFresh(nextTop);
         renderWindow(false, viewH, nextTop);
         return true;
     };

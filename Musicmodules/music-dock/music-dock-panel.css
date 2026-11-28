@@ -390,9 +390,8 @@ body.music-lyrics-hide-translation #lyrics-list .lyric-translation { display: no
 .md-tune-note { display: block; font-size: 11px; line-height: 15px; color: var(--md-t3); }
 #music-dock-root .md-stage-in .music-stage-tuning-value { grid-column: 2; justify-self: end; font-size: 11.5px; color: var(--md-t2); }
 #music-dock-root .md-stage-in .music-stage-tuning-row input[type="checkbox"] { grid-column: 2; grid-row: 1; justify-self: end; margin: 0; }
-#music-dock-root .md-stage-in .music-stage-tuning-row:has(input[type="checkbox"]) .music-stage-tuning-value { display: none; }
 #music-dock-root .md-stage-in .music-stage-tuning-row select { grid-column: 2; grid-row: 1; justify-self: end; width: auto; max-width: 168px; margin: 0; }
-#music-dock-root .md-stage-in .music-stage-tuning-row:has(select) .music-stage-tuning-value { display: none; }
+#music-dock-root .md-stage-in .music-stage-tuning-row.is-value-hidden .music-stage-tuning-value { display: none; }
 #music-dock-root .md-stage-in .music-stage-tuning-row input[type="range"] { grid-column: 1 / -1; width: 100%; max-width: 100%; margin: 0; }
 .md-tune:not(.md-tune-all) .md-tune-rest { display: none !important; }
 #music-dock-root .md-fold {
@@ -512,6 +511,9 @@ body.music-reduce-motion #music-dock-root *::after { transition-duration: 0s !im
   border-radius: 16px;
   padding: 12px;
   text-align: left;
+  contain: layout style;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 62px;
   transition: background-color .12s;
 }
 #music-dock-root .md-cmd-row.md-act { background: var(--md-fill2); }
@@ -539,6 +541,7 @@ body.music-reduce-motion #music-dock-root *::after { transition-duration: 0s !im
 }
 .md-cmd-grp { flex-shrink: 0; border-radius: 9999px; padding: 2px 8px; font-size: 10px; line-height: 14px; letter-spacing: .12em; text-transform: uppercase; opacity: .5; }
 .md-cmd-desc { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 16px; opacity: .5; }
+.md-cmd-desc[hidden] { display: none; }
 .md-cmd-run { display: none; align-items: center; gap: 4px; flex-shrink: 0; font-size: 12px; opacity: .45; }
 .md-cmd-row.md-act .md-cmd-run { display: flex; }
 .md-cmd-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 48px 24px; font-size: 14px; opacity: .5; }

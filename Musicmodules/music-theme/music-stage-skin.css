@@ -409,8 +409,7 @@ body.music-dock-on .music-stage .music-stage-chrome {
 }
 
 /* 开关和选项自己就看得出当前值，不再重复写一遍 */
-.music-stage-tuning-row:has(input[type="checkbox"]) .music-stage-tuning-value,
-.music-stage-tuning-row:has(select) .music-stage-tuning-value {
+.music-stage-tuning-row.is-value-hidden .music-stage-tuning-value {
     display: none;
 }
 
