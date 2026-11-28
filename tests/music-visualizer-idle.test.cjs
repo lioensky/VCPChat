@@ -472,3 +472,64 @@ test('Batch 104: drawVisualizer caches gradient by integer height/RGB and resets
         dom.window.close();
     }
 });
+
+test('Batch 113: hidden idle visualizer defers WebSocket reconnect until visible, throttles error logs, and cleans up on destroy', () => {
+    const { window, app, setHidden } = setup();
+    const timers = [];
+    const origSetTimeout = window.setTimeout;
+    const origClearTimeout = window.clearTimeout;
+    const origErr = console.error;
+    let errLogs = 0;
+    const sockets = [];
+    try {
+        console.error = () => { errLogs += 1; };
+        window.setTimeout = (fn) => { const id = timers.length + 1; timers.push({ id, fn, cleared: false }); return id; };
+        window.clearTimeout = (id) => { const t = timers.find((x) => x.id === id); if (t) t.cleared = true; };
+        window.WebSocket = class FakeSocket {
+            constructor() { this.readyState = 0; sockets.push(this); }
+            close() { this.readyState = 3; }
+        };
+        window.WebSocket.OPEN = 1;
+        window.WebSocket.CONNECTING = 0;
+
+        app.isPlaying = false;
+        setHidden(true);
+        app.connectWebSocket();
+        assert.equal(sockets.length, 1);
+        sockets[0].onerror(new Error('offline'));
+        assert.equal(errLogs, 1, 'logs first WebSocket error');
+        sockets[0].onclose();
+        assert.equal(timers.length, 1, 'schedules backoff reconnect timer');
+
+        // Firing reconnect timer while hidden + paused defers reconnect until visibilitychange
+        timers[0].fn();
+        assert.equal(sockets.length, 1, 'hidden idle window does not open background WebSocket');
+        assert.equal(typeof app._visualizerReconnectOnVisible, 'function');
+
+        // Becoming visible immediately resumes reconnect
+        setHidden(false);
+        window.document.dispatchEvent(new window.Event('visibilitychange'));
+        assert.equal(sockets.length, 2, 'returning visible immediately reconnects WebSocket');
+        assert.equal(app._visualizerReconnectOnVisible, null);
+
+        // Subsequent errors between attempt 1..11 throttle console.error spam
+        sockets[1].onerror(new Error('offline again'));
+        assert.equal(errLogs, 1, 'throttles repeated WebSocket error logs');
+
+        // destroyVisualizer detaches deferred visibility reconnect listener
+        setHidden(true);
+        sockets[1].onclose();
+        timers[timers.length - 1].fn();
+        assert.equal(typeof app._visualizerReconnectOnVisible, 'function');
+        app.destroyVisualizer();
+        assert.equal(app._visualizerReconnectOnVisible, null, 'destroyVisualizer clears deferred visibility reconnect');
+        setHidden(false);
+        window.document.dispatchEvent(new window.Event('visibilitychange'));
+        assert.equal(sockets.length, 2, 'destroyed visualizer does not reconnect on visibilitychange');
+    } finally {
+        console.error = origErr;
+        window.setTimeout = origSetTimeout;
+        window.clearTimeout = origClearTimeout;
+        window.close();
+    }
+});

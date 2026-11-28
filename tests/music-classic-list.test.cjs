@@ -1417,3 +1417,89 @@ test('Batch 109: classic-list dotless titleOf fast-path, O(N) counting rank sort
         t.close();
     }
 });
+
+test('Batch 113: classic-list tail-dot/zero-digit ties & _cols fast path, music-ui spacer tracking, utils tail-dot/NFKC/formatTime, and fluid-select #playlist skip', async () => {
+    const ROOT = path.join(__dirname, '..');
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul><span id="all-count"></span></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.CSS = window.CSS || { escape: (s) => String(s) };
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-app-hooks.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-utils.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-ui.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-theme/music-classic-list.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-dock/music-fluid-select.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-theme/music-skin.js'), 'utf8'));
+
+        const list = doc.getElementById('playlist');
+        Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => 360 });
+        Object.defineProperty(list, 'scrollTop', { configurable: true, get: () => 0, set() {} });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetTop', {
+            configurable: true,
+            get() { return this.parentNode === list ? Array.prototype.indexOf.call(list.children, this) * 36 : 0; }
+        });
+        const tracks = [
+            { path: '/0.flac', title: 'Track 0.flac', artist: 'Art A', album: 'Alb 1', duration: 65 },
+            { path: '/1.flac', title: 'Track 01.flac', artist: 'Art A', album: 'Alb 1', duration: 3661 },
+            { path: '/2.flac', title: 'Track 1.flac', artist: 'Art A', album: 'Alb 1', duration: 120 },
+            { path: '/3.flac', title: 'Track 100.flac', artist: 'Art B', album: 'Alb 2', duration: 120 },
+            { path: '/4.flac', title: 'Track 101.flac', artist: 'Art B', album: 'Alb 2', duration: 120 },
+            { path: '/5.flac', title: 'Track 10 (Live).flac', artist: 'Art B', album: 'Alb 2', duration: 120 },
+            { path: '/6.flac', title: 'Track 10.flac', artist: 'Art B', album: 'Alb 2', duration: 120 },
+            { path: '/7.flac', title: 'Vol. 2 Plain', artist: 'ＬＥＭＯＮ', album: 'Alb 3', duration: 185 }
+        ];
+        const app = {
+            playlist: tracks,
+            currentTrackIndex: 0,
+            playlistEl: list,
+            allCount: doc.getElementById('all-count'),
+            isLiked: () => false,
+            toggleLike() {},
+            updateAllCount() {}
+        };
+        window.setupUtils(app);
+        window.setupUI(app);
+        window.setupMusicClassicList(app);
+
+        // 1. formatDuration & formatTime integer fast paths (<1h and >=1h)
+        assert.equal(window.MusicClassicList.formatDuration(65), '1:05');
+        assert.equal(window.MusicClassicList.formatDuration(3661), '1:01:01');
+        assert.equal(app.formatTime(59), '0:59');
+        assert.equal(app.formatTime(3661), '1:01:01');
+        // 2. stripAudioExtension tail-dot Set lookup + searchTracks needsNfkc
+        assert.equal(app.stripAudioExtension('Vol. 2 Plain'), 'Vol. 2 Plain');
+        assert.equal(app.stripAudioExtension('Demo.aiff'), 'Demo');
+        assert.equal(app.stripAudioExtension('Demo.unknown'), 'Demo.unknown');
+        assert.deepEqual(Array.from(app.searchTracks(tracks, 'lemon'), (t) => t.path), ['/7.flac']);
+        assert.deepEqual(Array.from(app.searchTracks(tracks, 'live'), (t) => t.path), ['/5.flac']);
+        assert.deepEqual(Array.from(app.searchTracks(tracks, 'alb 3'), (t) => t.path), ['/7.flac']);
+
+        // 3. Title desc preserves exact Collator ties ('Track 01' vs 'Track 1') and distinct '0'/'1', '100'/'101', '10'/'10 (Live)'
+        app.renderPlaylist(tracks);
+        let closestCalls = 0;
+        const origClosest = list.closest.bind(list);
+        list.closest = (...args) => { closestCalls += 1; return origClosest(...args); };
+        const titleBtn = doc.querySelector('.music-list-sort.is-title');
+        titleBtn.click();
+        titleBtn.click();
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(closestCalls, 0, 'fluid-select bodyObs skips #playlist mutations without calling closest()');
+        const descTitles = [...list.children].map((li) => app.stripAudioExtension(tracks[li._idx].title));
+        const coll = new Intl.Collator(['zh-Hans-CN', 'ja', 'en'], { numeric: true, sensitivity: 'base' });
+        const expectedDesc = tracks.map((_, i) => i)
+            .sort((a, b) => -coll.compare(app.stripAudioExtension(tracks[a].title), app.stripAudioExtension(tracks[b].title)) || (a - b))
+            .map((i) => app.stripAudioExtension(tracks[i].title));
+        assert.deepEqual(descTitles, expectedDesc, 'title desc matches Collator tie groups across 0/1, 01/1, 100/101, and (Live)');
+        assert.ok([...list.children].every((li) => li._cols === true && typeof li._idx === 'number'));
+        assert.equal(window.MusicTrackSpecs.format({ path: '/noext/track' }), '');
+        assert.equal(window.MusicTrackSpecs.format({ path: '/a/b.flac' }), 'FLAC');
+
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+});

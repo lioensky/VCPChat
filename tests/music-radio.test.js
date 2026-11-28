@@ -330,3 +330,20 @@ test('Batch 99: dailyMix and neverPlayed prefer musicStats.has() to avoid per-tr
     assert.ok(hasCalls >= library.length, 'stats.has() is used for novelty and neverPlayed checks');
     assert.ok(unseen.every((t) => !known.has(t.path)), 'neverPlayed excludes known tracks accurately');
 });
+
+test('Batch 113: alternateCopy handles repeated/untrimmed artists and tail-dot extensions with custom stripAudioExtension', () => {
+    const failed = { path: '/bad/1.flac', title: 'No.1 Symphony.flac', artist: '  Band X  ' };
+    const alt = { path: '/good/1.aiff', title: 'No.1 Symphony.aiff', artist: 'Band X', lossless: true, bitsPerSample: 24 };
+    const filler = Array.from({ length: 10 }, (_, i) => ({ path: `/f/${i}.mp3`, title: `Other ${i}.mp3`, artist: 'Band Y' }));
+    const store = new Map();
+    const app = {
+        playlist: [failed, ...filler, alt],
+        currentTrackIndex: 0,
+        playModes: ['repeat'],
+        currentPlayMode: 0,
+        failedTracks: new Map([[failed, true]]),
+        loadTrack: async () => {}
+    };
+    setupMusicRadio(app, { storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) } });
+    assert.equal(app.alternateCopy(failed), alt, 'matches untrimmed artist and strips 4-char .aiff tail extension while preserving No.1');
+});
