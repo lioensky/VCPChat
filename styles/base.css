@@ -93,3 +93,32 @@ body,
         transition: none;
     }
 }
+
+/* =======================================================
+ * View Transitions 整屏快照溶解 + 切换期局部过渡冻结
+ * ======================================================= */
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+    transition: none !important;
+}
+
+::view-transition {
+    pointer-events: none;
+}
+
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 160ms;
+    animation-timing-function: linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(root),
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation-duration: 0ms;
+    }
+}
