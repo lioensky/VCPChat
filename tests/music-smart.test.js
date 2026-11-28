@@ -66,3 +66,35 @@ test('Batch 67: fast-path parse handles single-word plain text, single-word rule
     assert.equal(mixed.text, '周杰伦');
     assert.deepEqual(mixed.preds.map((p) => p.word), ['没听过', '<4.5分钟', '很久没听']);
 });
+
+test('Batch 94: smart evaluate skips NFKC on ASCII/CJK/hiragana tracks while normalizing full-width chars and keeps pl.tracks stable when unchanged', () => {
+    let normCalls = 0;
+    const origNorm = String.prototype.normalize;
+    String.prototype.normalize = function trackedNormalize(...args) {
+        normCalls += 1;
+        return origNorm.apply(this, args);
+    };
+    try {
+        const plainLib = [
+            { path: '/1', title: '晴天', artist: '周杰伦', album: '叶惠美', duration: 269 },
+            { path: '/2', title: 'あいう', artist: 'Aki', album: 'Album', duration: 200 }
+        ];
+        assert.deepEqual(Smart.evaluate(plainLib, '周杰伦', {}).map((t) => t.path), ['/1']);
+        assert.deepEqual(Smart.evaluate(plainLib, 'あいう', {}).map((t) => t.path), ['/2']);
+        assert.equal(normCalls, 0, 'ASCII/CJK/hiragana tracks bypass ICU normalize(NFKC)');
+
+        const fwLib = [{ path: '/3', title: 'ＬＥＭＯＮ', artist: 'Test', album: '', duration: 200 }];
+        assert.deepEqual(Smart.evaluate(fwLib, 'lemon', {}).map((t) => t.path), ['/3']);
+        assert.ok(normCalls > 0, 'full-width compatibility characters still normalize via NFKC');
+    } finally {
+        String.prototype.normalize = origNorm;
+    }
+
+    globalThis.document = { addEventListener() {} };
+    const app = { playlist: lib, customPlaylists: [], musicStats: ctx.stats, isLiked: ctx.isLiked, saveCustomPlaylists() {} };
+    Smart.setupMusicSmart(app);
+    const pl = app.createSmartPlaylist('常听');
+    const firstTracksRef = pl.tracks;
+    assert.equal(app.refreshSmartPlaylists(), false);
+    assert.equal(pl.tracks, firstTracksRef, 'unchanged smart playlist keeps existing tracks array reference');
+});

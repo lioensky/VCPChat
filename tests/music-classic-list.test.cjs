@@ -1131,3 +1131,86 @@ test('Batch 88: classic-list skips scroll rAF when all rows decorated, skin pres
         fsExtra.ensureDir = origEnsureDir;
     }
 });
+
+test('Batch 94: classic list caches clientHeight & reads viewport before emptyText write, lyrics-ai memoizes needsTranslation, and folders/stats-view helpers match', () => {
+    const ROOT = path.join(__dirname, '..');
+    const dom = new JSDOM('<!doctype html><body><ul id="playlist"></ul><span id="all-count"></span></body>', {
+        runScripts: 'outside-only',
+        pretendToBeVisual: true
+    });
+    const { window } = dom;
+    const doc = window.document;
+    try {
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-utils.js'), 'utf8'));
+        window.eval(fs.readFileSync(path.join(ROOT, 'Musicmodules/music-ui.js'), 'utf8'));
+        const list = doc.getElementById('playlist');
+        let clientHeightReads = 0;
+        let emptyTextDuringRead = 'unset';
+        Object.defineProperty(list, 'clientHeight', {
+            configurable: true,
+            get() { clientHeightReads += 1; emptyTextDuringRead = list.dataset.emptyText; return 480; }
+        });
+        Object.defineProperty(list, 'scrollTop', {
+            configurable: true,
+            get() { return 0; },
+            set() {}
+        });
+        const app = {
+            playlist: [{ path: '/a.flac', title: 'Alpha', artist: 'X' }, { path: '/b.flac', title: 'Beta', artist: 'Y' }],
+            currentTrackIndex: 0,
+            playlistEl: list,
+            allCount: doc.getElementById('all-count'),
+            updateAllCount() {}
+        };
+        window.setupUtils(app);
+        window.setupUI(app);
+
+        app.renderPlaylist([]);
+        assert.equal(clientHeightReads, 1, 'initial render reads clientHeight once');
+        assert.equal(emptyTextDuringRead, undefined, 'renderNow reads clientHeight before mutating dataset.emptyText');
+        assert.equal(list.dataset.emptyText, '这里还没有歌曲');
+
+        // Subsequent renders reuse cachedListHeight without re-reading clientHeight
+        app.renderPlaylist(app.playlist);
+        app.renderPlaylist([app.playlist[0]]);
+        assert.equal(clientHeightReads, 1, 'subsequent renders reuse cachedListHeight with 0 extra clientHeight reads');
+        window.dispatchEvent(new window.Event('beforeunload'));
+    } finally {
+        dom.window.close();
+    }
+
+    // music-lyrics-ai memoizes needsTranslation on unchanged lyrics array and refreshes on translation mutation
+    const lyricsAi = require(path.join(ROOT, 'Musicmodules/music-lyrics-ai.js'));
+    const hooks = require(path.join(ROOT, 'Musicmodules/music-app-hooks.js'));
+    globalThis.MusicAppHooks = hooks;
+    const aiApp = {
+        currentLyrics: [{ text: 'Hello world today' }, { text: 'Another English line' }, { text: 'Final line here' }],
+        fetchAndDisplayLyrics: async () => {}
+    };
+    lyricsAi.setupMusicLyricsAi(aiApp, { storage: null });
+    assert.equal(aiApp.lyricsAi.needsTranslation(), true);
+    assert.equal(aiApp.lyricsAi.needsTranslation(), true);
+    aiApp.currentLyrics[0].translation = '你好世界';
+    aiApp.currentLyrics[1].translation = '另一行英文';
+    assert.equal(aiApp.lyricsAi.needsTranslation(), false, 'in-place translation fill invalidates memoized needsTranslation');
+    aiApp.currentLyrics = [{ text: '纯中文歌词第一行' }, { text: '纯中文歌词第二行' }];
+    assert.equal(aiApp.lyricsAi.needsTranslation(), false);
+
+    // music-folders folderRows & music-stats-view longestStreak
+    const folders = require(path.join(ROOT, 'Musicmodules/music-folders.js'));
+    const rows = folders.folderRows(
+        [{ path: 'D:\\Music\\Lib', exists: true }],
+        [
+            { path: 'D:\\Music\\Lib\\A\\1.flac' },
+            { path: 'D:\\Music\\Lib\\A\\2.flac' },
+            { path: 'D:\\Other\\Sub\\3.flac' },
+            { path: 'D:\\Other\\Sub\\4.flac' }
+        ]
+    );
+    assert.equal(rows[0].count, 2);
+    assert.equal(rows[1].path, 'D:\\Other\\Sub');
+    assert.equal(rows[1].count, 2);
+
+    const statsView = require(path.join(ROOT, 'Musicmodules/music-stats-view.js'));
+    assert.equal(statsView.longestStreak({ '2026-11-20': 120, '2026-11-21': 90, '2026-11-22': 180, '2026-11-24': 60, '2026-11-25': 30 }), 3);
+});
